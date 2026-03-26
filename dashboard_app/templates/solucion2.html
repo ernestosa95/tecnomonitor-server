@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RIS Analytics</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+/* ─── VARIABLES (sistema) ─── */
+:root {
+  --primary: #3498db;
+  --dark: #2c3e50;
+  --light: #f4f6f8;
+  --success: #28a745;
+  --warning: #ffc107;
+  --danger: #dc3545;
+  --radius: 8px;
+  --pill-radius: 50px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  background-color: var(--light);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ─── LAYOUT ─── */
+#app-container { display: flex; width: 100%; height: 100%; }
+
+/* ─── SIDEBAR ─── */
+.sidebar-right {
+  width: 220px;
+  background-color: var(--dark);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.sidebar-right.collapsed { width: 60px; }
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 16px;
+  color: white;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.logo-area { overflow: hidden; white-space: nowrap; }
+.logo-area h2 { font-size: 1rem; font-weight: 700; color: #fff; line-height: 1.1; }
+.logo-area span { font-size: 0.68rem; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
+.sidebar-right.collapsed .logo-area { display: none; }
+.sidebar-right.collapsed .sidebar-header { justify-content: center; padding: 18px 0; }
+
+#toggle-sidebar {
+  background: none; border: none; cursor: pointer;
+  color: #7f8c8d; padding: 4px; display: flex; align-items: center; transition: color 0.2s;
+}
+#toggle-sidebar:hover { color: white; }
+
+.nav-section-label {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1.5px;
+  color: #4a5568; padding: 16px 16px 6px; font-weight: 700;
+}
+.sidebar-right.collapsed .nav-section-label { display: none; }
+
+.nav-btn {
+  background: none; border: none; color: #bdc3c7;
+  padding: 12px 16px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 12px;
+  transition: 0.2s; width: 100%;
+  border-left: 3px solid transparent;
+  font-size: 0.88rem;
+}
+.nav-btn .nav-label { white-space: nowrap; opacity: 1; transition: 0.2s; }
+.sidebar-right.collapsed .nav-label { display: none; }
+.nav-btn:hover { background-color: rgba(255,255,255,0.05); color: white; }
+.nav-btn.active { color: white; border-left-color: var(--primary); background: linear-gradient(90deg, rgba(52,152,219,0.15) 0%, transparent 100%); }
+.nav-btn:disabled { opacity: 0.35; cursor: default; }
+.nav-btn:disabled:hover { background: none; color: #bdc3c7; }
+
+.sidebar-footer {
+  margin-top: auto; padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.sidebar-right.collapsed .sidebar-footer { padding: 12px 0; display: flex; justify-content: center; }
+
+/* ─── CONTENT AREAS ─── */
+.content { flex: 1; padding: 24px 30px; overflow-y: auto; display: none; position: relative; }
+.content.active { display: block; }
+
+#view-dashboard.active {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden; padding: 0 !important;
+}
+#view-dashboard .header-actions {
+  flex-shrink: 0; padding: 18px 30px 12px;
+  background-color: var(--light); z-index: 10;
+  border-bottom: 1px solid #e1e4e8;
+}
+#view-dashboard .scroll-area {
+  flex-grow: 1; overflow-y: auto;
+  padding: 18px 30px 60px;
+  scrollbar-width: thin; scrollbar-color: #bdc3c7 transparent;
+}
+#view-dashboard .scroll-area::-webkit-scrollbar { width: 6px; }
+#view-dashboard .scroll-area::-webkit-scrollbar-track { background: transparent; }
+#view-dashboard .scroll-area::-webkit-scrollbar-thumb { background: #bdc3c7; border-radius: 4px; }
+
+/* ─── PAGE HEADER ─── */
+.page-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+}
+.page-header h1 { font-size: 1.25rem; font-weight: 700; color: var(--dark); }
+.page-header .sub { font-size: 0.78rem; color: #7f8c8d; margin-top: 2px; }
+
+/* ─── KPI CARDS ─── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+.kpi-card {
+  background: white; border-radius: var(--radius);
+  border: 1px solid #e1e4e8; padding: 14px 18px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+  border-top: 3px solid var(--kpi-color, var(--primary));
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 5px 14px rgba(0,0,0,0.06); }
+.kpi-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #7f8c8d; font-weight: 600; margin-bottom: 5px; }
+.kpi-value { font-size: 1.75rem; font-weight: 700; color: var(--dark); line-height: 1; }
+.kpi-sub { font-size: 0.72rem; color: #aab0b7; margin-top: 3px; }
+
+/* ─── FILTER BAR ─── */
+.filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+
+.filter-group-labeled { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 150px; }
+.filter-group-labeled label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #7f8c8d; font-weight: 600; }
+
+.select-pill {
+  width: 100%; padding: 8px 14px; border-radius: var(--pill-radius);
+  border: 1px solid #e1e4e8; background: white; font-size: 0.86rem;
+  cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.02); outline: none;
+  appearance: none; color: var(--dark);
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%233498db%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 0.58em auto;
+  transition: border-color 0.2s;
+}
+.select-pill:focus { border-color: var(--primary); }
+
+.range-group { display: flex; flex-direction: column; gap: 4px; }
+.range-group label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #7f8c8d; font-weight: 600; }
+.range-row {
+  display: flex; align-items: center; gap: 8px; background: white;
+  border: 1px solid #e1e4e8; border-radius: var(--pill-radius);
+  padding: 6px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+.range-row input[type=range] {
+  -webkit-appearance: none; width: 90px; height: 4px;
+  background: #e1e4e8; border-radius: 2px; outline: none; cursor: pointer;
+}
+.range-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--primary); cursor: pointer;
+}
+.range-val { font-size: 0.78rem; color: var(--primary); font-weight: 700; min-width: 24px; text-align: center; }
+
+/* ─── BUTTONS ─── */
+.btn-action {
+  padding: 8px 18px; background: var(--primary); color: white;
+  border: none; border-radius: var(--radius); font-size: 0.86rem;
+  font-weight: 600; cursor: pointer; transition: 0.2s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-action:hover { filter: brightness(1.1); }
+.btn-action.secondary { background: white; color: var(--dark); border: 1px solid #e1e4e8; }
+.btn-action.secondary:hover { border-color: var(--primary); color: var(--primary); filter: none; }
+.btn-action.success { background: #27ae60; }
+.btn-action.warning-btn { background: #e67e22; }
+.btn-action.sm { padding: 6px 14px; font-size: 0.78rem; }
+
+/* ─── SECTION TITLE ─── */
+.section-title {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px;
+  color: #7f8c8d; font-weight: 700; margin-bottom: 12px;
+  padding-bottom: 6px; border-bottom: 1px solid #e1e4e8;
+}
+
+/* ─── CHARTS GRID ─── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 14px; margin-bottom: 14px;
+}
+.chart-card {
+  background: white; border-radius: var(--radius);
+  border: 1px solid #e1e4e8; padding: 18px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+
+.chart-toolbar {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 12px; flex-wrap: wrap; gap: 6px;
+}
+.ct { font-size: 0.92rem; font-weight: 700; color: var(--dark); }
+.cs { font-size: 0.74rem; color: #7f8c8d; margin-top: 2px; }
+
+.chart-badge {
+  font-size: 0.68rem; padding: 3px 9px; border-radius: 20px;
+  background: #e8f4fd; color: var(--primary);
+  border: 1px solid #b8d9f5; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.chart-wrap { position: relative; height: 230px; }
+
+/* ─── HEATMAP ─── */
+.heatmap-scroll { overflow-x: auto; }
+.heatmap-tbl { border-collapse: separate; border-spacing: 3px; min-width: 100%; }
+.heatmap-tbl th {
+  font-size: 0.66rem; text-transform: uppercase; color: #7f8c8d;
+  font-weight: 700; padding: 4px 6px; white-space: nowrap; letter-spacing: 0.5px;
+}
+.heatmap-tbl td {
+  padding: 7px 10px; border-radius: 5px; text-align: center;
+  font-size: 0.78rem; font-weight: 600; cursor: default;
+  transition: transform 0.15s; min-width: 60px;
+}
+.heatmap-tbl td:hover { transform: scale(1.07); box-shadow: 0 3px 8px rgba(0,0,0,0.12); position: relative; z-index: 1; }
+.hm-row-label {
+  text-align: left !important; font-size: 0.76rem; color: var(--dark);
+  font-weight: 600; white-space: nowrap; padding-right: 12px !important;
+  background: none !important; min-width: 130px;
+}
+
+/* ─── UPLOAD SCREEN ─── */
+#screen-upload {
+  flex: 1; display: flex; align-items: center; justify-content: center; background: var(--light);
+}
+.upload-card {
+  background: white; border-radius: 12px; border: 1px solid #e1e4e8;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.07); padding: 44px 52px;
+  text-align: center; max-width: 460px; width: 90%;
+}
+.upload-zone {
+  border: 2px dashed #bdc3c7; border-radius: var(--radius);
+  padding: 36px 20px; cursor: pointer; transition: 0.2s; margin-bottom: 20px;
+}
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--primary); background: #f0f8ff; }
+.upload-icon { font-size: 38px; margin-bottom: 10px; }
+.upload-title { font-size: 0.98rem; font-weight: 700; color: var(--dark); margin-bottom: 5px; }
+.upload-sub { font-size: 0.78rem; color: #7f8c8d; line-height: 1.5; }
+.upload-hint {
+  font-size: 0.7rem; color: #aab0b7; margin-top: 8px;
+  background: #f8f9fa; border-radius: 6px; padding: 8px 12px;
+  text-align: left; line-height: 1.7;
+}
+.upload-hint strong { color: var(--primary); }
+
+/* ─── PRIVACY NOTICE ─── */
+.privacy-notice {
+  margin-top: 18px; padding: 12px 16px; background: #e8f4fd;
+  border-left: 4px solid var(--primary); border-radius: 6px;
+  font-size: 0.75rem; color: var(--dark); text-align: left; line-height: 1.5;
+}
+.privacy-notice strong { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 0.78rem; color: var(--primary); }
+.privacy-notice svg { flex-shrink: 0; }
+
+/* ─── EXPORT MODAL ─── */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5); z-index: 9999;
+  display: none; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.2s ease;
+}
+.modal-overlay.show { display: flex; opacity: 1; }
+.modal-card {
+  background: white; border-radius: 12px; padding: 24px 28px;
+  width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  transform: translateY(20px); transition: transform 0.2s ease;
+}
+.modal-overlay.show .modal-card { transform: translateY(0); }
+.modal-title { font-size: 1.2rem; font-weight: 700; color: var(--dark); margin-bottom: 6px; }
+.modal-sub { font-size: 0.8rem; color: #7f8c8d; margin-bottom: 20px; border-bottom: 1px solid #e1e4e8; padding-bottom: 12px; }
+.chk-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+.chk-lbl { display: flex; align-items: center; gap: 10px; font-size: 0.86rem; color: var(--dark); cursor: pointer; font-weight: 600; }
+.chk-lbl input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+.chk-lbl span { font-weight: 400; color: #7f8c8d; font-size: 0.75rem; margin-left: auto; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* ─── LOADING ─── */
+#screen-loading {
+  flex: 1; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid #e1e4e8; border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── ERROR BANNER ─── */
+#error-banner {
+  display: none; background: #fff5f5; border: 1px solid #f5c2c7;
+  border-radius: var(--radius); padding: 10px 14px; margin-top: 12px;
+  color: #842029; font-size: 0.82rem;
+}
+
+/* ─── TABLE ─── */
+.table-container-island table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+.table-container-island th {
+  text-align: left; color: #7f8c8d; font-weight: 700; padding: 0 14px 6px;
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.table-container-island tbody tr {
+  background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.table-container-island tbody tr:hover { transform: translateY(-2px); box-shadow: 0 5px 14px rgba(0,0,0,0.06); }
+.table-container-island td {
+  padding: 11px 14px; vertical-align: middle;
+  border-top: 1px solid #e1e4e8; border-bottom: 1px solid #e1e4e8;
+  font-size: 0.86rem;
+}
+.table-container-island td:first-child { border-radius: 8px 0 0 8px; border-left: 4px solid var(--primary); }
+.table-container-island td:last-child { border-radius: 0 8px 8px 0; border-right: 1px solid #e1e4e8; }
+
+.badge { padding: 3px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; }
+.badge-f { background: #fde8e8; color: #c0392b; border: 1px solid #f5c2c7; }
+.badge-m { background: #dbeafe; color: #1e4d7b; border: 1px solid #b8d9f5; }
+
+.pager {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; font-size: 0.8rem; color: #7f8c8d;
+}
+.pager button {
+  background: white; border: 1px solid #e1e4e8; border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; font-size: 0.78rem; transition: 0.15s;
+}
+.pager button:hover { border-color: var(--primary); color: var(--primary); }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── SEARCH PILL ─── */
+.search-pill {
+  flex: 1; min-width: 200px; background: white; border-radius: var(--pill-radius);
+  padding: 4px 16px; display: flex; align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02); border: 1px solid #e1e4e8;
+}
+.search-pill input {
+  border: none; outline: none; width: 100%; padding: 7px;
+  font-size: 0.86rem; background: transparent; color: var(--dark);
+}
+
+/* ─── TOAST ─── */
+#toast {
+  position: fixed; bottom: 22px; right: 22px;
+  background: var(--dark); color: white;
+  padding: 10px 16px; border-radius: var(--radius);
+  font-size: 0.83rem; z-index: 9999;
+  transform: translateY(60px); opacity: 0; transition: all 0.3s;
+  pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  border-left: 3px solid var(--primary);
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+
+/* ─── BOTTOM NAV ─── */
+.bottom-nav {
+  display: none; position: fixed; bottom: 0; left: 0; width: 100%;
+  background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+  justify-content: space-around; padding: 10px 0; z-index: 1000;
+}
+.nav-item { background: none; border: none; display: flex; flex-direction: column; align-items: center; color: #95a5a6; gap: 3px; font-size: 0.68rem; cursor: pointer; }
+.nav-item.active { color: var(--primary); }
+.nav-item:disabled { opacity: 0.35; cursor: default; }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .sidebar-right { display: none; }
+  .bottom-nav { display: flex; }
+  .content { padding: 14px; }
+  .charts-grid { grid-template-columns: 1fr; }
+  #view-dashboard.active { height: calc(100vh - 60px); }
+  #view-dashboard .header-actions { padding: 14px; }
+  #view-dashboard .scroll-area { padding: 12px 14px 80px; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .upload-card { padding: 28px 20px; }
+}
+</style>
+</head>
+<body>
+<div id="app-container">
+
+<div class="sidebar-right" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo-area">
+      <h2>RIS Analytics</h2>
+      <span>Imágenes Médicas</span>
+    </div>
+    <button id="toggle-sidebar" onclick="toggleSidebar()" title="Colapsar menú">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="nav-section-label">Vistas</div>
+  <button class="nav-btn active" id="nav-upload" onclick="showView('upload')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <span class="nav-label">Cargar XML</span>
+  </button>
+  <button class="nav-btn" id="nav-dashboard" onclick="showView('dashboard')" disabled>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    <span class="nav-label">Dashboard</span>
+  </button>
+  <button class="nav-btn" id="nav-tabla" onclick="showView('tabla')" disabled>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m-6-6h18M3 9h18"/></svg>
+    <span class="nav-label">Tabla de datos</span>
+  </button>
+
+  <div class="nav-section-label">Exportar</div>
+  <button class="nav-btn" id="nav-excel" onclick="openExportModal('excel')" disabled>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+    <span class="nav-label">Exportar Excel</span>
+  </button>
+  <button class="nav-btn" id="nav-pdf" onclick="openExportModal('pdf')" disabled>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+    <span class="nav-label">Exportar PDF</span>
+  </button>
+
+  <div class="sidebar-footer">
+    <button class="nav-btn" onclick="resetApp()" style="color:#e74c3c; padding:8px 0; font-size:0.8rem;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+      <span class="nav-label">Nuevo archivo</span>
+    </button>
+  </div>
+</div>
+
+<div id="screen-upload" style="flex:1; display:flex; align-items:center; justify-content:center;">
+  <div class="upload-card">
+    <div style="margin-bottom:20px;">
+      <div style="font-size:1.35rem; font-weight:800; color:var(--dark);">RIS Analytics</div>
+      <div style="font-size:0.76rem; color:#7f8c8d; margin-top:3px;">Análisis de exportaciones de imágenes médicas</div>
+    </div>
+    <div class="upload-zone" id="upload-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+      <div class="upload-icon">📂</div>
+      <div class="upload-title">Cargá tu exportación XML del RIS</div>
+      <p class="upload-sub">Arrastrá el archivo aquí o hacé clic para seleccionarlo</p>
+      <input type="file" id="file-input" accept=".xml" style="display:none" onchange="handleFile(this.files[0])">
+    </div>
+    <div class="upload-hint">
+      <strong>Columnas detectadas automáticamente por nombre:</strong><br>
+      Room · Group of Origins · Edad · DNI · Sexo<br>
+      <span style="color:#aab0b7;">El orden de columnas puede cambiar y se pueden agregar nuevas sin problema.</span>
+    </div>
+
+    <div class="privacy-notice">
+      <strong>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        Privacidad garantizada y 100% Offline
+      </strong>
+      El análisis se procesa de manera exclusiva en tu navegador actual. Los archivos XML y la información sensible de los pacientes (DNI, edad) nunca se suben a la nube ni se transfieren a ningún servidor externo.
+    </div>
+
+    <div id="error-banner"></div>
+  </div>
+</div>
+
+<div id="screen-loading" style="flex:1; display:none; align-items:center; justify-content:center; flex-direction:column; gap:12px;">
+  <div class="spinner"></div>
+  <p style="color:#7f8c8d; font-size:0.86rem;">Procesando datos...</p>
+</div>
+
+<div class="content" id="view-dashboard">
+
+  <div class="header-actions">
+    <div class="page-header">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="sub" id="dash-sub">—</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-action warning-btn sm" onclick="openExportModal('excel')">⬇ Excel</button>
+        <button class="btn-action success sm" onclick="openExportModal('pdf')">⬇ PDF</button>
+        <button class="btn-action secondary sm" onclick="resetFilters()">✕ Limpiar filtros</button>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi-card" style="--kpi-color:var(--primary)">
+        <div class="kpi-label">Total estudios</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-sub">registros filtrados</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:#8e44ad">
+        <div class="kpi-label">Pacientes únicos</div>
+        <div class="kpi-value" id="kpi-unique">—</div>
+        <div class="kpi-sub">por DNI</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--success)">
+        <div class="kpi-label">Edad promedio</div>
+        <div class="kpi-value" id="kpi-age">—</div>
+        <div class="kpi-sub">años</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:#e67e22">
+        <div class="kpi-label">Salas activas</div>
+        <div class="kpi-value" id="kpi-rooms">—</div>
+        <div class="kpi-sub">equipos en uso</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color:var(--danger)">
+        <div class="kpi-label">Orígenes</div>
+        <div class="kpi-value" id="kpi-origins">—</div>
+        <div class="kpi-sub">sectores distintos</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-group-labeled">
+        <label>Sala (Room)</label>
+        <select class="select-pill" id="filter-room" onchange="applyFilters()">
+          <option value="">Todas las salas</option>
+        </select>
+      </div>
+      <div class="filter-group-labeled">
+        <label>Origen</label>
+        <select class="select-pill" id="filter-origin" onchange="applyFilters()">
+          <option value="">Todos los orígenes</option>
+        </select>
+      </div>
+      <div class="filter-group-labeled">
+        <label>Sexo</label>
+        <select class="select-pill" id="filter-sex" onchange="applyFilters()">
+          <option value="">Todos</option>
+          <option value="F">Femenino</option>
+          <option value="M">Masculino</option>
+        </select>
+      </div>
+      <div class="range-group">
+        <label>Edad mínima</label>
+        <div class="range-row">
+          <input type="range" id="age-min" min="0" max="120" value="0"
+            oninput="document.getElementById('age-min-val').textContent=this.value; applyFilters()">
+          <span class="range-val" id="age-min-val">0</span>
+        </div>
+      </div>
+      <div class="range-group">
+        <label>Edad máxima</label>
+        <div class="range-row">
+          <input type="range" id="age-max" min="0" max="120" value="120"
+            oninput="document.getElementById('age-max-val').textContent=this.value; applyFilters()">
+          <span class="range-val" id="age-max-val">120</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-area">
+    <div class="section-title">Gráficos</div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div><div class="ct">Estudios por Sala</div><div class="cs">Volumen por equipo / sala</div></div>
+          <span class="chart-badge">Room</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chartRoom"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div><div class="ct">Estudios por Origen</div><div class="cs">Procedencia del paciente</div></div>
+          <span class="chart-badge">Origen</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chartOrigin"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div><div class="ct">Distribución por Sexo</div><div class="cs">Femenino vs Masculino</div></div>
+          <span class="chart-badge">Sexo</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chartSex"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div><div class="ct">Pirámide Poblacional</div><div class="cs">Distribución por rango de edad y sexo</div></div>
+          <span class="chart-badge">Edad</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chartAge"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div><div class="ct">Sexo por Sala</div><div class="cs">Composición de género por equipo</div></div>
+          <span class="chart-badge">Cruce</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chartSexRoom"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom:20px;">
+      <div class="chart-toolbar">
+        <div><div class="ct">Cruce Sala × Origen — Mapa de Calor</div><div class="cs">Cantidad de estudios por combinación sala / origen</div></div>
+        <span class="chart-badge">Heatmap</span>
+      </div>
+      <div class="heatmap-scroll">
+        <div id="heatmap-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="content" id="view-tabla">
+  <div class="page-header">
+    <div>
+      <h1>Tabla de Datos</h1>
+      <div class="sub" id="tabla-sub">—</div>
+    </div>
+  </div>
+  <div class="filter-bar">
+    <div class="search-pill">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#bdc3c7" stroke-width="2" style="flex-shrink:0;margin-right:6px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="tabla-search" type="text" placeholder="Buscar por DNI, sala u origen..." oninput="tablaPage=1; renderTabla()">
+    </div>
+    <div class="filter-group-labeled" style="min-width:160px;">
+      <label>Sala</label>
+      <select class="select-pill" id="tabla-filter-room" onchange="tablaPage=1; renderTabla()">
+        <option value="">Todas</option>
+      </select>
+    </div>
+    <div class="filter-group-labeled" style="min-width:130px;">
+      <label>Sexo</label>
+      <select class="select-pill" id="tabla-filter-sex" onchange="tablaPage=1; renderTabla()">
+        <option value="">Todos</option>
+        <option value="F">Femenino</option>
+        <option value="M">Masculino</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-container-island">
+    <table>
+      <thead>
+        <tr>
+          <th>Sala / Equipo</th>
+          <th>Origen</th>
+          <th>Edad</th>
+          <th>DNI</th>
+          <th>Sexo</th>
+        </tr>
+      </thead>
+      <tbody id="tabla-body"></tbody>
+    </table>
+    <div class="pager">
+      <button id="pager-prev" onclick="changePage(-1)">← Anterior</button>
+      <span id="pager-info">Pág 1 de 1</span>
+      <button id="pager-next" onclick="changePage(1)">Siguiente →</button>
+      <span style="margin-left:6px; color:#aab0b7;" id="pager-count"></span>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div class="bottom-nav">
+  <button class="nav-item active" onclick="showView('upload')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Cargar
+  </button>
+  <button class="nav-item" id="mob-dash" onclick="showView('dashboard')" disabled>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    Charts
+  </button>
+  <button class="nav-item" id="mob-tabla" onclick="showView('tabla')" disabled>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m-6-6h18M3 9h18"/></svg>
+    Tabla
+  </button>
+</div>
+
+<div id="export-modal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-title" id="export-title">Opciones de Exportación</div>
+    <div class="modal-sub">Seleccioná qué información querés incluir en tu reporte <strong id="export-type-label" style="color:var(--primary)">PDF</strong>:</div>
+    
+    <div class="chk-group">
+      <label class="chk-lbl" id="row-chk-raw">
+        <input type="checkbox" id="chk-raw" checked> Datos Crudos (DNI, Sexo, Edad) <span>Tabla completa</span>
+      </label>
+      <label class="chk-lbl">
+        <input type="checkbox" id="chk-exec" checked> Resumen Ejecutivo y KPIs <span>Página principal</span>
+      </label>
+      <label class="chk-lbl">
+        <input type="checkbox" id="chk-sala" checked> Análisis por Sala / Equipo <span>Gráfico y Detalles</span>
+      </label>
+      <label class="chk-lbl">
+        <input type="checkbox" id="chk-orig" checked> Análisis por Origen / Sector <span>Gráfico</span>
+      </label>
+      <label class="chk-lbl">
+        <input type="checkbox" id="chk-demo" checked> Perfil Demográfico <span>Sexo y Edad</span>
+      </label>
+      <label class="chk-lbl">
+        <input type="checkbox" id="chk-cruz" checked> Cruce Sala × Origen <span>Mapa de Calor</span>
+      </label>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-action secondary" onclick="closeExportModal()">Cancelar</button>
+      <button class="btn-action success" onclick="confirmExport()">Confirmar y Exportar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const HEADER_MAP = {
+  room:   ['room'],
+  origin: ['group of origins', 'origen', 'origin'],
+  age:    ['edad - edad', 'edad', 'age'],
+  dni:    ['anagraphic data - dni', 'dni', 'documento', 'id paciente'],
+  sex:    ['anagraphic data - sexo', 'sexo', 'sex', 'género', 'genero'],
+};
+
+let allData = [];
+let filteredData = [];
+let charts = {};
+let tablaPage = 1;
+const PAGE_SIZE = 50;
+let currentExportType = ''; // Guarda si el modal es para PDF o Excel
+
+Chart.defaults.color = '#7f8c8d';
+Chart.defaults.font.family = "'Segoe UI', Tahoma, sans-serif";
+Chart.defaults.font.size = 11;
+
+const PALETTE = [
+  '#3498db','#e67e22','#2ecc71','#e74c3c','#9b59b6',
+  '#1abc9c','#f39c12','#27ae60','#c0392b','#2980b9',
+  '#16a085','#d35400','#8e44ad','#2c3e50','#7f8c8d'
+];
+const GRID = 'rgba(0,0,0,0.05)';
+
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+
+function showView(view) {
+  ['screen-upload','screen-loading','view-dashboard','view-tabla'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.style.display = 'none'; el.classList.remove('active');
+  });
+  document.querySelectorAll('.nav-btn, .nav-item').forEach(b => b.classList.remove('active'));
+
+  const map = {
+    upload:    { el:'screen-upload',    nav:['nav-upload'] },
+    loading:   { el:'screen-loading',   nav:[] },
+    dashboard: { el:'view-dashboard',   nav:['nav-dashboard','mob-dash'] },
+    tabla:     { el:'view-tabla',       nav:['nav-tabla','mob-tabla'] },
+  };
+  const cfg = map[view]; if (!cfg) return;
+  const target = document.getElementById(cfg.el);
+  target.style.display = view === 'loading' ? 'flex' : '';
+  target.classList.add('active');
+  cfg.nav.forEach(id => document.getElementById(id)?.classList.add('active'));
+  if (view === 'tabla') renderTabla();
+}
+
+function handleDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
+function handleDragLeave()  { document.getElementById('upload-zone').classList.remove('drag-over'); }
+function handleDrop(e) { e.preventDefault(); document.getElementById('upload-zone').classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }
+
+function handleFile(file) {
+  if (!file?.name.endsWith('.xml')) { showError('Solo se aceptan archivos .xml'); return; }
+  clearError(); showView('loading');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const { data, warnings } = parseXML(e.target.result);
+      if (data.length === 0) throw new Error('No se encontraron filas de datos.');
+      allData = data; filteredData = [...allData];
+      populateFilters(); renderAll(); enableNav(); showView('dashboard');
+      if (warnings.length) showToast('⚠ ' + warnings[0]);
+      else showToast(`✓ ${data.length.toLocaleString('es-AR')} registros cargados`);
+    } catch (err) { showView('upload'); showError('Error: ' + err.message); }
+  };
+  reader.onerror = () => { showView('upload'); showError('No se pudo leer el archivo.'); };
+  reader.readAsText(file, 'utf-8');
+}
+
+function enableNav() {
+  ['nav-dashboard','nav-tabla','nav-excel','nav-pdf','mob-dash','mob-tabla'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.disabled = false;
+  });
+}
+
+function parseXML(text) {
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  if (doc.querySelector('parsererror')) throw new Error('El XML no es válido.');
+  const rows = Array.from(doc.querySelectorAll('Row'));
+  if (rows.length < 2) throw new Error('El archivo está vacío o no tiene filas de datos.');
+
+  const headers = Array.from(rows[0].querySelectorAll('Data')).map(d => d.textContent.trim().toLowerCase());
+  const colIndex = {}; const warnings = [];
+  for (const [field, aliases] of Object.entries(HEADER_MAP)) {
+    const idx = headers.findIndex(h => aliases.some(a => h === a || h.includes(a)));
+    colIndex[field] = idx; 
+    if (idx === -1) warnings.push(`Columna "${field}" no encontrada (esperadas: ${aliases.join(' / ')})`);
+  }
+
+  const missing = Object.values(colIndex).filter(v => v === -1).length;
+  if (missing > 2) throw new Error(`Faltan ${missing} columnas esperadas. ¿Es una exportación RIS válida? Columnas encontradas: ${headers.join(', ')}`);
+
+  const get = (cells, field) => colIndex[field] >= 0 ? (cells[colIndex[field]]?.trim() ?? '') : '';
+
+  const data = rows.slice(1).reduce((acc, row) => {
+    const cells = Array.from(row.querySelectorAll('Data')).map(d => d.textContent);
+    if (!cells.length) return acc;
+    acc.push({
+      room:   get(cells,'room')   || '(sin sala)',
+      origin: get(cells,'origin') || '(sin origen)',
+      age:    parseInt(get(cells,'age')) || 0,
+      dni:    get(cells,'dni')    || '',
+      sex:    (get(cells,'sex') || '?').toUpperCase(),
+    });
+    return acc;
+  }, []);
+
+  return { data, warnings };
+}
+
+function populateFilters() {
+  const rooms   = [...new Set(allData.map(r => r.room))].sort();
+  const origins = [...new Set(allData.map(r => r.origin))].sort();
+
+  ['filter-room','tabla-filter-room'].forEach(id => {
+    const s = document.getElementById(id);
+    s.innerHTML = `<option value="">Todas las salas</option>`;
+    rooms.forEach(r => s.insertAdjacentHTML('beforeend', `<option value="${r}">${r}</option>`));
+  });
+
+  const so = document.getElementById('filter-origin');
+  so.innerHTML = `<option value="">Todos los orígenes</option>`;
+  origins.forEach(o => so.insertAdjacentHTML('beforeend', `<option value="${o}">${o}</option>`));
+}
+
+function applyFilters() {
+  const room   = document.getElementById('filter-room').value;
+  const origin = document.getElementById('filter-origin').value;
+  const sex    = document.getElementById('filter-sex').value;
+  const ageMin = +document.getElementById('age-min').value;
+  const ageMax = +document.getElementById('age-max').value;
+  filteredData = allData.filter(r =>
+    (!room   || r.room   === room)   &&
+    (!origin || r.origin === origin) &&
+    (!sex    || r.sex    === sex)    &&
+    r.age >= ageMin && r.age <= ageMax
+  );
+  renderAll();
+}
+
+function resetFilters() {
+  ['filter-room','filter-origin','filter-sex'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('age-min').value = 0;   document.getElementById('age-min-val').textContent = '0';
+  document.getElementById('age-max').value = 120; document.getElementById('age-max-val').textContent = '120';
+  filteredData = [...allData]; renderAll();
+}
+
+function resetApp() {
+  allData = []; filteredData = [];
+  Object.values(charts).forEach(c => c.destroy()); charts = {};
+  ['nav-dashboard','nav-tabla','nav-excel','nav-pdf','mob-dash','mob-tabla'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.disabled = true;
+  });
+  showView('upload');
+}
+
+const countBy = (arr, key) => arr.reduce((a,r) => { a[r[key]] = (a[r[key]]||0)+1; return a; }, {});
+
+function renderAll() {
+  updateKPIs(); renderChartRoom(); renderChartOrigin(); renderChartSex(); renderChartAge(); renderChartSexRoom(); renderHeatmap();
+  const n = filteredData.length, tot = allData.length;
+  const sub = n === tot
+    ? `${n.toLocaleString('es-AR')} registros totales`
+    : `${n.toLocaleString('es-AR')} de ${tot.toLocaleString('es-AR')} registros filtrados`;
+  document.getElementById('dash-sub').textContent = sub;
+  document.getElementById('tabla-sub').textContent = sub;
+}
+
+function updateKPIs() {
+  const d = filteredData;
+  document.getElementById('kpi-total').textContent   = d.length.toLocaleString('es-AR');
+  document.getElementById('kpi-unique').textContent  = new Set(d.map(r=>r.dni)).size.toLocaleString('es-AR');
+  document.getElementById('kpi-age').textContent     = d.length ? (d.reduce((s,r)=>s+r.age,0)/d.length).toFixed(1) : '—';
+  document.getElementById('kpi-rooms').textContent   = new Set(d.map(r=>r.room)).size;
+  document.getElementById('kpi-origins').textContent = new Set(d.map(r=>r.origin)).size;
+}
+
+function mkChart(id, type, data, opts = {}) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(
+    document.getElementById(id).getContext('2d'),
+    { type, data, options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#2c3e50', font:{ size:11 } } } }, ...opts }}
+  );
+}
+
+function renderChartRoom() {
+  const s = Object.entries(countBy(filteredData,'room')).sort((a,b)=>b[1]-a[1]);
+  mkChart('chartRoom','bar',{
+    labels: s.map(e=>e[0]),
+    datasets:[{ label:'Estudios', data:s.map(e=>e[1]), backgroundColor:s.map((_,i)=>PALETTE[i%PALETTE.length]+'cc'), borderColor:s.map((_,i)=>PALETTE[i%PALETTE.length]), borderWidth:1, borderRadius:5 }]
+  },{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{grid:{color:GRID},ticks:{color:'#7f8c8d'}}, y:{grid:{display:false},ticks:{color:'#2c3e50',font:{size:10}}} } });
+}
+
+function renderChartOrigin() {
+  const s = Object.entries(countBy(filteredData,'origin')).sort((a,b)=>b[1]-a[1]);
+  mkChart('chartOrigin','bar',{
+    labels: s.map(e=>e[0]),
+    datasets:[{ label:'Estudios', data:s.map(e=>e[1]), backgroundColor:s.map((_,i)=>PALETTE[(i+4)%PALETTE.length]+'cc'), borderColor:s.map((_,i)=>PALETTE[(i+4)%PALETTE.length]), borderWidth:1, borderRadius:5 }]
+  },{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{grid:{color:GRID},ticks:{color:'#7f8c8d'}}, y:{grid:{display:false},ticks:{color:'#2c3e50',font:{size:10}}} } });
+}
+
+function renderChartSex() {
+  const f = filteredData.filter(r=>r.sex==='F').length; const m = filteredData.filter(r=>r.sex==='M').length; const t = f+m||1;
+  mkChart('chartSex','doughnut',{
+    labels:[`Femenino (${((f/t)*100).toFixed(1)}%)`,`Masculino (${((m/t)*100).toFixed(1)}%)`],
+    datasets:[{ data:[f,m], backgroundColor:['#e74c3ccc','#3498dbcc'], borderColor:['#e74c3c','#3498db'], borderWidth:2, hoverOffset:10 }]
+  },{ cutout:'62%', plugins:{legend:{position:'bottom',labels:{color:'#2c3e50',padding:14,font:{size:12}}}} });
+}
+
+function renderChartAge() {
+  const bins = ['0–9','10–19','20–29','30–39','40–49','50–59','60–69','70–79','80+'];
+  const fC = new Array(9).fill(0); const mC = new Array(9).fill(0);
+  filteredData.forEach(r => { const b = Math.min(r.age>=80?8:Math.floor(r.age/10), 8); if(r.sex === 'F') fC[b]++; else if(r.sex === 'M') mC[b]++; });
+  const binsReversed = [...bins].reverse(); const fData = [...fC].reverse().map(v => -v); const mData = [...mC].reverse().map(v => v);
+
+  mkChart('chartAge','bar',{
+    labels: binsReversed,
+    datasets:[ { label:'Femenino', data: fData, backgroundColor:'#e74c3ccc', borderColor:'#e74c3c', borderWidth:1 }, { label:'Masculino', data: mData, backgroundColor:'#3498dbcc', borderColor:'#3498db', borderWidth:1 } ]
+  },{ indexAxis: 'y', plugins:{ legend:{ position: 'bottom', labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.raw)}` } } }, scales:{ x:{ stacked: true, grid:{ color: GRID }, ticks:{ color:'#7f8c8d', callback: (val) => Math.abs(val) } }, y:{ stacked: true, grid:{ display: false }, ticks:{ color:'#2c3e50', font:{weight:'bold'} } } } });
+}
+
+function renderChartSexRoom() {
+  const rooms = [...new Set(filteredData.map(r=>r.room))].sort();
+  mkChart('chartSexRoom','bar',{
+    labels: rooms,
+    datasets:[
+      { label:'Femenino',  data:rooms.map(rm=>filteredData.filter(r=>r.room===rm&&r.sex==='F').length), backgroundColor:'#e74c3caa', borderColor:'#e74c3c', borderWidth:1, borderRadius:4, stack:'s' },
+      { label:'Masculino', data:rooms.map(rm=>filteredData.filter(r=>r.room===rm&&r.sex==='M').length), backgroundColor:'#3498dbaa', borderColor:'#3498db', borderWidth:1, borderRadius:4, stack:'s' }
+    ]
+  },{ scales:{ x:{stacked:true,grid:{display:false},ticks:{color:'#2c3e50',maxRotation:30,font:{size:9}}}, y:{stacked:true,grid:{color:GRID},ticks:{color:'#7f8c8d'}} } });
+}
+
+function renderHeatmap() {
+  const rooms   = [...new Set(filteredData.map(r=>r.room))].sort();
+  const origins = [...new Set(filteredData.map(r=>r.origin))].sort();
+  const matrix  = {}; let maxVal = 0;
+  filteredData.forEach(r=>{ if(!matrix[r.room]) matrix[r.room]={}; const v = (matrix[r.room][r.origin]=(matrix[r.room][r.origin]||0)+1); if(v>maxVal) maxVal=v; });
+
+  const bg = (val) => { if(!val) return '#f8f9fa'; const p = val/maxVal; return `rgba(${Math.round(52+p*179)},${Math.round(152-p*76)},${Math.round(219-p*159)},${0.2+p*0.75})`; };
+  const fg = (val) => !val ? '#aab0b7' : val/maxVal > 0.55 ? '#fff' : '#2c3e50';
+
+  let html = '<table class="heatmap-tbl"><thead><tr><th></th>';
+  origins.forEach(o => { html+=`<th title="${o}">${o.length>16?o.slice(0,14)+'…':o}</th>`; });
+  html += '</tr></thead><tbody>';
+  rooms.forEach(rm => {
+    html += `<tr><td class="hm-row-label">${rm}</td>`;
+    origins.forEach(og => { const val = (matrix[rm]||{})[og]||0; html += `<td style="background:${bg(val)};color:${fg(val)}" title="${rm} → ${og}: ${val}">${val||''}</td>`; });
+    html += '</tr>';
+  });
+  document.getElementById('heatmap-content').innerHTML = html + '</tbody></table>';
+}
+
+function renderTabla() {
+  const search = document.getElementById('tabla-search').value.toLowerCase();
+  const room   = document.getElementById('tabla-filter-room').value;
+  const sex    = document.getElementById('tabla-filter-sex').value;
+
+  const rows = filteredData.filter(r =>
+    (!room   || r.room === room)  && (!sex    || r.sex  === sex)   && (!search || r.dni.includes(search) || r.room.toLowerCase().includes(search) || r.origin.toLowerCase().includes(search))
+  );
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE)); tablaPage = Math.min(tablaPage, totalPages);
+  const slice = rows.slice((tablaPage-1)*PAGE_SIZE, tablaPage*PAGE_SIZE);
+
+  document.getElementById('tabla-body').innerHTML = slice.map(r => `
+    <tr><td><span style="font-family:monospace;font-size:0.8rem;color:#7f8c8d">${r.room}</span></td><td>${r.origin}</td><td><strong>${r.age}</strong> <span style="color:#aab0b7;font-size:0.76rem">años</span></td><td><span style="font-family:monospace;font-size:0.82rem">${r.dni}</span></td><td><span class="badge badge-${r.sex.toLowerCase()}">${r.sex}</span></td></tr>
+  `).join('');
+
+  document.getElementById('pager-info').textContent  = `Pág ${tablaPage} de ${totalPages}`;
+  document.getElementById('pager-count').textContent = `${rows.length.toLocaleString('es-AR')} registros`;
+  document.getElementById('pager-prev').disabled = tablaPage <= 1; document.getElementById('pager-next').disabled = tablaPage >= totalPages;
+}
+function changePage(dir) { tablaPage += dir; renderTabla(); }
+
+// ═══════════════════════════════════════════════════════
+//  LÓGICA DEL MODAL DE EXPORTACIÓN
+// ═══════════════════════════════════════════════════════
+function openExportModal(type) {
+  if (!filteredData.length) { showToast('⚠ No hay datos para exportar'); return; }
+  
+  currentExportType = type;
+  document.getElementById('export-title').textContent = type === 'pdf' ? 'Exportar a PDF' : 'Exportar a Excel';
+  document.getElementById('export-type-label').textContent = type.toUpperCase();
+
+  // El PDF no incluye la tabla inmensa de datos crudos, así que la ocultamos
+  const rawRow = document.getElementById('row-chk-raw');
+  if (type === 'pdf') {
+    rawRow.style.display = 'none';
+    document.getElementById('chk-raw').checked = false;
+  } else {
+    rawRow.style.display = 'flex';
+    document.getElementById('chk-raw').checked = true;
+  }
+
+  document.getElementById('export-modal').classList.add('show');
+}
+
+function closeExportModal() {
+  document.getElementById('export-modal').classList.remove('show');
+}
+
+function confirmExport() {
+  const opts = {
+    raw: document.getElementById('chk-raw').checked,
+    exec: document.getElementById('chk-exec').checked,
+    sala: document.getElementById('chk-sala').checked,
+    orig: document.getElementById('chk-orig').checked,
+    demo: document.getElementById('chk-demo').checked,
+    cruz: document.getElementById('chk-cruz').checked
+  };
+
+  // Validar que eligió al menos una opción
+  if (!Object.values(opts).some(v => v)) {
+    showToast('⚠ Seleccioná al menos una opción para exportar');
+    return;
+  }
+
+  closeExportModal();
+
+  if (currentExportType === 'pdf') generatePDF(opts);
+  else generateExcel(opts);
+}
+
+// ═══════════════════════════════════════════════════════
+//  EXPORTAR EXCEL (Modular)
+// ═══════════════════════════════════════════════════════
+function generateExcel(opts) {
+  showToast('⏳ Generando Excel...'); 
+  const wb = XLSX.utils.book_new();
+  
+  if (opts.raw) {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filteredData.map(r=>({Sala:r.room,Origen:r.origin,Edad:r.age,DNI:r.dni,Sexo:r.sex}))), 'Datos Crudos');
+  }
+  if (opts.sala) {
+    const roomC = countBy(filteredData,'room'); 
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(roomC).sort((a,b)=>b[1]-a[1]).map(([Sala,Estudios])=>({Sala,Estudios}))), 'Por Sala');
+  }
+  if (opts.orig) {
+    const origC = countBy(filteredData,'origin'); 
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(origC).sort((a,b)=>b[1]-a[1]).map(([Origen,Estudios])=>({Origen,Estudios}))), 'Por Origen');
+  }
+  if (opts.demo) {
+    const bins = ['0–9','10–19','20–29','30–39','40–49','50–59','60–69','70–79','80+'];
+  const fC = new Array(9).fill(0);
+  const mC = new Array(9).fill(0);
+  const tC = new Array(9).fill(0);
+  
+  filteredData.forEach(r => { 
+    const b = Math.min(r.age >= 80 ? 8 : Math.floor(r.age / 10), 8);
+    tC[b]++; // Sumamos al total
+    if (r.sex === 'F') fC[b]++; 
+    else if (r.sex === 'M') mC[b]++; 
+  });
+
+  const edadData = bins.map((Rango, i) => ({
+    Rango: Rango,
+    Total: tC[i],
+    Femenino: fC[i],
+    Masculino: mC[i]
+  }));
+  
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(edadData), 'Distribución Etaria');
+  }
+  if (opts.cruz) {
+    const rooms=[...new Set(filteredData.map(r=>r.room))].sort(); const origins=[...new Set(filteredData.map(r=>r.origin))].sort(); const matrix={};
+    filteredData.forEach(r=>{ if(!matrix[r.room]) matrix[r.room]={}; matrix[r.room][r.origin]=(matrix[r.room][r.origin]||0)+1; });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rooms.map(rm=>{ const row={Sala:rm}; origins.forEach(og=>{ row[og]=(matrix[rm]||{})[og]||0; }); return row; })), 'Cruce Sala×Origen');
+  }
+
+  XLSX.writeFile(wb,'RIS_Analytics_Report.xlsx'); 
+  showToast('✓ Excel exportado correctamente');
+}
+
+// ═══════════════════════════════════════════════════════
+//  EXPORTAR PDF (Dinámico y Modular)
+// ═══════════════════════════════════════════════════════
+function generatePDF(opts) {
+  showToast('⏳ Generando informe PDF...');
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = 210, H = 297;
+  const ML = 14, MR = 14; 
+  const CW = W - ML - MR; 
+
+  const DARK    = [44,  62,  80];
+  const PRIMARY = [52,  152, 219];
+  const LIGHT   = [244, 246, 248];
+  const BORDER  = [220, 224, 228];
+  const MUTED   = [127, 140, 141];
+  const WHITE   = [255, 255, 255];
+  const FEMALE  = [192, 57,  43]; 
+  const MALE    = [41,  128, 185]; 
+  const GREEN   = [39,  174, 96];
+  const ORANGE  = [211, 84,  0];
+  const PURPLE  = [142, 68,  173];
+  const PALETTE = [PRIMARY,ORANGE,GREEN,FEMALE,PURPLE,[26,188,156],[243,156,18],[41,128,185],[192,57,43]];
+
+  const F  = (...c) => pdf.setFillColor(...c);
+  const S  = (...c) => pdf.setDrawColor(...c);
+  const T  = (...c) => pdf.setTextColor(...c);
+  const LW = (w)    => pdf.setLineWidth(w);
+  const FONT= (s,z) => { pdf.setFont('helvetica',s); pdf.setFontSize(z); };
+  const R  = (x,y,w,h,m='F')  => pdf.rect(x,y,w,h,m);
+  const RR = (x,y,w,h,r,m='F')=> pdf.roundedRect(x,y,w,h,r,r,m);
+
+  // Cálculos de Paginación Dinámica
+  let TOTAL_PAGES = 1; // La portada y KPIs siempre están en la pág 1
+  if (opts.sala || opts.orig) TOTAL_PAGES++;
+  if (opts.demo) TOTAL_PAGES++;
+  if (opts.cruz) TOTAL_PAGES++;
+  let currPage = 1;
+
+  function pageFoot(n, of) {
+    F(...DARK); R(0, H-9, W, 9);
+    FONT('normal',6); T(...MUTED);
+    pdf.text('Información confidencial — uso interno del servicio de imágenes', ML, H-3.5);
+    pdf.text(`Página ${n} de ${of}`, W-MR, H-3.5, {align:'right'});
+  }
+
+  function pageHead(title, sub) {
+    F(...DARK); R(0, 0, W, 20);
+    F(...PRIMARY); R(0, 0, W, 3);
+    FONT('bold',11); T(...WHITE);
+    pdf.text(title, ML, 13);
+    if (sub) { FONT('normal',7); T(180,190,200); pdf.text(sub, ML, 19); }
+    FONT('normal',6); T(...MUTED);
+    pdf.text(`RIS Analytics · ${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}`, W-MR, 10, {align:'right'});
+  }
+
+  function secLabel(txt, y, x = ML) {
+    FONT('bold',7); T(...PRIMARY);
+    pdf.text(txt.toUpperCase(), x, y);
+    S(...PRIMARY); LW(0.5);
+    pdf.line(x, y+1.5, x + pdf.getTextWidth(txt.toUpperCase()), y+1.5);
+  }
+
+  function kpiCard(x, y, w, h, label, val, sub, accent) {
+    F(...WHITE); S(...BORDER); LW(0.25); RR(x,y,w,h,2,'FD');
+    F(...accent); R(x,y,w,1.8);
+    FONT('bold',6.5); T(...MUTED); pdf.text(label.toUpperCase(), x+3.5, y+9);
+    FONT('bold',14); T(...DARK); pdf.text(val, x+3.5, y+19);
+    FONT('normal',6); T(...MUTED); pdf.text(sub, x+3.5, y+24);
+  }
+
+  function hBars(items, x, y, availW, color) {
+    if (!items.length) return y;
+    const maxV   = Math.max(...items.map(i=>i.v), 1);
+    const LABLW  = 55; const VALW = 12; 
+    const barArea= availW - LABLW - VALW - 4;
+    const barH   = 5.5; const gap = 3.5;
+
+    items.forEach((item, i) => {
+      const ry  = y + i * (barH + gap);
+      const bw  = Math.max((item.v / maxV) * barArea, 0.8);
+      const col = color || PALETTE[i % PALETTE.length];
+
+      F(...BORDER); RR(x + LABLW, ry, barArea, barH, 1.5);
+      F(...col); RR(x + LABLW, ry, bw, barH, 1.5);
+      
+      FONT('normal', 6.5); T(...DARK);
+      const lbl = item.l.length > 23 ? item.l.slice(0,21)+'…' : item.l;
+      pdf.text(lbl, x, ry + barH - 1);
+      
+      FONT('bold', 7); T(...col);
+      pdf.text(String(item.v), x + LABLW + barArea + 3, ry + barH - 1);
+    });
+    return y + items.length * (barH + gap) - gap;
+  }
+
+  function table(headers, rows, x, y, colW, opts={}) {
+    const RH  = opts.rowH  || 7;
+    const HDH = opts.headH || 8;
+    const totalW = colW.reduce((s,w)=>s+w,0);
+
+    F(...DARK); R(x, y, totalW, HDH);
+    FONT('bold',6.5); T(...WHITE);
+    let cx = x+3;
+    headers.forEach((h,i) => { pdf.text(h, cx, y + HDH - 2.2); cx += colW[i]; });
+
+    rows.forEach((row, ri) => {
+      const ry = y + HDH + ri*RH;
+      F(...(ri%2===0 ? WHITE : LIGHT)); S(...BORDER); LW(0.2);
+      R(x, ry, totalW, RH, 'FD');
+      FONT('normal',6.5); T(...DARK);
+      cx = x+3;
+      row.forEach((cell,ci) => {
+        const str = String(cell).length > Math.floor(colW[ci]/2.0)
+          ? String(cell).slice(0, Math.floor(colW[ci]/2.0)-1)+'…'
+          : String(cell);
+        pdf.text(str, cx, ry + RH - 2.2);
+        cx += colW[ci];
+      });
+    });
+
+    S(...BORDER); LW(0.4); R(x, y, totalW, HDH + rows.length*RH, 'S');
+    return y + HDH + rows.length*RH;
+  }
+
+  function heatmap(rooms, origins, matrix, x, y, maxW) {
+    if (!rooms.length || !origins.length) return y;
+    const LBLW  = 44;
+    const cellW = Math.min(20, (maxW - LBLW) / origins.length);
+    const cellH = 7.5; let maxV = 0;
+    rooms.forEach(rm => origins.forEach(og => { const v = (matrix[rm]||{})[og]||0; if (v > maxV) maxV = v; }));
+
+    FONT('bold',5.5); T(...MUTED);
+    origins.forEach((og, j) => {
+      const hdr = og.length > 11 ? og.slice(0,9)+'.' : og;
+      pdf.text(hdr, x+LBLW+j*cellW+cellW/2, y+4, {align:'center'});
+    });
+
+    rooms.forEach((rm, i) => {
+      const ry = y+7+i*cellH;
+      FONT('normal',6); T(...DARK);
+      const lbl = rm.length>18 ? rm.slice(0,16)+'…' : rm;
+      pdf.text(lbl, x, ry+cellH-2);
+
+      origins.forEach((og, j) => {
+        const val = (matrix[rm]||{})[og]||0;
+        const pct = maxV ? val/maxV : 0;
+        const cx2  = x+LBLW+j*cellW;
+        const r2 = Math.round(255-pct*(255-52)); const g2 = Math.round(255-pct*(255-152)); const b2 = Math.round(255-pct*(255-219));
+        F(r2,g2,b2); S(...BORDER); LW(0.15); RR(cx2, ry, cellW-1, cellH-1, 1, 'FD');
+        if (val) { FONT('bold',5.5); T(...(pct>0.55 ? WHITE : DARK)); pdf.text(String(val), cx2+cellW/2-0.5, ry+cellH-2.5, {align:'center'}); }
+      });
+    });
+    return y + 7 + rooms.length * cellH;
+  }
+
+  // PREPARACIÓN DE DATOS GLOBALES PARA EL REPORTE
+  const d      = filteredData;
+  const n      = d.length || 1;
+  const fN     = d.filter(r=>r.sex==='F').length;
+  const mN     = d.filter(r=>r.sex==='M').length;
+  const other  = n - fN - mN;
+  const unique = new Set(d.map(r=>r.dni)).size;
+  const dWithAge = d.filter(r=>r.age>0); const avgAge = dWithAge.length ? (dWithAge.reduce((s,r)=>s+r.age,0)/dWithAge.length).toFixed(1) : '—';
+  const fecha  = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+
+  const roomCounts   = Object.entries(countBy(d,'room')).sort((a,b)=>b[1]-a[1]);
+  const originCounts = Object.entries(countBy(d,'origin')).sort((a,b)=>b[1]-a[1]);
+  const rooms        = roomCounts.map(([k])=>k);
+  const origins      = originCounts.map(([k])=>k);
+  const matrix       = {};
+  d.forEach(r=>{ if(!matrix[r.room]) matrix[r.room]={}; matrix[r.room][r.origin]=(matrix[r.room][r.origin]||0)+1; });
+
+  const ageLabels = ['0–9','10–19','20–29','30–39','40–49','50–59','60–69','70–79','80+'];
+  const ageCounts = new Array(9).fill(0);
+  d.forEach(r=>{ ageCounts[Math.min(r.age>=80?8:Math.floor(r.age/10),8)]++; });
+
+  const ages = d.filter(r=>r.age>0).map(r=>r.age).sort((a,b)=>a-b);
+  const minAge = ages[0]||0; const maxAge = ages[ages.length-1]||0; const medAge = ages[Math.floor(ages.length/2)]||0;
+
+  // ════════════════════════════════════════════════════
+  //  PÁGINA 1 — PORTADA (Siempre presente)
+  // ════════════════════════════════════════════════════
+  F(...LIGHT); R(0,0,W,H);
+  F(...DARK); R(0,0,W,50);
+  F(...PRIMARY); R(0,0,W,4);
+
+  FONT('bold',20); T(...WHITE);
+  pdf.text('Informe de Imágenes Médicas', W/2, 22, {align:'center'});
+  FONT('normal',9); T(180,195,210);
+  pdf.text('Sistema RIS — Informe Analítico de Estudios', W/2, 31, {align:'center'});
+  FONT('normal',7.5); T(...MUTED);
+  pdf.text(`Generado el ${fecha}`, W/2, 40, {align:'center'});
+
+  const KPIW = (CW - 8) / 5;
+  const kpis5 = [
+    { l:'Total Estudios',    v: n.toLocaleString('es-AR'),      s:'registros',          c:PRIMARY },
+    { l:'Pacientes Únicos',  v: unique.toLocaleString('es-AR'), s:'por DNI',             c:PURPLE  },
+    { l:'Edad Promedio',     v: avgAge+' años',                  s:'de los pacientes',   c:GREEN   },
+    { l:'Salas Activas',     v: String(rooms.length),            s:'equipos',             c:ORANGE  },
+    { l:'Orígenes',          v: String(origins.length),          s:'sectores derivantes', c:FEMALE  },
+  ];
+  kpis5.forEach((k,i)=> kpiCard(ML+i*(KPIW+2), 57, KPIW, 29, k.l, k.v, k.s, k.c));
+
+  // Bloque condicional: Resumen Ejecutivo
+  if (opts.exec) {
+    secLabel('Resumen Ejecutivo', 97);
+    F(...WHITE); S(...BORDER); LW(0.25); RR(ML, 101, CW, 50, 2, 'FD');
+    FONT('normal',8); T(...DARK);
+    const pctF = (fN/n*100).toFixed(1), pctM = (mN/n*100).toFixed(1);
+    const pctOther = other > 0 ? ` (${other} sin clasificar)` : '';
+    const lines = [
+      `Este informe analiza ${n.toLocaleString('es-AR')} estudios de imágenes médicas del período consultado.`,
+      `Se registraron ${unique.toLocaleString('es-AR')} pacientes únicos por DNI, con una edad promedio de ${avgAge} años`,
+      `(mínima: ${minAge} años, mediana: ${medAge} años, máxima: ${maxAge} años).`,
+      `Distribución por sexo: ${fN.toLocaleString('es-AR')} femeninos (${pctF}%) · ${mN.toLocaleString('es-AR')} masculinos (${pctM}%)${pctOther}.`,
+    ];
+    lines.forEach((l,i)=> pdf.text(l, ML+4, 110+i*6.5));
+    if (roomCounts.length) {
+      FONT('bold',7.5); T(...DARK); pdf.text('Sala con mayor demanda:', ML+4, 140);
+      FONT('normal',7.5); T(...PRIMARY);
+      pdf.text(`${roomCounts[0][0]} — ${roomCounts[0][1]} estudios (${(roomCounts[0][1]/n*100).toFixed(1)}%)`, ML+58, 140);
+    }
+    if (originCounts.length) {
+      FONT('bold',7.5); T(...DARK); pdf.text('Origen más frecuente:', ML+4, 147);
+      FONT('normal',7.5); T(...PRIMARY);
+      pdf.text(`${originCounts[0][0]} — ${originCounts[0][1]} estudios (${(originCounts[0][1]/n*100).toFixed(1)}%)`, ML+55, 147);
+    }
+
+    secLabel('Top Salas por Volumen', 160);
+    table(['Sala / Equipo','Estudios','% Total'], roomCounts.slice(0,6).map(([s,c])=>[s, c, (c/n*100).toFixed(1)+'%']), ML, 164, [50, 19, 19]);
+
+    secLabel('Top Orígenes por Volumen', 160, ML + 94);
+    table(['Origen / Sector','Estudios','% Total'], originCounts.slice(0,6).map(([o,c])=>[o, c, (c/n*100).toFixed(1)+'%']), ML + 94, 164, [50, 19, 19]);
+  }
+
+  pageFoot(currPage, TOTAL_PAGES);
+
+  // ════════════════════════════════════════════════════
+  //  MÓDULO CONDICIONAL — SALAS Y ORÍGENES
+  // ════════════════════════════════════════════════════
+  if (opts.sala || opts.orig) {
+    currPage++;
+    pdf.addPage(); F(...LIGHT); R(0,0,W,H);
+    pageHead('Análisis por Sala y Origen','Distribución del volumen de estudios por equipo y sector');
+
+    let drawY = 25;
+
+    if (opts.sala) {
+      F(...WHITE); S(...BORDER); LW(0.25);
+      const topRooms = roomCounts.slice(0, 8); 
+      const salaBoxH = Math.max(45, 16 + topRooms.length * 9.5);
+      RR(ML, drawY, CW, salaBoxH, 2, 'FD');
+      FONT('bold',8.5); T(...DARK); pdf.text('Estudios por Sala / Equipo', ML+4, drawY+8);
+      FONT('normal',6.5); T(...MUTED); pdf.text('Cantidad de estudios realizados en cada equipo del servicio', ML+4, drawY+14);
+      S(...BORDER); LW(0.3); pdf.line(ML+4, drawY+17, ML+CW-4, drawY+17);
+      hBars(topRooms.map(([l,v])=>({l,v})), ML+4, drawY+21, CW-8, null);
+      
+      drawY += salaBoxH + 8;
+    }
+
+    if (opts.orig) {
+      const topOrigins = originCounts.slice(0, 8); 
+      const origBoxH = Math.max(45, 16 + topOrigins.length * 9.5);
+      F(...WHITE); S(...BORDER); LW(0.25); RR(ML, drawY, CW, origBoxH, 2, 'FD');
+      FONT('bold',8.5); T(...DARK); pdf.text('Estudios por Origen / Sector Derivante', ML+4, drawY+8);
+      FONT('normal',6.5); T(...MUTED); pdf.text('Procedencia de los pacientes según el sector que solicitó el estudio', ML+4, drawY+14);
+      S(...BORDER); LW(0.3); pdf.line(ML+4, drawY+17, ML+CW-4, drawY+17);
+      hBars(topOrigins.map(([l,v])=>({l,v})), ML+4, drawY+21, CW-8, null);
+
+      drawY += origBoxH + 8;
+    }
+
+    if (opts.sala) {
+      secLabel('Resumen detallado por sala', drawY);
+      const detRows = roomCounts.map(([sala, cant]) => {
+        const rowItems = d.filter(r=>r.room===sala);
+        const fS = rowItems.filter(r=>r.sex==='F').length;
+        const mS = rowItems.filter(r=>r.sex==='M').length;
+        const withAge2 = rowItems.filter(r=>r.age>0);
+        const avgS = withAge2.length ? (withAge2.reduce((s,r)=>s+r.age,0)/withAge2.length).toFixed(0)+' a.' : 'N/D';
+        return [sala, cant, fS, mS, avgS, (cant/n*100).toFixed(1)+'%'];
+      });
+      
+      const maxRowsPg2 = Math.max(1, Math.floor((275 - (drawY + 12)) / 7)); 
+      table(
+        ['Sala / Equipo','Total','Fem.','Masc.','Edad Prom.','%'],
+        detRows.slice(0, maxRowsPg2),
+        ML, drawY+4, [80, 18, 15, 15, 22, 16]
+      );
+    }
+
+    pageFoot(currPage, TOTAL_PAGES);
+  }
+
+  // ════════════════════════════════════════════════════
+  //  MÓDULO CONDICIONAL — PERFIL DEMOGRÁFICO
+  // ════════════════════════════════════════════════════
+  if (opts.demo) {
+    currPage++;
+    pdf.addPage(); F(...LIGHT); R(0,0,W,H);
+    pageHead('Perfil Demográfico','Distribución por sexo y edad de los pacientes');
+
+    F(...WHITE); S(...BORDER); LW(0.25); RR(ML, 25, CW, 80, 2, 'FD');
+    FONT('bold',8.5); T(...DARK); pdf.text('Distribución por Sexo', ML+4, 33);
+    FONT('normal',6.5); T(...MUTED); pdf.text('Proporción de estudios según sexo registrado del paciente', ML+4, 39);
+    S(...BORDER); LW(0.3); pdf.line(ML+4, 42, ML+CW-4, 42);
+
+    const sexItems = [{l:'Femenino', v:fN, c:FEMALE}, {l:'Masculino', v:mN, c:MALE}];
+    if (other>0) sexItems.push({l:'No clasificado', v:other, c:MUTED});
+
+    const sexBarH = 7, sexBarGap = 5;
+    const sexMaxV = Math.max(fN, mN, other, 1);
+    const tblSexX = ML + 94; 
+    
+    const sexLBLW = 26, sexVALW = 14; 
+    const sexBarArea = (tblSexX - 8) - (ML + 4 + sexLBLW) - sexVALW; 
+
+    sexItems.forEach((item, i) => {
+      const ry = 48 + i*(sexBarH+sexBarGap);
+      const bw = Math.max((item.v/sexMaxV) * sexBarArea, 0.8);
+      F(...BORDER); RR(ML+4+sexLBLW, ry, sexBarArea, sexBarH, 1.5);
+      F(...item.c); RR(ML+4+sexLBLW, ry, bw, sexBarH, 1.5);
+      FONT('bold',7.5); T(...DARK); pdf.text(item.l, ML+4, ry+sexBarH-1.5);
+      FONT('bold',8); T(...item.c); pdf.text(String(item.v), ML+4+sexLBLW+sexBarArea+3, ry+sexBarH-1.5);
+      FONT('normal',6.5); T(...MUTED); pdf.text(`(${(item.v/n*100).toFixed(1)}%)`, ML+4+sexLBLW+sexBarArea+3, ry+sexBarH+3.5);
+    });
+
+    FONT('bold',7); T(...DARK); pdf.text('Top 5 salas:', tblSexX, 48);
+    const sexRoomRows = roomCounts.map(([sala]) => {
+      const rowItems = d.filter(r=>r.room===sala);
+      return [sala, rowItems.filter(r=>r.sex==='F').length, rowItems.filter(r=>r.sex==='M').length, rowItems.length];
+    });
+    table(['Sala','Fem.','Masc.','Total'], sexRoomRows.slice(0, 5), tblSexX, 51, [40, 16, 16, 16]);
+
+    const edadY = 112; const edadBoxH = 86; 
+    F(...WHITE); S(...BORDER); LW(0.25); RR(ML, edadY, CW, edadBoxH, 2, 'FD');
+    FONT('bold',8.5); T(...DARK); pdf.text('Pirámide Poblacional', ML+4, edadY+8);
+    FONT('normal',6.5); T(...MUTED); pdf.text('Distribución de estudios por sexo y rango de edad', ML+4, edadY+14);
+    S(...BORDER); LW(0.3); pdf.line(ML+4, edadY+17, ML+CW-4, edadY+17);
+
+    const fAgeCounts = new Array(9).fill(0); const mAgeCounts = new Array(9).fill(0);
+    d.forEach(r => {
+      const b = Math.min(r.age>=80 ? 8 : Math.floor(r.age/10), 8);
+      if(r.sex === 'F') fAgeCounts[b]++; else if(r.sex === 'M') mAgeCounts[b]++;
+    });
+
+    const pyrX = ML + 8; const pyrY = edadY + 22; const pyrW = CW - 16; const pyrH = 48;
+    const maxVAge = Math.max(...fAgeCounts, ...mAgeCounts, 1);
+    const nBins = ageLabels.length; const lblW = 20; 
+    
+    const barMaxW = (pyrW - lblW - 12) / 2; 
+    const barHAge = 3.8; const gapAge = (pyrH - (nBins * barHAge)) / (nBins + 1);
+    const centerX = pyrX + pyrW / 2;
+
+    FONT('bold', 5.5); T(...FEMALE); pdf.text('FEMENINO', centerX - lblW/2 - 2, pyrY - 1, {align:'right'});
+    T(...MALE); pdf.text('MASCULINO', centerX + lblW/2 + 2, pyrY - 1, {align:'left'});
+
+    S(...BORDER); LW(0.2);
+    pdf.line(centerX - lblW/2, pyrY, centerX - lblW/2, pyrY + pyrH);
+    pdf.line(centerX + lblW/2, pyrY, centerX + lblW/2, pyrY + pyrH);
+
+    for(let i=0; i<nBins; i++) {
+      const ry = pyrY + pyrH - gapAge - barHAge - i*(barHAge + gapAge);
+      FONT('bold', 5.5); T(...MUTED); pdf.text(ageLabels[i], centerX, ry + barHAge/2 + 1.5, {align:'center'});
+
+      const fW = (fAgeCounts[i] / maxVAge) * barMaxW;
+      if(fW > 0) {
+        F(...FEMALE); R(centerX - lblW/2 - fW, ry, fW, barHAge, 'F');
+        FONT('normal', 5.5); T(...DARK); pdf.text(String(fAgeCounts[i]), centerX - lblW/2 - fW - 2, ry + barHAge/2 + 1.5, {align:'right'});
+      }
+      const mW = (mAgeCounts[i] / maxVAge) * barMaxW;
+      if(mW > 0) {
+        F(...MALE); R(centerX + lblW/2, ry, mW, barHAge, 'F');
+        FONT('normal', 5.5); T(...DARK); pdf.text(String(mAgeCounts[i]), centerX + lblW/2 + mW + 2, ry + barHAge/2 + 1.5, {align:'left'});
+      }
+    }
+
+    FONT('normal',7); T(...MUTED);
+    pdf.text(`Mínima: ${minAge} años  ·  Mediana: ${medAge} años  ·  Máxima: ${maxAge} años  ·  Promedio: ${avgAge} años`, W/2, edadY+edadBoxH-5, {align:'center'});
+
+    const edadTblY = edadY + edadBoxH + 6;
+    secLabel('Resumen etario por grupo', edadTblY);
+    const edadRows = ageLabels.map((rango, i) => {
+      const cnt  = ageCounts[i];
+      const fAge = d.filter(r=>{ const b=r.age>=80?8:Math.floor(r.age/10); return b===i && r.sex==='F'; }).length;
+      const mAge = d.filter(r=>{ const b=r.age>=80?8:Math.floor(r.age/10); return b===i && r.sex==='M'; }).length;
+      return [rango, cnt, fAge, mAge, (cnt/n*100).toFixed(1)+'%'];
+    }).filter(r=>r[1]>0);
+    table(['Rango','Total','Fem.','Masc.','% del Total'], edadRows, ML, edadTblY+4, [35,22,20,20,28]);
+
+    pageFoot(currPage, TOTAL_PAGES);
+  }
+
+  // ════════════════════════════════════════════════════
+  //  MÓDULO CONDICIONAL — CRUCE SALA × ORIGEN
+  // ════════════════════════════════════════════════════
+  if (opts.cruz) {
+    currPage++;
+    pdf.addPage(); F(...LIGHT); R(0,0,W,H);
+    pageHead('Cruce Sala × Origen','Distribución de estudios por combinación de equipo y sector derivante');
+
+    const hmRooms = rooms.slice(0, 12); 
+    const hmOrigins = origins.slice(0, 8); 
+    
+    F(...WHITE); S(...BORDER); LW(0.25);
+    const hmContentH = 7 + hmRooms.length * 8;         
+    const hmH = Math.max(45, 20 + hmContentH); 
+    RR(ML, 25, CW, hmH, 2, 'FD');
+    FONT('bold',8.5); T(...DARK); pdf.text('Mapa de Calor — Sala x Origen', ML+4, 33);
+    FONT('normal',6.5); T(...MUTED); pdf.text('Cantidad de estudios por combinacion. Mayor azul = mayor volumen.', ML+4, 39);
+    S(...BORDER); LW(0.3); pdf.line(ML+4, 42, ML+CW-4, 42);
+    
+    heatmap(hmRooms, hmOrigins, matrix, ML+4, 43, CW-8);
+
+    const legendY = 25 + hmH + 4;
+    FONT('italic',6); T(...MUTED); pdf.text('Escala: celda blanca = sin estudios, azul intenso = maximo volumen', ML+4, legendY+3);
+
+    const cruzY = legendY + 8;
+    secLabel('Totales por Sala', cruzY);
+    const totalesRows = roomCounts.map(([sala, cant]) => {
+      const rowItems = d.filter(r => r.room === sala);
+      const withAge = rowItems.filter(r=>r.age>0);
+      const avgS = withAge.length ? (withAge.reduce((s,r)=>s+r.age,0)/withAge.length).toFixed(0)+' a.' : 'N/D';
+      return [sala, cant, rowItems.filter(r=>r.sex==='F').length, rowItems.filter(r=>r.sex==='M').length, avgS, new Set(rowItems.map(r=>r.dni)).size, (cant/n*100).toFixed(1)+'%'];
+    });
+    
+    const maxRowsPg4 = Math.max(1, Math.floor((240 - (cruzY + 12)) / 7)); 
+    const tblEnd = table(
+      ['Sala / Equipo','Total','Fem.','Masc.','Edad Prom.','Únicos','%'],
+      totalesRows.slice(0, maxRowsPg4),
+      ML, cruzY+4, [72, 15, 13, 13, 20, 16, 15]
+    );
+
+    if (origins.length > 1 && tblEnd < H - 85) {
+      const cruzOY = tblEnd + 8;
+      secLabel('Cruce Sala × Origen (tabla)', cruzOY);
+      const cruzRows = rooms.map(rm => {
+        const row = [rm]; origins.forEach(og => row.push((matrix[rm]||{})[og]||0)); row.push(d.filter(r=>r.room===rm).length);
+        return row;
+      });
+      const lblW = 55; const cellW2 = Math.min(18, (CW - lblW - 18) / origins.length);
+      const maxRowsCruz = Math.max(1, Math.floor((240 - (cruzOY + 12)) / 7));
+      table(['Sala', ...origins.map(o=>o.length>8?o.slice(0,7)+'.':o), 'Total'], cruzRows.slice(0, maxRowsCruz), ML, cruzOY+4, [lblW, ...origins.map(()=>cellW2), 18]);
+    }
+
+    const notaY = H - 38;
+    F(...WHITE); S(...BORDER); LW(0.25); RR(ML, notaY, CW, 25, 2, 'FD');
+    FONT('bold',6.5); T(...MUTED); pdf.text('NOTA METODOLÓGICA', ML+4, notaY+7);
+    FONT('normal',6); T(...MUTED);
+    pdf.text('Los datos provienen de la exportación directa del sistema RIS. DNI utilizado como identificador de paciente único.', ML+4, notaY+13);
+    pdf.text(`Total registros: ${n.toLocaleString('es-AR')}  ·  Pacientes únicos: ${unique.toLocaleString('es-AR')}  ·  Salas: ${rooms.length}  ·  Orígenes: ${origins.length}`, ML+4, notaY+19);
+
+    pageFoot(currPage, TOTAL_PAGES);
+  }
+
+  const fname = `RIS_Informe_${new Date().toISOString().slice(0,10)}.pdf`;
+  pdf.save(fname);
+  showToast('✓ Informe PDF generado correctamente');
+}
+
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._timer); t._timer=setTimeout(()=>t.classList.remove('show'),3000);
+}
+function showError(msg) { const b=document.getElementById('error-banner'); b.textContent='⚠ '+msg; b.style.display='block'; }
+function clearError() { document.getElementById('error-banner').style.display='none'; }
+</script>
+</body>
+</html>

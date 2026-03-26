@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TM Infra">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <meta name="theme-color" content="#2c3e50">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TecnoMonitor - Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div id="app-container">
+    
+    <div class="sidebar-right" id="sidebar"> 
+        <div class="sidebar-header">
+            <div class="logo-area">
+                <h2 style="margin:0; font-size: 1.2em; letter-spacing: 1px;">TM</h2>
+                <span class="logo-text" style="font-size: 0.9em; opacity: 0.8;">Infraestructura</span>
+            </div>
+            <button id="toggle-sidebar" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg></button>
+        </div>
+        
+        <button id="btn-dash" class="nav-btn active" onclick="navegar('view-dashboard', 'btn-dash'); cargarDatos();">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span class="nav-label">Monitor Global</span>
+        </button>
+        <button id="btn-alert" class="nav-btn" onclick="navegar('view-alertas', 'btn-alert'); cargarAlertas();">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <span class="nav-label">Alertas</span>
+        </button>
+        
+        <button id="btn-mapa" class="nav-btn" onclick="navegar('view-mapa', 'btn-mapa'); initMapa();">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            <span class="nav-label">Mapa en Vivo</span>
+        </button>
+
+        <button id="btn-ia" class="nav-btn" onclick="verificarAccesoConfig('view-ia', 'btn-ia')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z"></path>
+                <path d="M19 16L19.6 17.4L21 18L19.6 18.6L19 20L18.4 18.6L17 18L18.4 17.4L19 16Z"></path>
+            </svg>
+            <span class="nav-label">Reportes & IA</span>
+        </button>
+
+        <button id="btn-conf" class="nav-btn" onclick="verificarAccesoConfig('view-config', 'btn-conf')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span class="nav-label">Configuración</span>
+        </button>
+
+        <button id="btn-herramientas" class="nav-btn" onclick="window.open('/herramientas', '_blank')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a2 2 0 0 1-2.83-2.83l-3.94 3.6z"></path>
+                <path d="m14.7 6.3 3.6-3.6"></path><path d="M2 12v10"></path><path d="M22 12v10"></path><path d="M12 2v2"></path><path d="M7 21h10"></path><path d="M5 21l1.3-1.3"></path><path d="m19.7 17.7 1.3 1.3"></path>
+            </svg>
+            <span class="nav-label">Herramientas</span>
+        </button>
+
+        <div style="margin-top: auto; padding: 20px 0; display: flex; justify-content: center;">
+            <button id="btn-theme-toggle" class="nav-btn" onclick="toggleTema()" title="Cambiar Tema" style="width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid #ccc; border-radius: 8px; cursor: pointer; padding: 0; transition: 0.3s;">
+                <span id="theme-icon" style="font-size: 1.3em; margin: 0; padding: 0;">🌙</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="view-dashboard" class="content active">
+        <div class="header-actions">
+            <div class="filter-bar">
+                <div class="search-pill">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7f8c8d" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="filter-hospital" placeholder="Buscar ID..." onkeyup="aplicarFiltros()">
+                </div>
+                <div class="status-toggle-bar">
+                    <button class="toggle-btn dash-toggle-btn active" data-status="all">Todos</button>
+                    <button class="toggle-btn dash-toggle-btn" data-status="online">Online</button>
+                    <button class="toggle-btn dash-toggle-btn" data-status="offline">Offline</button>
+                </div>
+            </div>
+        </div>
+        <div class="table-container-island">
+            <table id="tabla-pacientes"> 
+                <thead><tr><th style="width:15%;">ID</th><th style="width:15%;">Estado</th><th style="width:40%;">Elementos</th><th style="width:25%;">Último Reporte</th><th style="width:5%;"></th></tr></thead>
+                <tbody id="dashboard-body"></tbody>
+            </table>
+        </div>
+        <div style="height: 80px;"></div>
+    </div>
+
+    <div id="view-detalle" class="content">
+        
+        <div class="detalle-nav-bar">
+            <button class="detail-back-btn" onclick="volverAlDashboard()" title="Volver al Dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+            </button>
+
+            <div class="tab-toggle-bar">
+                <button class="tab-btn active" onclick="switchTab('infra', this)">Infraestructura</button>
+                <button class="tab-btn" onclick="switchTab('logs', this)">Logs</button>
+                <button class="tab-btn" onclick="switchTab('kpis', this)">KPIs Uso</button>
+            </div>
+
+            <div class="hosp-card-badge">
+                <div id="hosp-card-row1" class="row-1">-- | Cargando...</div>
+                <div id="hosp-card-row2" class="row-2">--/--/-- --:--</div>
+            </div>
+        </div>
+
+        <div id="tab-infra" class="tab-content active" style="padding-top: 20px;">
+            <div id="top-cards-container" class="detail-top-grid"></div>
+            
+            <div class="card" style="padding:20px;">
+                 <div class="chart-toolbar">
+                    <div class="chart-selects"><select id="chart-source"><option value="global">Host Físico (Global)</option></select><select id="chart-metric"><option value="cpu_host">Uso CPU</option><option value="thermal_combined">Temperaturas</option></select></div>
+                    <div class="chart-toggles"><button class="chart-btn active" onclick="cambiarRango(24, this)">24H</button><button class="chart-btn" onclick="cambiarRango(168, this)">7 Días</button></div>
+                </div>
+                <div style="height:300px; width:100%; position:relative;">
+                     <div id="chart-loader" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:10; justify-content:center; align-items:center; flex-direction:column;"><div class="loader" style="width:25px; height:25px; border-width:3px;"></div><small style="color:#777; margin-top:10px">Cargando...</small></div>
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+            
+            <h3 style="color:#2c3e50; margin-top:30px; border-bottom:2px solid #e1e4e8; padding-bottom:10px;">Equipos y Máquinas Virtuales</h3>
+            <div id="vms-container" class="vm-grid"></div>
+            <div style="height:80px;"></div>
+        </div>
+
+        <div id="tab-logs" class="tab-content">
+            <div style="padding: 100px 20px; text-align: center; color: #7f8c8d;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#bdc3c7" stroke-width="1.5">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a2 2 0 0 1-2.83-2.83l-3.94 3.6z"></path>
+                    <path d="m14.7 6.3 3.6-3.6"></path><path d="M2 12v10"></path><path d="M22 12v10"></path>
+                    <path d="M12 2v2"></path><path d="M7 21h10"></path><path d="M5 21l1.3-1.3"></path>
+                    <path d="m19.7 17.7 1.3 1.3"></path>
+                </svg>
+                <h2 style="margin-top: 20px;">🚧 Logs de Software</h2>
+                <p style="font-style: italic;">Sección en construcción. Aquí se visualizarán los eventos de las aplicaciones.</p>
+            </div>
+        </div>
+
+        <div id="tab-kpis" class="tab-content" style="padding-top: 20px;">
+
+    <div style="width: 100%; margin-bottom: 20px;">
+        <div id="kpi-legend" style="text-align: center; color: #7f8c8d; font-size: 0.85em; margin-bottom: 12px; font-weight: 600; letter-spacing: 0.5px;">
+            Cargando información de sincronización...
+        </div>
+
+        <div class="chart-toggles" style="box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; width: 100%; flex-wrap: wrap;">
+            <button class="chart-btn kpi-global-time-btn active" style="flex: 1; padding: 8px 5px; font-weight: bold; font-size: 0.9em; min-width: 50px;" onclick="cambiarRangoGlobalKpi(168, this)">7D</button>
+            <button class="chart-btn kpi-global-time-btn" style="flex: 1; padding: 8px 5px; font-weight: bold; font-size: 0.9em; min-width: 50px;" onclick="cambiarRangoGlobalKpi(720, this)">1M</button>
+            <button class="chart-btn kpi-global-time-btn" style="flex: 1; padding: 8px 5px; font-weight: bold; font-size: 0.9em; min-width: 50px;" onclick="cambiarRangoGlobalKpi(2160, this)">3M</button>
+            <button class="chart-btn kpi-global-time-btn" style="flex: 1; padding: 8px 5px; font-weight: bold; font-size: 0.9em; min-width: 50px;" onclick="cambiarRangoGlobalKpi(8760, this)">1A</button>
+            <button class="chart-btn kpi-global-time-btn" style="flex: 1; padding: 8px 5px; font-weight: bold; font-size: 0.9em; min-width: 50px;" onclick="cambiarRangoGlobalKpi(43800, this)">5A</button>
+        </div>
+    </div>
+    
+    <div class="card" style="padding:20px; margin-bottom: 20px;">
+        <div class="chart-toolbar">
+            <div class="chart-selects" style="align-items: center; display: flex; gap: 15px; flex-wrap: wrap; width: 100%;">
+                
+                <span style="font-weight: bold; font-size: 0.95em; display: flex; align-items: center; color: #2c3e50;">
+                    📈 Evolución Temporal
+                    <span style="cursor: help; margin-left: 6px; margin-top: 2px;" title="MÉTRICAS RIS:
+                • Citados: Turnos otorgados/agendados.
+                • Admitidos: Pacientes ingresados por recepción.
+                • Ejecutados: Estudios finalizados en sala.
+                • Asociados: Imágenes procesadas y disponibles hoy.
+                • Borradores: Informes médicos pendientes de firma.
+                • Definitivos: Informes firmados y cerrados.
+                • Suspendidos: Estudios cancelados o pausados.
+
+                MÉTRICA PACS:
+                • Almacenados: Estudios DICOM únicos recibidos en los servidores.">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                    </span>
+                </span>
+                
+                <div class="chart-toggles">
+                    <button id="btn-modo-ris" class="chart-btn kpi-modo-btn active" onclick="seleccionarModoKpi('ris', this)">RIS</button>
+                    <button id="btn-modo-pacs" class="chart-btn kpi-modo-btn" onclick="seleccionarModoKpi('pacs', this)">PACS</button>
+                </div>
+                <input type="hidden" id="kpi-modo" value="ris">
+                
+                <div class="chart-toggles">
+                    <button id="btn-agrup-equipo" class="chart-btn kpi-agrup-btn" onclick="seleccionarAgrupacionKpi('equipo', this)">Equipos</button>
+                    <button id="btn-agrup-mod" class="chart-btn kpi-agrup-btn" onclick="seleccionarAgrupacionKpi('modalidad', this)">Modalidad</button>
+                    <button id="btn-agrup-total" class="chart-btn kpi-agrup-btn active" onclick="seleccionarAgrupacionKpi('total', this)">Total</button>
+                </div>
+                <input type="hidden" id="kpi-agrupacion" value="total">
+
+                <select id="kpi-nodo" onchange="actualizarGraficoKpiTemporal()" class="select-pill" style="min-width: 150px; flex-grow: 1; height: 38px; padding: 0 15px;">
+                    <option value="">Cargando equipos...</option>
+                </select>
+            </div>
+        </div>
+        
+        <div style="height:300px; width:100%; position:relative; margin-top:15px;">
+            <div id="kpi-chart-loader" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; justify-content:center; align-items:center; flex-direction:column; border-radius: 8px;">
+                <div class="loader" style="width:25px; height:25px; border-width:3px;"></div>
+                <small style="margin-top:10px">Actualizando métricas...</small>
+            </div>
+            <canvas id="kpiRisChart"></canvas>
+        </div>
+    </div>
+
+    <div id="kpis-bottom-container" class="grid-2-col" style="gap: 20px;">
+        <div class="card" style="padding:20px; position: relative; min-height: 400px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+               
+               <span style="display: flex; align-items: center;">
+                    <span id="titulo-dona" style="font-weight: bold; font-size: 0.95em; color: #2c3e50;">📊 Órdenes Creadas</span>
+                    <span style="cursor: help; margin-left: 6px; margin-top: 2px;" title="Totales: Representa la suma absoluta de órdenes nuevas creadas (RIS) o estudios almacenados físicamente (PACS) para los equipos seleccionados en este período.">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7f8c8d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                    </span>
+                </span>
+               
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <div class="chart-toggles">
+                        <button class="chart-btn donut-modo-btn active" onclick="seleccionarModoDonut('ris', this)">RIS</button>
+                        <button class="chart-btn donut-modo-btn" onclick="seleccionarModoDonut('pacs', this)">PACS</button>
+                    </div>
+                    <input type="hidden" id="donut-modo" value="ris">
+                    <div class="chart-toggles">
+                        <button class="chart-btn donut-agrup-btn active" onclick="seleccionarAgrupacionDonut('equipo', this)">Equipos</button>
+                        <button class="chart-btn donut-agrup-btn" onclick="seleccionarAgrupacionDonut('modalidad', this)">Modalidad</button>
+                    </div>
+                    <input type="hidden" id="donut-agrupacion" value="equipo">
+                </div>
+            </div>
+            <div style="position: relative; flex-grow: 1; display: flex; justify-content: center; align-items: center;">
+                <canvas id="kpiDonutChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card" style="padding:20px; display: flex; flex-direction: column;">
+            <div style="margin-bottom: 20px;">
+                <span style="font-weight: bold; font-size: 0.95em;">👥 Panel de Usuarios</span>
+            </div>
+            <div style="overflow-x: auto; flex-grow: 1;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 300px;">
+                    <thead>
+                    <tr style="border-bottom: 2px solid #ecf0f1; color: #7f8c8d; font-size: 0.85em; text-transform: uppercase;">
+                        <th style="padding: 12px 10px; font-weight: 600;">Rol</th>
+                        <th style="padding: 12px 10px; font-weight: 600;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end;">
+                                Usuarios Únicos
+                                <span style="cursor: help; margin-left: 5px;" title="Indica cuántas personas distintas en promedio (operadores, técnicos, médicos) iniciaron sesión en el sistema exitosamente en promedio.">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#bdc3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                </span>
+                            </div>
+                        </th>
+                        <th style="padding: 12px 10px; font-weight: 600;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end;">
+                                Inicios Sesión
+                                <span style="cursor: help; margin-left: 5px;" title="Total absoluto de veces que se ingresó al sistema. Si este número es mucho mayor al de usuarios únicos, indica que el personal entra y sale del sistema con mucha frecuencia.">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#bdc3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                </span>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                    <tbody id="tabla-usuarios-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div style="height:80px;"></div>
+    
+</div>
+    </div>
+    <div id="view-alertas" class="content">
+        <h2 style="color: #c0392b; margin-bottom: 20px;">Panel de Alertas</h2>
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <div style="padding: 15px 20px; border-bottom: 1px solid #fadbd8; background: #fff5f5;"><h3 style="margin:0; font-size:1em; color:#e74c3c;">🚨 Incidentes en Curso</h3></div>
+            <table class="table-clean active-incidents"><thead><tr><th style="width: 15%;">ID Hospital</th><th style="width: 50%;">Detalle del Incidente</th><th style="width: 20%;">Inicio</th><th style="width: 15%;">Tiempo</th></tr></thead><tbody id="alertas-activas-body"></tbody></table>
+            <div id="no-activas" style="padding: 30px; text-align: center; color: #7f8c8d; display: none;">✅ Todos los sistemas operando normalmente.</div>
+        </div>
+        <div class="card" style="margin-top:25px; padding: 0; overflow: hidden;">
+            <div style="padding: 15px 20px; border-bottom: 1px solid #e1e4e8; background: #f8f9fa;"><h3 style="margin:0; font-size:1em; color:#7f8c8d;">📜 Historial Reciente</h3></div>
+            <table class="table-clean history"><thead><tr><th style="width: 15%;">ID Hospital</th><th style="width: 25%;">Tipo</th><th style="width: 25%;">Inicio</th><th style="width: 25%;">Resolución</th><th style="width: 10%;">Estado</th></tr></thead><tbody id="alertas-historial-body"></tbody></table>
+        </div>
+        <div style="height: 80px;"></div>
+    </div>
+
+    <div id="view-mapa" class="content" style="padding: 0; height: 100%; position: relative;">
+        <div style="position: absolute; top: 15px; right: 15px; z-index: 1000;">
+            <div class="status-toggle-bar" style="box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                <button class="toggle-btn map-toggle-btn active" data-map-status="all">Todos</button>
+                <button class="toggle-btn map-toggle-btn" data-map-status="online">Online</button>
+                <button class="toggle-btn map-toggle-btn" data-map-status="offline">Offline</button>
+            </div>
+        </div>
+        <button id="btn-tour" onclick="toggleTour()" class="map-tour-btn">
+            ▶ INICIAR RECORRIDO
+        </button>
+        <div id="map-container" style="width: 100%; height: 100%;"></div>
+    </div>
+
+    <div id="view-ia" class="content">
+        <h2 style="margin-bottom: 20px; color: #2c3e50;">Centro de Reportes & IA</h2>
+
+        <div class="card" style="margin-bottom: 30px; border-left: 5px solid #e74c3c;" id="tarjeta-procesamiento">
+            <h3 style="margin-top:0; font-size:1.1em; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:10px;">
+                ✨ Nuevo Procesamiento
+            </h3>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">1. Seleccione el Tipo de Reporte</label>
+                <div class="chart-toggles" style="display: flex; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap;">
+                    <button id="btn-tipo-ia" class="chart-btn" onclick="cambiarTipoProcesamiento('ia')" style="flex: 1; padding: 8px 20px;">🤖 Análisis IA</button>
+                    <!-- <button id="btn-tipo-kpi" class="chart-btn" onclick="cambiarTipoProcesamiento('kpi')" style="flex: 1; padding: 8px 20px;">📊 KPIs (Excel)</button>--> 
+                    <button id="btn-tipo-pdf" class="chart-btn active" onclick="cambiarTipoProcesamiento('pdf')" style="flex: 1; padding: 8px 20px;">📄 Reporte Uso (PDF)</button>
+                </div>
+                <input type="hidden" id="proc-tipo" value="pdf">
+            </div>
+
+            <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">2. Parámetros Generales</label>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                
+                <div class="input-group" style="flex: 1; min-width: 250px; position: relative;"> <div class="search-pill" style="width: 100%; margin:0; border: 1px solid #ddd; background: #fff;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#95a5a6" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        
+                        <input type="text" id="ia-input-id" placeholder="Buscar Hospital (Ej: H05)..." style="background: transparent;" autocomplete="off">
+                    </div>
+                    
+                    <div id="ia-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #ddd; border-top:none; border-radius:0 0 8px 8px; z-index:4000; max-height:250px; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    </div>
+                </div>
+
+                <div class="input-group" style="flex: 0 0 160px;">
+                    <input type="date" id="ia-date-from" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; color: #2c3e50;" title="Fecha Desde">
+                </div>
+
+                <div class="input-group" style="flex: 0 0 160px;">
+                    <input type="date" id="ia-date-to" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; color: #2c3e50;" title="Fecha Hasta">
+                </div>
+            </div>
+
+            <div id="opciones-kpi-extra" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee; gap: 20px; flex-wrap: wrap;">
+                <div class="input-group" style="flex: 1; min-width: 200px;">
+                    <label style="font-weight: 600; color: #7f8c8d;">Fuente de Datos</label>
+                    <select id="kpi-export-source" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; background: #fdfdfd;">
+                        <option value="ambos">RIS + PACS (Completo)</option>
+                        <option value="ris">Solo RIS (Órdenes)</option>
+                        <option value="pacs">Solo PACS (Imágenes)</option>
+                    </select>
+                </div>
+                <div class="input-group" style="flex: 1; min-width: 200px;">
+                    <label style="font-weight: 600; color: #7f8c8d;">Agrupación</label>
+                    <select id="kpi-export-group" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; background: #fdfdfd;">
+                        <option value="total">Resumen General (Totalizado)</option>
+                        <option value="equipo">Por Equipo (AET)</option>
+                        <option value="modalidad">Por Modalidad</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button id="btn-procesar-accion" class="btn-action" style="background: linear-gradient(135deg, #9b59b6, #8e44ad); border: none; height: 42px; box-shadow: 0 4px 6px rgba(142, 68, 173, 0.3); display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 25px; transition: all 0.3s ease;" onclick="iniciarProcesamiento()">
+                    <svg id="icono-procesar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z"></path></svg>
+                    <span id="btn-procesar-texto">Generar PDF con IA</span>
+                </button>
+            </div>
+
+        </div> <div class="card" style="margin-top: 25px; padding: 0; overflow: hidden; border-top: 4px solid #3498db; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+            
+            <div style="padding: 15px 20px; border-bottom: 1px solid #eee; background: #f8f9fa; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1em; color:#2c3e50; font-weight: 700;">📜 Historial de Informes Generados</h3>
+                <span style="font-size: 0.75em; background: #ebf5fb; color: #2980b9; padding: 4px 12px; border-radius: 12px; font-weight: 600; border: 1px solid #d6eaf8;">Base de Datos Local</span>
+            </div>
+
+            <div class="table-container-island" style="box-shadow: none; margin: 0; border-radius: 0;">
+                <table class="table-clean" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #fdfdfd; text-align: left; border-bottom: 2px solid #eee;">
+                            <th style="padding: 12px 15px; color: #7f8c8d; font-size: 0.85em;">ID HOSPITAL</th>
+                            <th style="padding: 12px 15px; color: #7f8c8d; font-size: 0.85em;">PERIODO</th>
+                            <th style="padding: 12px 15px; color: #7f8c8d; font-size: 0.85em;">GENERADO</th>
+                            <th style="padding: 12px 15px; color: #7f8c8d; font-size: 0.85em;">ESTADO</th>
+                            <th style="padding: 12px 15px; color: #7f8c8d; font-size: 0.85em; text-align: center;">ACCIÓN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-historial-body">
+                        <tr>
+                            <td colspan="5" style="text-align:center; padding: 30px; color: #95a5a6;">
+                                <small>Cargando historial desde el servidor...</small>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div style="height: 80px;"></div>
+    </div>
+
+    <div id="view-config" class="content">
+        <h2 style="margin-bottom: 20px;">Configuración del Sistema</h2>
+        
+        <div class="card" style="margin-bottom: 30px;">
+            <h3 style="margin-top:0; font-size:1.1em; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:10px;">⚙️ Parámetros y Umbrales de Alerta</h3>
+            
+            <h4 style="margin: 15px 0 10px 0; color:#7f8c8d; font-size:0.9em; text-transform:uppercase; font-weight:700;">General</h4>
+            <div class="grid-2-col">
+                <div class="input-group"><label>Tiempo Máx. Offline (Min)</label><input type="number" id="conf-offline"></div>
+                <div class="input-group"><label>Umbral Disco Lleno (%)</label><input type="number" id="conf-disk"></div>
+            </div>
+
+            <h4 style="margin: 20px 0 10px 0; color:#3498db; font-size:0.9em; text-transform:uppercase; font-weight:700;">Host Físico (Servidor)</h4>
+            <div class="grid-2-col">
+                <div class="input-group"><label>Máx. Temp Ambiente (°C)</label><input type="number" id="conf-temp-amb"></div>
+                <div class="input-group"><label>Máx. Temp CPU (°C)</label><input type="number" id="conf-temp-cpu"></div>
+                <div class="input-group"><label>Máx. Uso CPU (%)</label><input type="number" id="conf-cpu-host"></div>
+                <div class="input-group"><label>Máx. Uso RAM (%)</label><input type="number" id="conf-ram-host"></div>
+            </div>
+
+            <h4 style="margin: 20px 0 10px 0; color:#9b59b6; font-size:0.9em; text-transform:uppercase; font-weight:700;">Máquinas Virtuales (VMs)</h4>
+            <div class="grid-2-col">
+                <div class="input-group"><label>Máx. Uso CPU VM (%)</label><input type="number" id="conf-cpu-vm"></div>
+                <div class="input-group"><label>Máx. Uso RAM VM (%)</label><input type="number" id="conf-ram-vm"></div>
+            </div>
+
+            <h4 style="margin: 20px 0 10px 0; color:#e67e22; font-size:0.9em; text-transform:uppercase; font-weight:700;">Sensores de Hardware</h4>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:25px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; background:#f8f9fa; padding:10px 15px; border-radius:8px; border:1px solid #e1e4e8; flex:1; min-width: 200px;">
+                    <input type="checkbox" id="check-fans" style="transform:scale(1.2);"> <span style="font-weight:600; color:#555;">❄️ Fallo Ventiladores</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; background:#f8f9fa; padding:10px 15px; border-radius:8px; border:1px solid #e1e4e8; flex:1; min-width: 200px;">
+                    <input type="checkbox" id="check-power" style="transform:scale(1.2);"> <span style="font-weight:600; color:#555;">⚡ Fallo Fuentes (PSU)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; background:#f8f9fa; padding:10px 15px; border-radius:8px; border:1px solid #e1e4e8; flex:1; min-width: 200px;">
+                    <input type="checkbox" id="check-raid" style="transform:scale(1.2);"> <span style="font-weight:600; color:#555;">💾 Fallo RAID</span>
+                </label>
+            </div>
+
+            <button class="btn-action" onclick="guardarConfig()" style="width:auto; border-radius: 50px; padding: 12px 40px; font-size: 1em; box-shadow: 0 4px 6px rgba(52, 152, 219, 0.3);">
+                Guardar Configuración
+            </button>
+        </div>
+        
+        <div class="card" style="max-width: 100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">🏥 Fichas de Hospitales</h3>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div class="search-pill" style="width: 250px; padding: 2px 15px; min-width: auto; height: 40px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7f8c8d" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input type="text" id="filter-config-hospital" placeholder="Buscar..." onkeyup="filtrarHospitalesConfig()" style="font-size: 0.9em;"></div>
+                    <button class="btn-action" onclick="abrirModalHospital()" style="width:auto; padding: 8px 15px; font-size: 0.9em; background-color: #27ae60; white-space: nowrap;">+ Nuevo Hospital</button>
+                </div>
+            </div>
+            <div class="table-container-island scrollable-config-table">
+                <table class="table-clean"><thead><tr><th>ID</th><th>Nombre</th><th>Provincia</th><th>Asana ID</th><th style="text-align:right;">Acciones</th></tr></thead><tbody id="lista-hospitales-body"></tbody></table>
+            </div>
+        </div>
+        <div style="height: 80px;"></div>
+    </div>
+
+</div> 
+
+<div id="modal-hospital" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <h3 id="modal-title" style="margin-top:0;">Nuevo Hospital</h3>
+        <div class="input-group"><label>ID Hospital (Tal cual lo envía el agente)</label><input type="text" id="hosp-id" placeholder="Ej: H06"></div>
+        <div class="input-group"><label>Nombre Completo</label><input type="text" id="hosp-nombre" placeholder="Ej: Hospital Central..."></div>
+        <div class="grid-2-col">
+            <div class="input-group"><label>Provincia</label><input type="text" id="hosp-provincia"></div>
+            <div class="input-group"><label>Asana Project ID</label><input type="text" id="hosp-asana"></div>
+        </div>
+        <div class="grid-2-col">
+            <div class="input-group"><label>Latitud</label><input type="text" id="hosp-lat"></div>
+            <div class="input-group"><label>Longitud</label><input type="text" id="hosp-lon"></div>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+            <button class="btn-action" onclick="cerrarModalHospital()" style="background:#95a5a6; width:auto;">Cancelar</button>
+            <button class="btn-action" onclick="guardarHospital()" style="width:auto;">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-admin-auth" class="modal-overlay" style="display:none; z-index:2000;">
+    <div class="modal-content" style="max-width: 350px; text-align: center;">
+        <h3 style="margin-top:0; color:#2c3e50;">🔒 Acceso Restringido</h3>
+        <p style="color:#7f8c8d; font-size:0.9em; margin-bottom:20px;">Esta sección requiere permisos de administrador.</p>
+        <div class="input-group"><input type="password" id="admin-code-input" placeholder="Ingrese código de acceso" style="text-align:center; font-size:1.1em;"></div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button class="btn-action" onclick="cerrarModalAdmin()" style="background:#95a5a6;">Cancelar</button>
+            <button class="btn-action" onclick="validarAdminCode()">Ingresar</button>
+        </div>
+    </div>
+</div>
+
+<nav class="bottom-nav" id="bottom-nav">
+    <button class="nav-item active" onclick="navegar('view-dashboard', null, this); cargarDatos();">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+        <span>Monitor</span>
+    </button>
+    <button class="nav-item" id="btn-alert-mobile" onclick="navegar('view-alertas', null, this); cargarAlertas();">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span>Alertas</span>
+    </button>
+    <button class="nav-item" onclick="navegar('view-mapa', null, this); initMapa();">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+        <span>Mapa</span>
+    </button>
+    
+    <button class="nav-item" onclick="toggleTema()">
+        <span id="theme-icon-mobile" style="font-size: 1.4rem; line-height: 24px; height: 24px; display: block;">🌙</span>
+        <span>Tema</span>
+    </button>
+</nav>
+
+<div id="modal-ia-options" class="modal-overlay" style="display:none; z-index: 3000;">
+    <div class="modal-content" style="max-width: 500px;">
+        <h3 style="margin-top:0; color:#2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px;">Configurar Informe IA</h3>
+        
+        <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 0.9em; border: 1px solid #e1e4e8;">
+            <div>
+                <strong style="color: #7f8c8d;">Hospital:</strong> 
+                <span id="modal-ia-hospital" style="color: #2c3e50; font-weight: bold; font-size: 1.1em;">---</span>
+            </div>
+            <div>
+                <strong style="color: #7f8c8d;">Periodo:</strong> 
+                <span id="modal-ia-periodo" style="color: #2c3e50;">---</span>
+            </div>
+        </div>
+
+        <label style="font-weight: 600; color: #7f8c8d; font-size: 0.9em; margin-bottom: 10px; display: block;">TIPO DE INFORME</label>
+        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+            <div id="opt-cliente" class="ia-option-card selected" onclick="seleccionarTipoInforme('cliente')" style="flex: 1; border: 2px solid #9b59b6; background: #fdfaea; padding: 15px; border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 1.5em; margin-bottom: 5px;">👤</div>
+                <div style="font-weight: bold; color: #2c3e50;">Informe Cliente</div>
+                <div style="font-size: 0.75em; color: #7f8c8d; margin-top: 5px;">Resumen ejecutivo, lenguaje simple y recomendaciones.</div>
+            </div>
+
+            <div id="opt-interno" class="ia-option-card" onclick="seleccionarTipoInforme('interno')" style="flex: 1; border: 1px solid #ddd; background: #fff; padding: 15px; border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 1.5em; margin-bottom: 5px;">🔧</div>
+                <div style="font-weight: bold; color: #2c3e50;">Informe Interno</div>
+                <div style="font-size: 0.75em; color: #7f8c8d; margin-top: 5px;">Logs técnicos, debugging y acciones correctivas.</div>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label style="font-weight: 600; color: #7f8c8d;">Observaciones / Particularidades</label>
+            <textarea id="ia-obs" rows="3" placeholder="Escriba aquí cualquier contexto adicional para la IA..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; resize: none;"></textarea>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button class="btn-action" onclick="cerrarModalIA()" style="background:#95a5a6; width:auto; flex: 1;">Cancelar</button>
+            <button class="btn-action" onclick="ejecutarIA()" style="flex: 2; background: linear-gradient(135deg, #9b59b6, #8e44ad);">
+                ✨ Iniciar Informe
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-pdf-options" class="modal-overlay" style="display:none; z-index: 3000;">
+    <div class="modal-content" style="max-width: 500px;">
+        <h3 style="margin-top:0; color:#2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px;">Configurar Reporte PDF</h3>
+        
+        <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 0.9em; border: 1px solid #e1e4e8;">
+            <div>
+                <strong style="color: #7f8c8d;">Hospital:</strong> 
+                <span id="modal-pdf-hospital" style="color: #2c3e50; font-weight: bold; font-size: 1.1em;">---</span>
+            </div>
+            <div>
+                <strong style="color: #7f8c8d;">Periodo:</strong> 
+                <span id="modal-pdf-periodo" style="color: #2c3e50;">---</span>
+            </div>
+        </div>
+
+        <div class="input-group" style="margin-bottom: 15px;">
+            <label style="font-weight: 600; color: #7f8c8d;">Alcance del Reporte</label>
+            <select id="pdf-export-scope" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; background: #fdfdfd; color: #2c3e50; font-size: 1em;">
+                <option value="total">Total (RIS + PACS)</option>
+                <option value="ris">Solo RIS (Órdenes e Informes)</option>
+                <option value="pacs">Solo PACS (Imágenes Almacenadas)</option>
+            </select>
+        </div>
+
+        <div class="input-group" style="margin-bottom: 20px;">
+            <label style="font-weight: 600; color: #7f8c8d;">ID de Tarea en Asana (Destino)</label>
+            <input type="text" id="pdf-asana-task" placeholder="Ej: 1205248667269451" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; font-size: 1em; font-family: monospace;">
+            <small style="color: #95a5a6; margin-top: 5px; display: block;">El PDF se adjuntará automáticamente a esta tarea.</small>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button class="btn-action" onclick="cerrarModalPDF()" style="background:#95a5a6; width:auto; flex: 1;">Cancelar</button>
+            <button class="btn-action" onclick="ejecutarGeneracionPDF()" style="flex: 2; background: linear-gradient(135deg, #e74c3c, #c0392b);">
+                📄 Generar y Adjuntar
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/script.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script> if (!sessionStorage.getItem('tecnomonitor_auth')) { window.location.href = '/'; } </script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(reg => console.log('SW registrado', reg))
+                .catch(err => console.log('SW error', err));
+        });
+    }
+</script>
+</body>
+</html>

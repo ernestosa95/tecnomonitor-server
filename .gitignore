@@ -1,0 +1,20 @@
+# Base de datos
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# Logs
+*.log
+
+# Credenciales — NUNCA subir
+.env
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
