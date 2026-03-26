@@ -153,3 +153,41 @@ def adjuntar_pdf_a_tarea(task_gid, pdf_bytes, filename):
     except Exception as e:
         logger.error(f"❌ Excepción al adjuntar en Asana: {e}")
         return None
+
+def notificar_solicitud_acceso(email, nombre, apellido, motivo):
+    """Crea una tarea en Asana para la solicitud de un nuevo usuario (sin colaboradores por ahora)."""
+    configuration = asana.Configuration()
+    configuration.access_token = ASANA_ACCESS_TOKEN
+    api_client = asana.ApiClient(configuration)
+    tasks_api_instance = asana.TasksApi(api_client)
+    
+    titulo = f"👤 SOLICITUD ACCESO | {nombre} {apellido}"
+    ahora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    
+    notas = f"""SOLICITUD DE NUEVO USUARIO - TECNOMONITOR
+    
+📧 Email: {email}
+👤 Nombre: {nombre} {apellido}
+🕒 Fecha: {ahora}
+📝 Motivo: {motivo}
+
+Solicitud enviada desde el portal de acceso de TecnoMonitor."""
+    
+    # Eliminamos el campo 'followers' para evitar el error de formato
+    body = {
+        'data': {
+            'workspace': WORKSPACE_GID,
+            'name': titulo,
+            'notes': notas,
+            'projects': [str(MAIN_PROJECT_GID)],
+            'assignee': RESPONSABLE_GID # Ernesto Ridel
+        }
+    }
+    
+    try:
+        tasks_api_instance.create_task(body, {})
+        logger.info(f"✅ Asana: Solicitud de acceso enviada para {email}.")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error al enviar solicitud a Asana: {e}")
+        return False

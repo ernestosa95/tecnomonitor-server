@@ -4,129 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Acceso - TecnoMonitor</title>
-    
     <link rel="stylesheet" href="/static/style.css">
-
     <style>
-        :root {
-            --primary: #3498db;
-            --dark: #2c3e50;
-            --danger: #e74c3c;
-            --radius: 8px;
-        }
-
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background-color: var(--dark);
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        .login-card {
-            background: white;
-            width: 100%;
-            max-width: 380px;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-            text-align: center;
-            margin: 20px;
-        }
-
-        .logo-container {
-            margin-bottom: 25px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(52, 152, 219, 0.1);
-            padding: 15px;
-            border-radius: 50%;
-        }
-
-        h1 {
-            color: var(--dark);
-            font-size: 1.5rem;
-            margin: 0 0 5px 0;
-            font-weight: 700;
-        }
-
-        p.subtitle {
-            color: #7f8c8d;
-            margin: 0 0 30px 0;
-            font-size: 0.95rem;
-        }
-
-        .input-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-
-        .input-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #34495e;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e1e4e8;
-            border-radius: var(--radius);
-            font-size: 1rem;
-            box-sizing: border-box; /* Crucial para que no se desborde */
-            transition: border-color 0.3s, box-shadow 0.3s;
-            outline: none;
-        }
-
-        .input-group input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        .btn-login {
-            width: 100%;
-            padding: 14px;
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            border-radius: var(--radius);
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, background-color 0.2s;
-        }
-
-        .btn-login:hover {
-            background-color: #2980b9;
-            transform: translateY(-2px);
-        }
-
-        .btn-login:active {
-            transform: translateY(0);
-        }
-
-        .btn-login:disabled {
-            background-color: #bdc3c7;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        #error-msg {
-            background: #fdeded;
-            color: var(--danger);
-            padding: 10px;
-            border-radius: var(--radius);
-            font-size: 0.9rem;
-            margin-top: 20px;
-            display: none;
-            border: 1px solid #f5c6cb;
-        }
+        :root { --primary: #3498db; --dark: #2c3e50; --danger: #e74c3c; --radius: 8px; }
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--dark); height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .login-card { background: white; width: 100%; max-width: 380px; padding: 40px; border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); text-align: center; margin: 20px; }
+        .logo-container { margin-bottom: 25px; display: inline-flex; align-items: center; justify-content: center; background: rgba(52, 152, 219, 0.1); padding: 15px; border-radius: 50%; }
+        h1 { color: var(--dark); font-size: 1.5rem; margin: 0; font-weight: 700; }
+        p.subtitle { color: #7f8c8d; margin: 0 0 30px 0; font-size: 0.95rem; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; margin-bottom: 8px; color: #34495e; font-weight: 600; font-size: 0.9rem; }
+        .input-group input { width: 100%; padding: 12px 15px; border: 2px solid #e1e4e8; border-radius: var(--radius); font-size: 1rem; box-sizing: border-box; outline: none; transition: 0.3s; }
+        .input-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1); }
+        .btn-login { width: 100%; padding: 14px; background-color: var(--primary); color: white; border: none; border-radius: var(--radius); font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-login:hover { background-color: #2980b9; transform: translateY(-2px); }
+        #error-msg { background: #fdeded; color: var(--danger); padding: 10px; border-radius: var(--radius); font-size: 0.9rem; margin-top: 20px; display: none; border: 1px solid #f5c6cb; }
+        
+        /* Estilos para el Modal */
+        .modal-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 5000; }
+        .modal-content { background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; text-align: left; }
     </style>
 </head>
 <body>
@@ -137,85 +33,152 @@
                 <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                 <line x1="8" y1="21" x2="16" y2="21"></line>
                 <line x1="12" y1="17" x2="12" y2="21"></line>
-                <path d="M10 9l2 2 4-4"></path> </svg>
+                <path d="M10 9l2 2 4-4"></path>
+            </svg>
         </div>
 
         <h1>TecnoMonitor</h1>
-        <p class="subtitle">Acceso a Infraestructura</p>
+        <p class="subtitle">Acceso corporativo</p>
 
         <div class="input-group">
-            <label for="access-code">Código de Acceso</label>
-            <input type="password" id="access-code" placeholder="••••••••" onkeyup="checkEnter(event)" autofocus>
+            <label for="email">Correo @tecnoimagen.com.ar</label>
+            <input type="email" id="email" placeholder="usuario@tecnoimagen.com.ar" autofocus>
+        </div>
+
+        <div class="input-group">
+            <label for="password">Contraseña</label>
+            <input type="password" id="password" placeholder="••••••••" onkeyup="checkEnter(event)">
         </div>
 
         <button class="btn-login" onclick="validarAcceso()">Ingresar</button>
 
-        <div id="error-msg">
-            ⚠️ Código de acceso incorrecto
+        <p style="margin-top: 20px; font-size: 0.85rem; color: #7f8c8d;">
+            ¿No tienes cuenta? 
+            <a href="#" onclick="abrirModalSolicitud(); return false;" style="color: #3498db; font-weight: 600; text-decoration: none;">Solicitar acceso</a>
+        </p>
+
+        <div id="error-msg"></div>
+    </div>
+
+    <div id="modal-solicitud" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#2c3e50;">👤 Solicitar Usuario</h3>
+            <div class="input-group">
+                <label>Nombre</label>
+                <input type="text" id="req-nombre" placeholder="Ej: Juan">
+            </div>
+            <div class="input-group">
+                <label>Apellido</label>
+                <input type="text" id="req-apellido" placeholder="Ej: Pérez">
+            </div>
+            <div class="input-group">
+                <label>Correo @tecnoimagen.com.ar</label>
+                <input type="email" id="req-email" placeholder="usuario@tecnoimagen.com.ar">
+            </div>
+            <div class="input-group">
+                <label>Motivo del Acceso</label>
+                <textarea id="req-motivo" rows="3" style="width: 100%; border: 2px solid #e1e4e8; border-radius: 8px; padding: 10px; font-family: inherit; resize: none;" placeholder="Describa brevemente su función..."></textarea>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn-login" onclick="cerrarModalSolicitud()" style="background:#95a5a6; flex:1;">Cancelar</button>
+                <button class="btn-login" id="btn-enviar-sol" onclick="enviarSolicitud()" style="flex:1.5;">Enviar Solicitud</button>
+            </div>
         </div>
     </div>
 
     <script>
+        // --- FUNCIONES DE LOGIN ---
         async function validarAcceso() {
-            const codigo = document.getElementById('access-code').value;
-            const btn = document.querySelector('.btn-login');
-            const errorMsg = document.getElementById('error-msg');
-
-            if (!codigo) return;
-
-            // Estado de carga
-            btn.disabled = true;
-            btn.innerText = "Verificando...";
-            errorMsg.style.display = 'none';
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            if (!email || !password) return;
 
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ code: codigo })
+                    body: JSON.stringify({ email, password })
                 });
                 const data = await response.json();
-
                 if (data.success) {
-                    sessionStorage.setItem('tecnomonitor_auth', 'true');
+                    sessionStorage.setItem('tecnomonitor_user', JSON.stringify(data.user));
                     window.location.href = '/monitor';
                 } else {
-                    mostrarError("Código incorrecto, intente nuevamente.");
+                    mostrarError(data.message || "Credenciales incorrectas");
                 }
-            } catch (e) {
-                console.error(e);
-                mostrarError("Error de conexión con el servidor.");
+            } catch (e) { mostrarError("Error de conexión"); }
+        }
+
+        // --- FUNCIONES DEL MODAL ---
+        function abrirModalSolicitud() {
+            console.log("Abriendo modal...");
+            document.getElementById('modal-solicitud').style.display = 'flex';
+        }
+
+        function cerrarModalSolicitud() {
+            document.getElementById('modal-solicitud').style.display = 'none';
+        }
+
+        async function enviarSolicitud() {
+            // 1. Obtenemos el elemento completo
+            const emailInput = document.getElementById('req-email');
+            
+            // 2. Extraemos el VALOR (.value) para que sea un String y podamos usar .endsWith()
+            const email = emailInput.value.toLowerCase().trim();
+
+            // 3. Validación de dominio corporativo
+            if (!email.endsWith("@tecnoimagen.com.ar")) {
+                alert("⚠️ Por seguridad, solo puedes solicitar acceso con tu mail de @tecnoimagen.com.ar");
+                return;
+            }
+
+            const data = {
+                nombre: document.getElementById('req-nombre').value,
+                apellido: document.getElementById('req-apellido').value,
+                email: email,
+                motivo: document.getElementById('req-motivo').value
+            };
+
+            if (!data.nombre || !data.apellido || !data.motivo) {
+                alert("Por favor, completa todos los campos.");
+                return;
+            }
+
+            const btn = document.getElementById('btn-enviar-sol');
+            btn.disabled = true;
+            btn.innerText = "Enviando...";
+
+            try {
+                const response = await fetch('/api/user/request-access', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    alert("✅ Solicitud enviada. Ernesto Ridel revisará tu acceso pronto.");
+                    cerrarModalSolicitud();
+                } else {
+                    const error = await response.json();
+                    alert("❌ Error: " + (error.detail || "No se pudo enviar la solicitud"));
+                }
+            } catch (e) { 
+                alert("❌ Error de red."); 
+            } finally { 
+                btn.disabled = false; 
+                btn.innerText = "Enviar Solicitud"; 
             }
         }
 
         function mostrarError(texto) {
-            const errorMsg = document.getElementById('error-msg');
-            const btn = document.querySelector('.btn-login');
-            
-            errorMsg.innerText = texto;
-            errorMsg.style.display = 'block';
-            
-            // Resetear botón
-            btn.disabled = false;
-            btn.innerText = "Ingresar";
-            
-            // Animación de sacudida (Shake) para feedback visual
-            const card = document.querySelector('.login-card');
-            card.animate([
-                { transform: 'translateX(0)' },
-                { transform: 'translateX(-10px)' },
-                { transform: 'translateX(10px)' },
-                { transform: 'translateX(0)' }
-            ], { duration: 300 });
+            const msg = document.getElementById('error-msg');
+            msg.innerText = "⚠️ " + texto;
+            msg.style.display = 'block';
         }
 
-        function checkEnter(e) {
-            if (e.key === "Enter") validarAcceso();
-        }
-
-        // Limpiar sesión al cargar
-        sessionStorage.removeItem('tecnomonitor_auth');
+        function checkEnter(e) { if (e.key === "Enter") validarAcceso(); }
+        
+        sessionStorage.removeItem('tecnomonitor_user');
     </script>
-
 </body>
 </html>

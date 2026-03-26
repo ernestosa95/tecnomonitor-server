@@ -22,6 +22,7 @@ from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
 import numpy as np
 import asana_conector
+import auth
 
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
@@ -76,7 +77,8 @@ class ConfigRequest(BaseModel):
     enable_raid: bool      # Nuevo
 
 class LoginRequest(BaseModel):
-    code: str
+    email: str
+    password: str
 
 class HospitalDTO(BaseModel):
     hospital_id: str
@@ -111,8 +113,31 @@ def dashboard_page(request: Request):
 
 # --- API ---
 @app.post("/api/login")
-def verificar_login(login_data: LoginRequest):
-    return {"success": login_data.code == CODIGO_ACCESO}
+def verificar_login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    # 1. Filtro de dominio obligatorio
+    if not login_data.email.lower().endswith("@tecnoimagen.com.ar"):
+        return {"success": False, "message": "Dominio no autorizado"}
+
+    # 2. Búsqueda de usuario
+    user = db.query(database.UserModel).filter(database.UserModel.email == login_data.email.lower()).first()
+    
+    if not user or not auth.verify_password(login_data.password, user.hashed_password):
+        return {"success": False, "message": "Credenciales inválidas"}
+
+    if not user.is_active:
+        return {"success": False, "message": "Usuario inactivo"}
+
+    # 3. Generar token con el Rol incluido
+    token = auth.create_access_token(data={"sub": user.email, "role": user.role})
+    
+    return {
+        "success": True, 
+        "user": {
+            "name": user.full_name,
+            "email": user.email, 
+            "role": user.role
+        }
+    }
 
 @app.get("/api/resumen-hospitales")
 def obtener_resumen(db: Session = Depends(get_db)):
@@ -963,5 +988,53 @@ async def get_herramientas(request: Request):
 async def get_ris_analytics(request: Request):
     return templates.TemplateResponse("solucion2.html", {"request": request})
 
+# --- DTO para cambio de clave ---
+class ChangePasswordRequest(BaseModel):
+    email: str
+    current_password: str
+    new_password: str
 
+@app.post("/api/user/change-password")
+def cambiar_contrasena(req: ChangePasswordRequest, db: Session = Depends(get_db)):
+    # 1. Buscar al usuario
+    user = db.query(database.UserModel).filter(database.UserModel.email == req.email.lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # 2. Verificar que la clave actual sea correcta
+    if not auth.verify_password(req.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
+
+    # 3. Hashear la nueva clave y guardar
+    user.hashed_password = auth.get_password_hash(req.new_password)
+    db.commit()
+    
+    return {"status": "ok", "message": "Contraseña actualizada correctamente"}
+
+# --- DTO para Solicitud de Acceso ---
+class UserAccessRequest(BaseModel):
+    email: str
+    nombre: str
+    apellido: str
+    motivo: str
+
+@app.post("/api/user/request-access")
+def solicitar_acceso(req: UserAccessRequest):
+    # 1. Validación de dominio corporativo (Seguridad de Backend)
+    email_clean = req.email.lower().strip()
+    if not email_clean.endswith("@tecnoimagen.com.ar"):
+        raise HTTPException(
+            status_code=400, 
+            detail="Acceso denegado: Solo se permiten correos corporativos @tecnoimagen.com.ar"
+        )
+    
+    # 2. Disparar tarea en Asana
+    success = asana_conector.notificar_solicitud_acceso(
+        email_clean, req.nombre, req.apellido, req.motivo
+    )
+    
+    if success:
+        return {"status": "ok", "message": "Solicitud enviada con éxito"}
+    else:
+        raise HTTPException(status_code=500, detail="Error al conectar con Asana")
 

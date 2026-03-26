@@ -116,4 +116,18 @@ class HistorialReportes(Base):
     estado = Column(String(50)) # "Completado", "Descargado", "Error"
     asana_url = Column(String(255), nullable=True)
 
+class UserModel(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # email: Único e indexado para búsquedas rápidas durante el login
+    email = Column(String, unique=True, index=True, nullable=False)
+    # hashed_password: Nunca guardaremos la clave en texto plano
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String)
+    # role: Aquí definiremos 'Admin', 'Ingenieria', 'Comercial' o 'Visor'
+    role = Column(String, default="Visor") 
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+
 Base.metadata.create_all(bind=engine)

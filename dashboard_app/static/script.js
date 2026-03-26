@@ -2420,3 +2420,60 @@ function switchTab(tabId, btn) {
     const targetTab = document.getElementById(`tab-${tabId}`);
     if (targetTab) targetTab.classList.add('active');
 }
+
+function abrirModalPassword() {
+    document.getElementById('modal-password').style.display = 'flex';
+}
+
+function cerrarModalPassword() {
+    document.getElementById('modal-password').style.display = 'none';
+    document.getElementById('pw-actual').value = '';
+    document.getElementById('pw-nueva').value = '';
+}
+
+async function ejecutarCambioPassword() {
+    const userData = sessionStorage.getItem('tecnomonitor_user');
+    const user = userData ? JSON.parse(userData) : null;
+    
+    const current_password = document.getElementById('pw-actual').value;
+    const new_password = document.getElementById('pw-nueva').value;
+
+    // Validación básica de seguridad
+    if (!user || !user.email) {
+        alert("⚠️ Error de sesión. Por favor, cierra sesión y vuelve a entrar.");
+        return;
+    }
+
+    if (!current_password || !new_password) {
+        alert("Por favor, completa ambos campos.");
+        return;
+    }
+
+    // LOG DE DEPURACIÓN: Pulsa F12 en tu navegador para ver esto
+    console.log("Enviando cambio para:", user.email);
+
+    try {
+        const response = await fetch('/api/user/change-password', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                email: user.email,             // Debe coincidir con el Backend
+                current_password: current_password, // Debe coincidir con el Backend
+                new_password: new_password        // Debe coincidir con el Backend
+            })
+        });
+
+        if (response.ok) {
+            alert("✅ ¡Contraseña cambiada! Debes volver a iniciar sesión.");
+            logout(); 
+        } else {
+            const errorData = await response.json();
+            // El error 422 detallado aparecerá aquí
+            console.error("Error 422 detalles:", errorData);
+            alert("❌ Error: " + (errorData.detail?.[0]?.msg || "Datos inválidos"));
+        }
+    } catch (e) {
+        alert("❌ Error de red.");
+    }
+}
+
