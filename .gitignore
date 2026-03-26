@@ -1,20 +1,58 @@
-# Base de datos
+# ========================
+# Entornos Virtuales
+# ========================
+venv/
+env/
+.venv/
+Scripts/
+
+# ========================
+# Python / FastAPI
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# ========================
+# Variables de Entorno y Seguridad (¡CRUCIAL!)
+# ========================
+.env
+.env.*
+*.pem
+*.key
+
+# ========================
+# Bases de Datos
+# ========================
 *.db
-*.db-shm
-*.db-wal
+*.sqlite
 *.sqlite3
 
-# Logs
-*.log
+# ========================
+# Archivos Generados (Reportes)
+# ========================
+Reporte_*.pdf
+*.pdf
+*.csv
+*.xlsx
 
-# Credenciales — NUNCA subir
-.env
-
-# Cache Python
-__pycache__/
-*.pyc
-*.pyo
-
-# Archivos del sistema
+# ========================
+# SO y Editores (VS Code, Mac, etc.)
+# ========================
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+
+# ========================
+# Archivos Temporales de Base de Datos
+# ========================
+*-shm
+*-wal
+
+# ========================
+# Archivos de Log
+# ========================
+*.log
