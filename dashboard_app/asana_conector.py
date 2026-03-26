@@ -4,6 +4,9 @@ import logging
 from datetime import datetime
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ASANA_ACCESS_TOKEN = os.environ.get("ASANA_ACCESS_TOKEN")
 WORKSPACE_GID      = os.environ.get("WORKSPACE_GID")

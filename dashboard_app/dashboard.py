@@ -40,6 +40,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database
 from database import HospitalMetadata 
 import alerts_engine 
+from dotenv import load_dotenv
 
 load_dotenv()
 #CODIGO_ACCESO = os.getenv("ACCESS_CODE", "Tecno2026")
@@ -573,13 +574,13 @@ def generar_grafico_temporal(datos_equipo):
     x = np.arange(len(labels))
     width = 0.35  # Ancho de las barras
 
-    # Ajuste: Le damos 0.35 de "piso" al gráfico para que las fechas rotadas no se corten
+    # AJUSTE: Más margen inferior (bottom) para que entren las fechas largas
     fig, ax = plt.subplots(figsize=(8, 3.5))
-    fig.subplots_adjust(bottom=0.35) 
+    fig.subplots_adjust(bottom=0.45) 
     
     bottom_ris = np.zeros(len(labels))
     
-    # 1. Dibujar barras apiladas de RIS (lado izquierdo)
+    # 1. Dibujar barras apiladas de RIS
     estados_ris = ['Citados', 'Admitidos', 'Ejecutados', 'Asociados', 'Borradores', 'Definitivos', 'Suspendidos']
     for estado in estados_ris:
         valores = [datos_equipo[l].get(estado.lower(), 0) for l in labels]
@@ -587,17 +588,18 @@ def generar_grafico_temporal(datos_equipo):
             ax.bar(x - width/2, valores, width, bottom=bottom_ris, color=ESTADOS_COLORS[estado], label=estado)
             bottom_ris += np.array(valores)
 
-    # 2. Dibujar barra de PACS (lado derecho)
+    # 2. Dibujar barra de PACS
     valores_pacs = [datos_equipo[l].get('almacenados', 0) for l in labels]
     if sum(valores_pacs) > 0:
         ax.bar(x + width/2, valores_pacs, width, color=ESTADOS_COLORS['Almacenados'], label='Almacenados')
 
     # Estética del gráfico
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=35, ha='right', fontsize=8)
+    # AJUSTE: Fuente más chica (6) y rotación de 60 grados
+    ax.set_xticklabels(labels, rotation=60, ha='right', fontsize=6) 
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.20), ncol=4, fontsize=8, frameon=False)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=4, fontsize=8, frameon=False)
 
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', transparent=True, dpi=300)
@@ -766,39 +768,54 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
         for i, (eq, cant) in enumerate(datos_dict.items()):
             pct = f"{(cant / total * 100):.1f}%" if total > 0 else "0%"
             color_hex = colores[i] if i < len(colores) else '#bdc3c7'
-            data_tabla.append(["", eq[:20], f"{cant:,}".replace(',', '.'), pct])
+            # Cortamos a 22 caracteres para que no se estire a lo ancho
+            data_tabla.append(["", eq[:22], f"{cant:,}".replace(',', '.'), pct])
             filas.append(color_hex)
             
-        alto_caja = max(200, 70 + (len(data_tabla) * 18))
-        c.setStrokeColorRGB(0.8, 0.8, 0.8)
-        c.setFillColorRGB(0.98, 0.98, 0.98)
-        c.roundRect(40, pos_y - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
-        c.setFillColorRGB(0.1, 0.1, 0.1)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(55, pos_y - 25, titulo)
-        c.drawImage(ImageReader(img_buf), 50, pos_y - alto_caja + (alto_caja/2) - 75, width=150, height=150, mask='auto')
-        
-        t = Table(data_tabla, colWidths=[20, 140, 70, 40])
+        t = Table(data_tabla, colWidths=[15, 145, 55, 35])
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#ecf0f1')),
             ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#2c3e50')),
             ('ALIGN', (2,0), (-1,-1), 'RIGHT'),
             ('ALIGN', (0,0), (0,-1), 'CENTER'), 
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0,0), (-1,0), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#bdc3c7')),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('FONTSIZE', (0,0), (-1,-1), 6),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
-        t.wrapOn(c, 200, 200)
-        pos_tabla_y = pos_y - 45 - (len(data_tabla)*18)
+        
+        # ¡LA CLAVE ESTÁ AQUÍ! Le pedimos a ReportLab la altura EXACTA de la tabla (th)
+        tw, th = t.wrap(0, 0)
+        
+        # La caja ahora se ajusta milimétricamente a la tabla
+        alto_caja = max(200, th + 60)
+        
+        # Dibujamos el recuadro gris
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setFillColorRGB(0.98, 0.98, 0.98)
+        c.roundRect(40, pos_y - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
+        
+        # Título
+        c.setFillColorRGB(0.1, 0.1, 0.1)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(55, pos_y - 25, titulo)
+        
+        # Gráfico (Dona)
+        c.drawImage(ImageReader(img_buf), 50, pos_y - alto_caja + (alto_caja/2) - 75, width=150, height=150, mask='auto')
+        
+        # Ubicamos la tabla calculando el techo de la misma para que NUNCA pise el título
+        pos_tabla_y = pos_y - 45 - th
         t.drawOn(c, 230, pos_tabla_y)
 
+        # Ubicamos los circulitos calculando matemáticamente el centro de cada fila real
+        alto_fila = th / len(data_tabla)
         for i, color_hex in enumerate(filas):
-            y_circulo = pos_tabla_y + ((len(data_tabla) - 2 - i) * 18) + 9 
+            y_circulo = pos_tabla_y + th - (alto_fila * (1.5 + i))
             c.setFillColor(colors.HexColor(color_hex))
             c.setStrokeColor(colors.HexColor(color_hex))
-            c.circle(240, y_circulo, 4, fill=1, stroke=0)
+            c.circle(240, y_circulo, 3, fill=1, stroke=0)
             
         return pos_y - alto_caja - 20
 
@@ -824,7 +841,6 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
             img_buf = generar_grafico_temporal(datos_temporales[equipo])
             if not img_buf: continue
 
-            # Ajuste: Eliminamos la columna 'Total'
             headers = ['Período'] + [col.capitalize() for col in cols_activas]
             data_tabla = [headers]
             
@@ -835,26 +851,7 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
                     fila.append(f"{val:,}".replace(',', '.'))
                 data_tabla.append(fila)
 
-            # Ajuste: Hacemos la caja más alta para separar el gráfico de la tabla
-            alto_caja = 280 + (len(data_tabla) * 16)
-            
-            if (pos_y_actual - alto_caja) < 50:
-                c.showPage()
-                pagina_actual += 1
-                pos_y_actual = dibujar_encabezado_y_pie(c, "EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
-
-            c.setStrokeColorRGB(0.8, 0.8, 0.8)
-            c.setFillColorRGB(0.98, 0.98, 0.98)
-            c.roundRect(40, pos_y_actual - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
-            
-            c.setFillColorRGB(0.1, 0.1, 0.1)
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(55, pos_y_actual - 25, f"EVOLUCIÓN COMBINADA - {equipo}")
-            
-            # Ajuste: El gráfico se dibuja con una altura de 200 en vez de 210, dejándole más respiro
-            c.drawImage(ImageReader(img_buf), 40, pos_y_actual - 250, width=ancho-80, height=200, mask='auto')
-            
-            # Ajuste: Recalculamos los anchos sin la columna total
+            # 1. ARMAMOS LA TABLA PRIMERO (Para saber cuánto mide)
             ancho_col_base = (ancho - 120) / (len(cols_activas) + 1.5)
             anchos = [ancho_col_base * 1.5] + [ancho_col_base]*len(cols_activas)
             t = Table(data_tabla, colWidths=anchos)
@@ -862,24 +859,50 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
             estilos = [
                 ('ALIGN', (1,0), (-1,-1), 'CENTER'),
                 ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#bdc3c7')),
-                ('FONTSIZE', (0,0), (-1,-1), 8),
+                ('FONTSIZE', (0,0), (-1,-1), 6),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ]
             
             for idx_col, col_name in enumerate(cols_activas):
-                color_hex = ESTADOS_COLORS[col_name.capitalize()]
+                color_hex = ESTADOS_COLORS.get(col_name.capitalize(), '#cccccc')
                 estilos.append(('BACKGROUND', (idx_col+1, 0), (idx_col+1, 0), colors.HexColor(color_hex)))
                 
             estilos.append(('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#ecf0f1')))
-
             t.setStyle(TableStyle(estilos))
-            t.wrapOn(c, ancho-80, 200)
             
-            # Ajuste: Dibujamos la tabla más abajo para que no toque las etiquetas del eje X
-            t.drawOn(c, 50, pos_y_actual - alto_caja + 20)
+            # ¡EL TRUCO! Le pedimos a ReportLab que calcule el alto real (th) de la tabla
+            tw, th = t.wrap(ancho-80, 200)
 
+            # 2. CALCULAMOS EL ALTO DE LA CAJA (Gráfico 190px + Tabla th + 60px de márgenes)
+            alto_caja = 190 + th + 60
+            
+            # Control de salto de página
+            if (pos_y_actual - alto_caja) < 50:
+                c.showPage()
+                pagina_actual += 1
+                pos_y_actual = dibujar_encabezado_y_pie(c, "EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
+
+            # 3. DIBUJAMOS DE ABAJO HACIA ARRIBA
+            # Fondo Gris
+            c.setStrokeColorRGB(0.8, 0.8, 0.8)
+            c.setFillColorRGB(0.98, 0.98, 0.98)
+            c.roundRect(40, pos_y_actual - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
+            
+            # Título (arriba de todo en la caja)
+            c.setFillColorRGB(0.1, 0.1, 0.1)
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(55, pos_y_actual - 25, f"EVOLUCIÓN COMBINADA - {equipo}")
+            
+            # Gráfico (debajo del título). pos_y_actual - 35 (título) - 190 (alto gráfico)
+            c.drawImage(ImageReader(img_buf), 40, pos_y_actual - 225, width=ancho-80, height=190, mask='auto')
+            
+            # Tabla (debajo del gráfico, casi tocando el piso de la caja)
+            t.drawOn(c, 50, pos_y_actual - alto_caja + 15)
+
+            # Actualizamos la posición para el siguiente equipo
             pos_y_actual -= (alto_caja + 20)
 
     c.save()
