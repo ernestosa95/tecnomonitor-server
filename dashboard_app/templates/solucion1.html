@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox HL7 | ARIS Tools</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        /* --- BASE & VARIABLES (del sistema) --- */
+        :root {
+            --primary: #3498db;
+            --dark: #2c3e50;
+            --light: #f4f6f8;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --purple: #6f42c1;
+            --radius: 8px;
+            --pill-radius: 50px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background-color: var(--light);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #app-container { display: flex; width: 100%; height: 100%; }
+
+        /* --- SIDEBAR --- */
+        .sidebar-right {
+            width: 240px;
+            background-color: var(--dark);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s ease;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .sidebar-right.collapsed { width: 70px; }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            color: white;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .logo-area {
+            overflow: hidden; white-space: nowrap; transition: 0.2s;
+            font-weight: 700; letter-spacing: 1px; font-size: 0.95em;
+        }
+        .logo-sub { font-size: 0.7em; color: #bdc3c7; font-weight: 400; letter-spacing: 0.3px; margin-top: 2px; }
+        .sidebar-right.collapsed .logo-area { display: none; }
+        .sidebar-right.collapsed .sidebar-header { justify-content: center; padding: 20px 0; }
+
+        #toggle-sidebar {
+            background: none; border: none; cursor: pointer; padding: 5px;
+            display: flex; align-items: center; justify-content: center; color: #bdc3c7;
+            font-size: 1.1em;
+        }
+        #toggle-sidebar:hover { color: white; }
+
+        .nav-section { flex: 1; overflow-y: auto; padding: 8px 0; }
+        .nav-section-label {
+            font-size: 0.7em; text-transform: uppercase; letter-spacing: 1px;
+            color: #5d6d7e; padding: 12px 20px 4px; font-weight: 700;
+        }
+        .sidebar-right.collapsed .nav-section-label { display: none; }
+
+        .nav-btn {
+            background: none; border: none; color: #bdc3c7;
+            padding: 13px 20px; text-align: left; cursor: pointer; width: 100%;
+            display: flex; align-items: center; gap: 13px;
+            transition: 0.2s;
+            border-left: 4px solid transparent;
+            font-size: 0.9em; font-family: 'Segoe UI', Tahoma, sans-serif;
+        }
+        .nav-btn .nav-icon { font-size: 1.1em; min-width: 20px; text-align: center; }
+        .nav-btn .nav-label { white-space: nowrap; opacity: 1; transition: 0.2s; }
+        .sidebar-right.collapsed .nav-label { opacity: 0; width: 0; display: none; }
+        .nav-btn:hover { background-color: rgba(255,255,255,0.05); color: white; }
+        .nav-btn.active {
+            color: white;
+            border-left-color: var(--primary);
+            background: linear-gradient(90deg, rgba(52,152,219,0.12) 0%, transparent 100%);
+        }
+
+        /* --- CONTENIDO PRINCIPAL --- */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+        .content.active { display: flex; }
+
+        .page-header {
+            padding: 20px 30px 15px;
+            background: white;
+            border-bottom: 1px solid #e1e4e8;
+            flex-shrink: 0;
+        }
+        .page-header h2 { color: var(--dark); font-size: 1.2em; font-weight: 700; }
+        .page-header p { color: #7f8c8d; font-size: 0.85em; margin-top: 3px; }
+        .page-header-row {
+            display: flex; justify-content: space-between; align-items: flex-start; gap: 15px;
+        }
+        .header-badges { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-top: 2px; }
+
+        .content-scroll { flex: 1; overflow-y: auto; padding: 20px 30px 30px; }
+
+        /* --- CARDS (del sistema) --- */
+        .card {
+            background: white; border-radius: 10px; padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e1e4e8; margin-bottom: 18px; width: 100%;
+        }
+        .card-title {
+            font-size: 0.9em; font-weight: 700; color: var(--dark);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-title span { font-weight: 400; text-transform: none; color: #7f8c8d; font-size: 0.9em; letter-spacing: 0; }
+
+        .detail-top-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+        @media (max-width: 900px) { .detail-top-grid { grid-template-columns: 1fr; } }
+
+        .detail-card {
+            background: white; border-radius: var(--radius);
+            border: 1px solid #e1e4e8; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+        .detail-card-header {
+            padding: 11px 18px; font-weight: 700; color: white;
+            text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .detail-card-header.bg-dark   { background-color: var(--dark); }
+        .detail-card-header.bg-primary { background-color: var(--primary); }
+        .detail-card-header.bg-success { background-color: var(--success); }
+        .detail-card-header.bg-warning { background-color: #8a6c00; }
+        .detail-card-header.bg-purple  { background-color: var(--purple); }
+        .detail-card-body {
+            padding: 15px; flex: 1; overflow-y: auto; max-height: 460px;
+        }
+        .detail-card-body.dark-bg {
+            background: #1e1e1e; padding: 0;
+        }
+
+        /* --- BOTONES (del sistema) --- */
+        .btn-action {
+            padding: 9px 16px; background-color: var(--primary); color: white;
+            border: none; border-radius: 6px; font-size: 0.88em; font-weight: 600;
+            cursor: pointer; transition: 0.2s; display: inline-flex;
+            align-items: center; gap: 7px; font-family: 'Segoe UI', Tahoma, sans-serif;
+        }
+        .btn-action:hover { background-color: #2980b9; }
+        .btn-success { background-color: var(--success); } .btn-success:hover { background-color: #218838; }
+        .btn-danger  { background-color: var(--danger); }  .btn-danger:hover  { background-color: #c82333; }
+        .btn-warning { background-color: #f39c12; color: white; } .btn-warning:hover { background-color: #d68910; }
+        .btn-purple  { background-color: var(--purple); } .btn-purple:hover  { background-color: #5a32a3; }
+        .btn-ghost {
+            background: white; border: 1px solid #e1e4e8; color: var(--dark);
+        }
+        .btn-ghost:hover { border-color: #bdc3c7; background: #f8f9fa; }
+
+        .btn-small { padding: 5px 10px; font-size: 0.78em; border-radius: 4px; border: none; cursor: pointer; color: white; font-family: 'Segoe UI', Tahoma, sans-serif; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; transition: 0.2s; }
+        .btn-view   { background-color: var(--primary); }
+        .btn-export { background-color: #f39c12; }
+        .btn-copy   { background-color: #7f8c8d; }
+        .btn-small:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        /* --- FORMULARIOS (del sistema) --- */
+        .input-group { margin-bottom: 10px; }
+        .input-group label {
+            font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px;
+            color: #7f8c8d; margin-bottom: 4px; display: block; font-weight: 700;
+        }
+        .input-group input, .input-group select, .input-group textarea {
+            background-color: #fff; border: 1px solid #e1e4e8; color: var(--dark);
+            width: 100%; padding: 8px 10px; border-radius: 4px;
+            font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 0.88em;
+            transition: border-color 0.15s;
+        }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(52,152,219,0.12);
+        }
+        .input-group input::placeholder { color: #bdc3c7; }
+
+        textarea.hl7-input {
+            width: 100%; min-height: 130px; font-family: 'Courier New', monospace; font-size: 0.82em;
+            line-height: 1.6; padding: 12px; border: 1px solid #e1e4e8; border-radius: 6px;
+            resize: vertical; background: #f8f9fa; color: var(--dark);
+            transition: border-color 0.15s;
+        }
+        textarea.hl7-input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 2px rgba(52,152,219,0.1); }
+
+        textarea.hl7-output {
+            width: 100%; min-height: 150px; font-family: 'Courier New', monospace; font-size: 0.82em;
+            line-height: 1.6; padding: 12px; border: none; border-radius: 0 0 6px 6px;
+            resize: vertical; background: #1e1e1e; color: #a6e22e;
+        }
+
+        /* --- BADGES (del sistema) --- */
+        .status-badge {
+            padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 700;
+        }
+        .badge-primary { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .badge-success { background: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+        .badge-danger  { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .badge-warning { background: #fff3cd; color: #664d03; border: 1px solid #ffeeba; }
+        .badge-neutral { background: #e9ecef; color: #495057; border: 1px solid #ced4da; font-family: monospace; }
+
+        /* --- LOG ITEMS (resultado de auditoría) --- */
+        .result-item {
+            padding: 8px 12px; margin-bottom: 7px; border-left: 4px solid;
+            background-color: #f9f9f9; border-radius: 4px; font-size: 0.82em;
+            color: var(--dark); border-right: 1px solid #eee; border-top: 1px solid #eee; border-bottom: 1px solid #eee;
+            line-height: 1.5;
+        }
+        .log-success { border-left-color: var(--success); background: #f0fdf4; }
+        .log-warning { border-left-color: var(--warning); background: #fffbeb; }
+        .log-error   { border-left-color: var(--danger);  background: #fff5f5; }
+        .log-info    { border-left-color: var(--primary); background: #f0f7ff; }
+        .log-field   { font-family: monospace; font-weight: 700; color: var(--dark); font-size: 0.95em; }
+        .log-expected { color: var(--success); font-weight: 700; font-family: monospace; }
+        .log-received { color: var(--danger);  font-weight: 700; font-family: monospace; }
+        .log-value    { color: #8e44ad; font-family: monospace; }
+
+        /* Stats mini */
+        .audit-stats {
+            display: flex; gap: 12px; margin-bottom: 12px;
+            background: #f8f9fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 10px 14px;
+        }
+        .stat-item { display: flex; align-items: center; gap: 6px; font-size: 0.82em; }
+        .stat-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* --- TREE (árbol HL7) --- */
+        .tree-container {
+            background: #1e1e1e; color: #f8f8f2;
+            font-family: 'Courier New', monospace; font-size: 0.8em;
+        }
+
+        details.seg-block { border-bottom: 1px solid #2a2a2a; }
+        details.seg-block:last-child { border-bottom: none; }
+
+        summary.seg-sum {
+            list-style: none; cursor: pointer;
+            padding: 8px 14px; color: #f92672; font-weight: 700;
+            display: flex; align-items: center; gap: 8px; user-select: none;
+        }
+        summary.seg-sum::-webkit-details-marker { display: none; }
+        summary.seg-sum::before {
+            content: '▶'; font-size: 0.75em; color: #5d6d7e;
+            transition: transform 0.15s; min-width: 10px; display: inline-block;
+        }
+        details[open] > summary.seg-sum::before { transform: rotate(90deg); color: var(--primary); }
+        summary.seg-sum:hover { background: rgba(255,255,255,0.04); }
+        .seg-count { font-size: 0.75em; color: #5d6d7e; font-weight: 400; }
+
+        details.field-block { border-left: 2px solid #3498db; margin: 0 0 0 24px; }
+        summary.field-sum {
+            list-style: none; cursor: pointer;
+            padding: 5px 12px; color: #66d9ef; font-size: 0.9em;
+            display: flex; align-items: center; gap: 6px; user-select: none;
+        }
+        summary.field-sum::-webkit-details-marker { display: none; }
+        summary.field-sum::before {
+            content: '▶'; font-size: 0.7em; color: #5d6d7e;
+            transition: transform 0.15s; min-width: 9px; display: inline-block;
+        }
+        details[open] > summary.field-sum::before { transform: rotate(90deg); color: #a29bfe; }
+        summary.field-sum:hover { background: rgba(255,255,255,0.03); }
+
+        .tree-row {
+            display: grid; grid-template-columns: 130px 1fr 185px;
+            gap: 8px; padding: 5px 12px 5px 40px;
+            border-top: 1px solid #252525; align-items: center;
+        }
+        .tree-row.nested { padding-left: 56px; }
+        .tree-row:hover { background: rgba(255,255,255,0.02); }
+        .tr-idx  { color: #4ec9b0; font-weight: 700; font-size: 0.9em; }
+        .tr-val  { color: #ce9178; word-break: break-all; }
+        .tr-tag  input {
+            width: 100%; background: #2d2d30; border: 1px solid #444;
+            color: #ddd; padding: 3px 7px; border-radius: 3px;
+            font-family: 'Segoe UI', sans-serif; font-size: 0.85em;
+        }
+        .tr-tag input:focus { outline: none; border-color: var(--primary); }
+        .tr-tag input::placeholder { color: #555; }
+
+        /* --- REGLAS DE VALIDACIÓN & WORKFLOW TABLES --- */
+        .rules-table { width: 100%; border-collapse: collapse; }
+        .rules-table thead th {
+            font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.5px;
+            color: #7f8c8d; font-weight: 700; padding: 8px 10px;
+            border-bottom: 2px solid #e1e4e8; text-align: left; background: #f8f9fa;
+        }
+        .rules-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background 0.2s; }
+        .rules-table tbody tr:hover { background: #fdfdfe; }
+        .rules-table tbody tr:last-child { border-bottom: none; }
+        .rules-table td { padding: 7px 6px; vertical-align: middle; font-size: 0.85em; }
+        .rules-table td input, .rules-table td select {
+            width: 100%; background: #f8f9fa; border: 1px solid #e1e4e8;
+            color: var(--dark); padding: 5px 8px; border-radius: 4px;
+            font-family: 'Courier New', monospace; font-size: 0.9em;
+        }
+        .rules-table td input:focus, .rules-table td select:focus {
+            outline: none; border-color: var(--primary); background: white;
+        }
+        .rules-table td input::placeholder { color: #bdc3c7; font-family: 'Segoe UI', sans-serif; }
+
+        /* Chips obligatorios */
+        .req-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .req-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: #e8f4fd; border: 1px solid #bee3f8; color: #2980b9;
+            padding: 3px 10px; border-radius: 20px; font-family: monospace;
+            font-size: 0.8em; font-weight: 700;
+        }
+        .req-chip .rm { cursor: pointer; color: #999; font-family: sans-serif; font-weight: 400; }
+        .req-chip .rm:hover { color: var(--danger); }
+
+        /* --- GRID FORMS --- */
+        .grid-form-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid-form-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .grid-form-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+        .grid-form-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        @media (max-width: 800px) { .grid-form-3, .grid-form-2, .grid-form-4, .grid-form-auto { grid-template-columns: 1fr; } }
+
+        /* --- EMPTY STATE --- */
+        .empty-state {
+            text-align: center; padding: 35px 20px;
+            color: #bdc3c7; font-size: 0.88em;
+        }
+        .empty-icon { font-size: 2em; margin-bottom: 8px; }
+
+        /* --- ALERT INLINE --- */
+        .alert-inline {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 14px; border-radius: 6px; margin-bottom: 14px;
+            font-size: 0.85em; border-left: 4px solid;
+        }
+        .alert-warning { background: #fff3cd; border-color: var(--warning); color: #664d03; }
+        .alert-info    { background: #e8f4fd; border-color: var(--primary); color: #1a5276; }
+
+        /* --- SEPARADOR --- */
+        .sep-h { border: none; border-top: 1px solid #e1e4e8; margin: 14px 0; }
+
+        /* --- TOAST --- */
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: var(--dark); color: white;
+            padding: 10px 18px; border-radius: 8px; font-size: 0.85em;
+            z-index: 9999; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            animation: toastIn 0.2s ease;
+        }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #bdc3c7; border-radius: 3px; }
+
+        /* Output meta */
+        .out-meta { font-size: 0.78em; color: #7f8c8d; font-family: monospace; padding: 6px 12px; background: #f8f9fa; border-top: 1px solid #e1e4e8; border-radius: 0 0 6px 6px; }
+
+        /* Mermaid container - Ancho Ajustado y Responsivo */
+        .mermaid-wrapper {
+            background: white; border-radius: 8px; padding: 20px; border: 1px solid #e1e4e8;
+            overflow-x: auto; 
+            display: block; 
+            min-height: 200px; margin-top: 15px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        #mermaidContainer .mermaid {
+            width: 100%;
+        }
+
+        #mermaidContainer svg {
+            width: 100% !important; 
+            max-width: none !important; 
+            height: auto !important;
+        }
+        
+        .btn-table-action {
+            padding: 4px 8px; font-size: 0.85em; border-radius: 4px; border: none; cursor: pointer;
+            color: white; font-family: monospace; transition: 0.2s; background: #95a5a6;
+        }
+        .btn-table-action:hover { background: #7f8c8d; }
+        .btn-table-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* --- MODAL (Nuevo Proyecto) --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(44, 62, 80, 0.7); backdrop-filter: blur(3px);
+            display: none; align-items: center; justify-content: center; z-index: 2000;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-box {
+            background: white; width: 450px; border-radius: var(--radius);
+            padding: 25px; box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+            border: 1px solid #e1e4e8;
+        }
+        .modal-title {
+            font-size: 1.1em; font-weight: 700; color: var(--dark);
+            margin-bottom: 15px; display: flex; align-items: center; gap: 8px;
+            border-bottom: 1px solid #e1e4e8; padding-bottom: 10px;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* --- HELP STYLES --- */
+        .help-list { margin-left: 20px; font-size: 0.9em; line-height: 1.6; color: var(--dark); margin-bottom: 15px; }
+        .help-list li { margin-bottom: 8px; }
+        .help-list code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.95em; color: var(--purple); }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+
+    <div class="sidebar-right" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-area">
+                ⚙️ ARIS Tools
+                <div class="logo-sub">HL7 Integration Suite</div>
+            </div>
+            <button id="toggle-sidebar" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">☰</button>
+        </div>
+        <nav class="nav-section">
+            <div class="nav-section-label">Módulos</div>
+            <button class="nav-btn active" onclick="switchView('sandbox', this)">
+                <span class="nav-icon">⚡</span>
+                <span class="nav-label">Analizador</span>
+            </button>
+            <button class="nav-btn" onclick="switchView('profile', this)">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">Perfil de Integración</span>
+            </button>
+            <button class="nav-btn" onclick="switchView('generator', this)">
+                <span class="nav-icon">📤</span>
+                <span class="nav-label">Simulador RIS → HIS</span>
+            </button>
+            <button class="nav-btn" onclick="switchView('workflow', this)">
+                <span class="nav-icon">🔀</span>
+                <span class="nav-label">Diseñador de Flujos</span>
+            </button>
+
+            <div class="nav-section-label" style="margin-top: 15px;">Proyecto</div>
+            <button class="nav-btn" onclick="openNewProjectModal()">
+                <span class="nav-icon">📄</span>
+                <span class="nav-label">Nuevo Proyecto</span>
+            </button>
+            <button class="nav-btn" onclick="exportProject()">
+                <span class="nav-icon">💾</span>
+                <span class="nav-label">Guardar (JSON)</span>
+            </button>
+            <button class="nav-btn" onclick="document.getElementById('importFile').click()">
+                <span class="nav-icon">📂</span>
+                <span class="nav-label">Cargar (JSON)</span>
+            </button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importProject(event)">
+
+            <div class="nav-section-label" style="margin-top: 15px;">Soporte</div>
+            <button class="nav-btn" onclick="switchView('help', this)">
+                <span class="nav-icon">ℹ️</span>
+                <span class="nav-label">Ayuda y Manual</span>
+            </button>
+        </nav>
+    </div>
+
+    <div class="content active" id="view-sandbox">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2>Analizador y Validador HL7</h2>
+                    <p>Valide mensajes HIS → RIS contra el perfil de integración configurado</p>
+                </div>
+                <div class="header-badges">
+                    <span class="status-badge badge-neutral" id="profileBadge">Sin perfil</span>
+                    <span class="status-badge badge-primary" id="msgTypeBadge" style="display:none;"></span>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+
+            <div class="card">
+                <div class="card-title">
+                    📥 Mensaje HL7 de Entrada (HIS → RIS)
+                    <button class="btn-action btn-ghost btn-small" style="font-size:0.78em;" onclick="cargarEjemplo()">📄 Cargar ejemplo</button>
+                </div>
+                <textarea class="hl7-input" id="hl7Input" placeholder="Pegue el mensaje HL7 crudo aquí&#10;Ej: MSH|^~\&|SendingApp|Facility|ESTENSARADIO|..."></textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:8px;">
+                    <div style="font-size:0.8em; color:#7f8c8d;">
+                        Segmentos detectados: <strong id="segCount">—</strong>
+                    </div>
+                    <div class="btn-toolbar">
+                        <button class="btn-action btn-ghost" onclick="clearAll()" style="color:#7f8c8d;">🗑 Limpiar</button>
+                        <button class="btn-action" onclick="analizarHL7()">⚡ Analizar y Validar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-top-grid">
+                <div class="detail-card">
+                    <div class="detail-card-header bg-primary">
+                        <span>📋 Reporte de Auditoría</span>
+                        <button class="btn-small btn-copy" onclick="copiarReporte()">📋 Copiar</button>
+                    </div>
+                    <div class="detail-card-body" id="reportPanel">
+                        <div class="empty-state">
+                            <div class="empty-icon">🔍</div>
+                            Pegue un mensaje y presione <strong>Analizar</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-card">
+                    <div class="detail-card-header bg-dark">
+                        <span>🌳 Árbol de Segmentos</span>
+                        <button class="btn-small btn-export" onclick="exportarCSV()">📥 CSV</button>
+                    </div>
+                    <div class="detail-card-body dark-bg">
+                        <div class="tree-container" id="treeContainer" style="min-height:60px;">
+                            <div style="padding:20px; color:#5d6d7e; font-style:italic;">// El árbol aparecerá aquí</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="content" id="view-profile">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2>Perfil de Integración</h2>
+                    <p>Configure los valores esperados para cada campo HL7 en este proyecto</p>
+                </div>
+                <div class="header-badges">
+                    <button class="btn-action btn-ghost" style="font-size:0.82em;" onclick="limpiarPerfil()">🗑 Limpiar todo</button>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+
+            <div class="card">
+                <div class="card-title">🏷️ Identificación del Perfil</div>
+                <div class="grid-form-3">
+                    <div class="input-group">
+                        <label>Nombre del Proyecto / Sanatorio</label>
+                        <input type="text" id="profileName" placeholder="Ej: Hospital Italiano, Swiss Medical..." oninput="syncProfile()">
+                    </div>
+                    <div class="input-group">
+                        <label>Sistema Origen — MSH-3 (HIS)</label>
+                        <input type="text" id="profileHIS" placeholder="Ej: SAP, Dedalus, Tasy" style="font-family:monospace;" oninput="syncProfile()">
+                    </div>
+                    <div class="input-group">
+                        <label>Sistema Destino — MSH-5 (RIS)</label>
+                        <input type="text" id="profileRIS" placeholder="Ej: ESTENSARADIO" style="font-family:monospace;" oninput="syncProfile()">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    📐 Reglas de Validación de Campos
+                    <button class="btn-action" style="font-size:0.78em; padding:6px 12px;" onclick="agregarRegla()">+ Agregar regla</button>
+                </div>
+                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:14px;">
+                    Definí qué valor debe tener cada campo. Si <em>Valor Esperado</em> está vacío, solo se verifica que el campo exista.
+                    Podés separar alternativas con <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">|</code> (ej: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">SN|NW</code>).
+                </p>
+
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th style="width:110px;">Campo HL7</th>
+                            <th>Valor Esperado</th>
+                            <th>Descripción / Etiqueta</th>
+                            <th style="width:80px;">Nivel</th>
+                            <th style="width:40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rulesBody"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🔒 Campos Obligatorios</div>
+                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:10px;">Campos que nunca pueden estar vacíos para este perfil, independientemente de su valor.</p>
+                <div class="req-chips" id="reqChips"></div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                    <input type="text" id="newReqField" style="flex:1; background:#f8f9fa; border:1px solid #e1e4e8; color:var(--dark); padding:7px 10px; border-radius:4px; font-family:monospace; font-size:0.85em;" placeholder="MSH-3, PID-3, ORC-2..." onkeydown="if(event.key==='Enter')addReqField()">
+                    <button class="btn-action btn-ghost" onclick="addReqField()">Agregar</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="content" id="view-generator">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2>Simulador de Respuesta (RIS → HIS)</h2>
+                    <p>Genere mensajes de respuesta a partir del mensaje analizado</p>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+
+            <div class="alert-inline alert-warning" id="genAlert" style="display:none;">
+                ⚠️ <div>Analizá primero un mensaje ORM válido para que el simulador tome los datos del contexto (ORC-2, PID, OBR-4, etc.).</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚙️ Parámetros del Sistema RIS</div>
+                <div class="grid-form-auto">
+                    <div class="input-group">
+                        <label>Accession Number (RIS)</label>
+                        <input type="text" id="risAccession" value="RIS19519" style="font-family:monospace;">
+                    </div>
+                    <div class="input-group">
+                        <label>Médico / Operador RIS</label>
+                        <input type="text" id="risUser" value="ebitadmin" style="font-family:monospace;">
+                    </div>
+                    <div class="input-group">
+                        <label>Sending App (RIS) — MSH-3</label>
+                        <input type="text" id="risSendApp" value="ESTENSARADIO" style="font-family:monospace;">
+                    </div>
+                    <div class="input-group">
+                        <label>Sending Facility — MSH-4</label>
+                        <input type="text" id="risSendFac" value="ESTENSARADIO" style="font-family:monospace;">
+                    </div>
+                    <div class="input-group" style="grid-column: 1/-1;">
+                        <label>Texto del Informe (para ORU)</label>
+                        <input type="text" id="reportText" value="Estudio sin hallazgos patológicos relevantes. Integración verificada correctamente." style="font-family:monospace;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📤 Generar Mensaje de Respuesta</div>
+                <div class="btn-toolbar" style="margin-bottom:14px;">
+                    <button class="btn-action btn-success" onclick="generarRespuesta('EJECUCION')">⚙️ ORM — Ejecución (SC/CM)</button>
+                    <button class="btn-action btn-danger"  onclick="generarRespuesta('CANCELACION')">🛑 ORM — Cancelación (CA)</button>
+                    <button class="btn-action btn-purple"  onclick="generarRespuesta('INFORME')">📄 ORU — Informe + PDF</button>
+                </div>
+
+                <div style="position:relative; border:1px solid #e1e4e8; border-radius:6px; overflow:hidden;">
+                    <div style="background:#1e1e1e; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#5d6d7e; font-family:monospace; font-size:0.78em;">// Mensaje generado</span>
+                        <button class="btn-small btn-copy" onclick="copiarSalida()">📋 Copiar</button>
+                    </div>
+                    <textarea id="outHL7" class="hl7-output" readonly placeholder="// Presione un botón para generar el mensaje..."></textarea>
+                    <div class="out-meta" id="outMeta" style="display:none;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="content" id="view-workflow">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2>Análisis de Workflow & Integración</h2>
+                    <p>Defina los actores, secuencie los eventos, direcciones de flujo y genere la topología visual.</p>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+
+            <div class="card">
+                <div class="card-title">🖥️ 1. Definición de Sistemas (Actores)</div>
+                <div class="grid-form-3" style="align-items: end;">
+                    <div class="input-group">
+                        <label>Nombre del Sistema</label>
+                        <input type="text" id="wfActorName" placeholder="Ej: HIS (HOSPITAL)">
+                    </div>
+                    <div class="input-group">
+                        <label>Alias Técnico (sin espacios)</label>
+                        <input type="text" id="wfActorAlias" placeholder="Ej: HIS_HOSP">
+                    </div>
+                    <div class="input-group">
+                        <button class="btn-action" onclick="addWfActor()">+ Agregar Sistema</button>
+                    </div>
+                </div>
+                <table class="rules-table" style="margin-top: 10px;">
+                    <thead>
+                        <tr>
+                            <th>Nombre del Sistema</th>
+                            <th>Alias Técnico</th>
+                            <th style="width:40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="wfActorsBody">
+                        <tr id="wfActorsEmpty"><td colspan="3" style="text-align:center; color:#999;">No hay sistemas definidos</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⏱️ 2. Secuenciador de Eventos e Hitos</div>
+                
+                <div class="grid-form-auto" style="align-items: end; margin-bottom: 15px;">
+                    <div class="input-group">
+                        <label>Origen</label>
+                        <select id="wfEventSource"><option value="">-- Seleccione --</option></select>
+                    </div>
+                    <div class="input-group">
+                        <label>Dirección</label>
+                        <select id="wfEventDirection">
+                            <option value="->>">➔ Unidireccional</option>
+                            <option value="<<->>">↔ Bidireccional</option>
+                            <option value="-->>">⇢ Respuesta / ACK</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Destino</label>
+                        <select id="wfEventTarget"><option value="">-- Seleccione --</option></select>
+                    </div>
+                    <div class="input-group">
+                        <label>Conector (Mensaje)</label>
+                        <input type="text" id="wfEventMsg" placeholder="Ej: HL7 ADT^A04">
+                    </div>
+                    <div class="input-group">
+                        <label>Descripción del Evento</label>
+                        <input type="text" id="wfEventName" placeholder="Ej: Admisión" onkeydown="if(event.key==='Enter')saveWfEvent()">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                    <button class="btn-action" id="btnSaveEvent" onclick="saveWfEvent()">+ Agregar Evento al Flujo</button>
+                    <button class="btn-action btn-ghost" id="btnCancelEdit" style="display:none;" onclick="cancelEditEvent()">Cancelar Edición</button>
+                </div>
+                
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;">Ord</th>
+                            <th>Flujo (Origen → Destino)</th>
+                            <th>Conector / Mensaje</th>
+                            <th>Descripción (Trigger)</th>
+                            <th style="width:130px; text-align:right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wfEventsBody">
+                        <tr id="wfEventsEmpty"><td colspan="5" style="text-align:center; color:#999;">No hay eventos en la secuencia</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    📊 3. Diagrama de Secuencia
+                    <div>
+                        <button class="btn-action btn-success" onclick="generateDiagram()">🔄 Generar Diagrama</button>
+                        <button class="btn-action btn-purple" onclick="descargarDiagrama()" id="btnDownloadDiag" style="display:none;">📥 Descargar Imagen</button>
+                    </div>
+                </div>
+                <p style="font-size:0.82em; color:#7f8c8d;">Diagrama generado automáticamente a partir de la secuencia estructurada superior (Arquitectura basada en IHE).</p>
+                
+                <div class="mermaid-wrapper" id="mermaidContainer">
+                    <div style="color:#bdc3c7; font-style:italic; align-self: center;">Presione "Generar Diagrama" para visualizar el flujo.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="content" id="view-help">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2>ℹ️ Manual de Usuario y Ayuda (D.O.S.A.R)</h2>
+                    <p>Guía de uso de ARIS Tools para Arquitectos de Interoperabilidad</p>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+
+            <div class="alert-inline alert-info">
+                <strong>¡Hola! Soy ARIS.</strong> Esta herramienta web ha sido diseñada para optimizar los despliegues de interoperabilidad entre sistemas de información hospitalaria (HIS) y nuestro ecosistema (Suitestensa, Mindray, etc.).
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚡ 1. Analizador y Validador HL7</div>
+                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Este módulo es tu herramienta de campo ("Troubleshooting") para leer logs crudos.</p>
+                <ul class="help-list">
+                    <li><strong>Pegar Mensaje:</strong> Traé un mensaje crudo desde Mirth Connect o Rhapsody y pegalo en el cuadro de texto.</li>
+                    <li><strong>Analizar:</strong> Al procesarlo, el sistema construirá un <em>Árbol Semántico</em>, permitiéndote navegar por la estructura (ej. <code>PID-3</code>, <code>OBR-4</code>) sin perderte en los delimitadores (<code>|</code>, <code>^</code>, <code>~</code>).</li>
+                    <li><strong>Auditoría:</strong> El mensaje se cruzará con las reglas que hayas configurado en el "Perfil de Integración". Si falta un campo clave, se marcará en rojo.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚙️ 2. Perfil de Integración</div>
+                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Aquí definís las "Reglas de Negocio" particulares de la clínica o sanatorio.</p>
+                <ul class="help-list">
+                    <li><strong>Campos Obligatorios:</strong> Definí qué posiciones HL7 (ej. <code>ORC-2</code>) jamás pueden estar vacías.</li>
+                    <li><strong>Reglas de Validación:</strong> Agregá expectativas de mapeo. Si el HIS debe mandar un estado de orden, podés decirle que en el campo <code>ORC-1</code> espere los valores <code>SN|NW</code> (separados por barra vertical).</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📤 3. Simulador RIS → HIS</div>
+                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Ideal para la fase de pruebas (UAT) antes de configurar el motor de integración.</p>
+                <ul class="help-list">
+                    <li><strong>Contexto:</strong> Primero, analizá un mensaje válido en el <em>Analizador</em>. El simulador tomará de ahí el paciente y el identificador del pedido (Placer Order Number).</li>
+                    <li><strong>Generar Respuestas:</strong> Podés generar mensajes de retorno. Por ejemplo, simular que el tomógrafo terminó el estudio y enviar un <code>ORM (SC)</code> al HIS, o generar un reporte completo <code>ORU^R01</code> que incluye un PDF codificado en Base64 en el segmento <code>OBX-101</code>.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🔀 4. Diseñador de Flujos (Arquitectura)</div>
+                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Crea diagramas de secuencia basados en los perfiles IHE (Scheduled Workflow, PIR).</p>
+                <ul class="help-list">
+                    <li><strong>Definición de Actores:</strong> Creá las columnas de tu flujo (ej. <em>HIS, Mirth, Suitestensa, TC 64</em>) definiendo un Alias técnico sin espacios.</li>
+                    <li><strong>Secuenciador:</strong> Añadí eventos estableciendo <em>Origen</em> y <em>Destino</em>. Podés definir el sentido de la flecha:
+                        <ul>
+                            <li>➔ <strong>Unidireccional:</strong> Mensajes directos (ej. <code>ADT^A04</code>).</li>
+                            <li>↔ <strong>Bidireccional:</strong> Negociaciones o consultas síncronas (ej. <code>DICOM C-FIND</code>).</li>
+                            <li>⇢ <strong>Respuesta:</strong> Acuses de recibo (ej. <code>ACK</code>).</li>
+                        </ul>
+                    </li>
+                    <li><strong>Generación:</strong> El motor dibujará automáticamente la topología de red. Podés exportarla a PNG para tus presentaciones comerciales o técnicas.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-title">💾 Gestión de Proyectos (JSON)</div>
+                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">No pierdas tu trabajo. Guardá los perfiles y flujos como "Blueprints".</p>
+                <ul class="help-list">
+                    <li>Utilizá los botones del menú lateral <strong>Guardar (JSON)</strong> y <strong>Cargar (JSON)</strong>. Estos archivos contienen toda tu configuración de reglas y actores, permitiéndote retomar el relevamiento de un cliente (ej. <em>Hospital Italiano</em>) en cualquier momento, o compartirlo con otro ingeniero de soporte.</li>
+                </ul>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<div class="modal-overlay" id="modalNewProject">
+    <div class="modal-box">
+        <div class="modal-title">📄 Inicializar Nuevo Proyecto</div>
+        <p style="font-size:0.85em; color:#7f8c8d; margin-bottom:15px;">
+            Al crear un nuevo proyecto se limpiará el lienzo de trabajo actual. Por favor, ingresá los datos base de la integración.
+        </p>
+        
+        <div class="input-group">
+            <label>Nombre del Proyecto / Cliente</label>
+            <input type="text" id="modalProjName" placeholder="Ej: Sanatorio Los Arcos">
+        </div>
+        <div class="input-group">
+            <label>Sistema Origen (HIS)</label>
+            <input type="text" id="modalProjHIS" placeholder="Ej: SAP, Dedalus, Tasy">
+        </div>
+        <div class="input-group">
+            <label>Sistema Destino (RIS / PACS)</label>
+            <input type="text" id="modalProjRIS" value="ESTENSARADIO">
+        </div>
+        
+        <div class="btn-toolbar" style="margin-top: 20px; justify-content: flex-end;">
+            <button class="btn-action btn-ghost" onclick="closeNewProjectModal()">Cancelar</button>
+            <button class="btn-action" onclick="applyNewProject()">Crear Proyecto</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Inicializar Mermaid
+mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+// ==================== ESTADO GLOBAL ====================
+let parsedData = {};
+let auditLogs  = [];
+let validationRules = [];
+let requiredFields  = [];
+
+// Estado Workflow
+let wfActors = [];
+let wfEvents = [];
+let editingEventIndex = -1; 
+
+const blankPdf = "JVBERi0xLjAKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqIDIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iaiAzIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzIDNdPj5lbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmCjAwMDAwMDAwMTAgMDAwMDAgbgowMDAwMDAwMDUzIDAwMDAwIG4KMDAwMDAwMDEwMiAwMDAwMCBuCnRyYWlsZXI8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxNDkKJSVFT0YK";
+
+// ==================== NAVEGACIÓN ====================
+function switchView(viewId, btn) {
+    document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('view-' + viewId).classList.add('active');
+    if (btn) btn.classList.add('active');
+    if (viewId === 'generator') {
+        document.getElementById('genAlert').style.display = parsedData.orc2 ? 'none' : 'flex';
+    }
+}
+
+// ==================== UTILS ====================
+function getSegs(raw) {
+    return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+              .split('\n').map(l => l.trim()).filter(l => l.length > 0);
+}
+function getCampo(segs, seg, idx) {
+    const s = segs.find(l => l.startsWith(seg + '|'));
+    if (!s) return null;
+    const f = s.split('|');
+    return (seg === 'MSH') ? (f[idx - 1] || '') : (f[idx] || '');
+}
+function getFieldDynamic(segs, fieldStr) {
+    const m = fieldStr.match(/^([A-Z]{2,3})-(\d+)$/);
+    if (!m) return null;
+    return getCampo(segs, m[1], parseInt(m[2]));
+}
+function ts() {
+    const n = new Date();
+    return [n.getFullYear(), p2(n.getMonth()+1), p2(n.getDate()), p2(n.getHours()), p2(n.getMinutes()), p2(n.getSeconds())].join('');
+}
+function p2(n) { return n.toString().padStart(2,'0'); }
+function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8); return v.toString(16);
+    });
+}
+function esc(s) { return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ==================== ANÁLISIS HL7 ====================
+function analizarHL7() {
+    const raw = document.getElementById('hl7Input').value.trim();
+    if (!raw) { showToast('⚠️ Pegue un mensaje HL7 primero.'); return; }
+
+    const segs = getSegs(raw);
+    auditLogs = [];
+
+    document.getElementById('segCount').textContent = segs.length;
+
+    const msh9 = getCampo(segs, 'MSH', 9) || '';
+    const msgType = msh9.split('^')[0];
+
+    document.getElementById('msgTypeBadge').textContent = msh9 || '—';
+    document.getElementById('msgTypeBadge').style.display = msh9 ? '' : 'none';
+
+    parsedData = {
+        msh3: getCampo(segs, 'MSH', 3), msh4: getCampo(segs, 'MSH', 4),
+        msh9: msh9, msgType, pid: segs.find(s => s.startsWith('PID|')),
+        pv1: segs.find(s => s.startsWith('PV1|')), orc1: getCampo(segs, 'ORC', 1),
+        orc2: getCampo(segs, 'ORC', 2), orc4: getCampo(segs, 'ORC', 4),
+        orc17:getCampo(segs, 'ORC', 17), obr4: getCampo(segs, 'OBR', 4),
+    };
+
+    log('info', null, `Tipo detectado: <strong>${esc(msh9) || '(sin MSH-9)'}</strong> — ${segs.length} segmentos`);
+    const names = segs.map(s => s.split('|')[0]);
+    checkPresent(names, 'MSH', 'Encabezado del mensaje — crítico');
+    checkPresent(names, 'PID', 'Datos del paciente — crítico');
+
+    if (requiredFields.length > 0) {
+        requiredFields.forEach(campo => {
+            const val = getFieldDynamic(segs, campo);
+            if (val === null || val === '') log('error', campo, `Campo obligatorio del perfil <strong>vacío o ausente</strong>`);
+            else log('success', campo, `Presente: <span class="log-value">${esc(val.substring(0,70))}</span>`);
+        });
+    }
+
+    const activeRules = validationRules.filter(r => r.field);
+    if (activeRules.length > 0) {
+        activeRules.forEach(rule => {
+            const val = getFieldDynamic(segs, rule.field);
+            if (val === null) {
+                if (rule.level === 'error') log('error', rule.field, `Segmento no encontrado — ${esc(rule.desc || '')}`);
+                else log('warning', rule.field, `Segmento no encontrado`);
+                return;
+            }
+            if (rule.expected && rule.expected.trim() !== '') {
+                const opts = rule.expected.split('|').map(v => v.trim());
+                if (!opts.includes(val.trim())) {
+                    log(rule.level || 'error', rule.field, `${esc(rule.desc || 'Valor incorrecto')} — Esperado: <span class="log-expected">${esc(rule.expected)}</span> — Recibido: <span class="log-received">${esc(val || '(vacío)')}</span>`);
+                } else {
+                    log('success', rule.field, `${esc(rule.desc || 'OK')} — <span class="log-value">${esc(val)}</span>`);
+                }
+            } else {
+                if (!val || val.trim() === '') log('warning', rule.field, `${esc(rule.desc || '')} — vacío`);
+                else log('success', rule.field, `${esc(rule.desc || 'Campo presente')} — <span class="log-value">${esc(val.substring(0,70))}</span>`);
+            }
+        });
+    }
+
+    if (msgType === 'ORM') validarORM(segs);
+    else if (msgType === 'ORU') validarORU(segs);
+    else if (msgType === 'ADT') log('info', 'ADT', 'Mensaje ADT — se verifican PID/PV1');
+
+    renderReporte(); renderTree(segs);
+}
+
+function checkPresent(names, seg, desc) {
+    if (!names.includes(seg)) log('error', seg, `Segmento <strong>${seg}</strong> ausente — ${desc}`);
+    else log('success', seg, `Segmento <strong>${seg}</strong> presente`);
+}
+
+function validarORM(segs) {
+    const orc1 = getCampo(segs, 'ORC', 1), orc2 = getCampo(segs, 'ORC', 2), pid3 = getCampo(segs, 'PID', 3), obr4 = getCampo(segs, 'OBR', 4);
+    if (!orc1) log('error','ORC-1','ORC-1 vacío — tipo de orden requerido');
+    if (!orc2) log('error','ORC-2','ORC-2 vacío — Placer Order Number');
+    if (!pid3) log('error','PID-3','PID-3 vacío — ID del paciente');
+    if (!obr4) log('error','OBR-4','OBR-4 vacío — código del procedimiento');
+}
+
+function validarORU(segs) {
+    const obxSegs = segs.filter(s => s.startsWith('OBX|'));
+    if (!obxSegs.length) log('warning','OBX','Sin segmentos OBX (sin resultado/informe)');
+}
+
+function log(type, field, text) { auditLogs.push({ type, field, text }); }
+
+function renderReporte() {
+    const panel = document.getElementById('reportPanel'); panel.innerHTML = '';
+    const cnt = { success:0, warning:0, error:0, info:0 };
+    auditLogs.forEach(l => cnt[l.type]++);
+    panel.innerHTML = `<div class="audit-stats"><div class="stat-item"><div class="stat-dot" style="background:var(--success)"></div><strong>${cnt.success}</strong> OK</div><div class="stat-item"><div class="stat-dot" style="background:var(--warning)"></div><strong>${cnt.warning}</strong> Aviso</div><div class="stat-item"><div class="stat-dot" style="background:var(--danger)"></div><strong>${cnt.error}</strong> Error</div></div>`;
+    auditLogs.forEach(l => {
+        const div = document.createElement('div'); div.className = `result-item log-${l.type}`;
+        div.innerHTML = `${l.field ? `<span class="log-field">[${esc(l.field)}]</span> ` : ''}${l.text}`;
+        panel.appendChild(div);
+    });
+}
+
+function renderTree(segs) {
+    const c = document.getElementById('treeContainer'); c.innerHTML = '';
+    segs.forEach(seg => {
+        const campos = seg.split('|'), sn = campos[0];
+        const det = document.createElement('details'); det.className = 'seg-block';
+        if (['MSH','PID','ORC','OBR'].includes(sn)) det.open = true;
+        det.innerHTML = `<summary class="seg-sum"><span>${sn}</span><span class="seg-count">${campos.length-1} campos</span></summary>`;
+        let hasData = false;
+        for (let i = 1; i < campos.length; i++) {
+            if (!campos[i].trim()) continue;
+            const fi = (sn === 'MSH') ? i + 1 : i, key = `${sn}-${fi}`;
+            if (sn === 'MSH' && fi === 2) { addTreeRow(det, key, key, campos[i].trim(), false); hasData = true; continue; }
+            campos[i].split('~').forEach((rep, ri) => {
+                if (!rep.trim()) return;
+                const comps = rep.split('^'), repKey = key + (campos[i].split('~').length > 1 ? `[${ri+1}]` : '');
+                if (comps.length === 1) { addTreeRow(det, key, repKey, rep, false); hasData = true; }
+                else {
+                    const d2 = document.createElement('details'); d2.className = 'field-block'; d2.open = true;
+                    d2.innerHTML = `<summary class="field-sum"><span>${repKey}</span></summary>`;
+                    comps.forEach((comp, ci) => { if (comp.trim()) addTreeRow(d2, `↳ Comp ${ci+1}`, `${repKey}.${ci+1}`, comp, true); });
+                    det.appendChild(d2); hasData = true;
+                }
+            });
+        }
+        if (hasData) c.appendChild(det);
+    });
+}
+
+function addTreeRow(parent, label, exportKey, val, nested) {
+    const d = document.createElement('div'); d.className = nested ? 'tree-row nested' : 'tree-row';
+    d.innerHTML = `<div class="tr-idx" data-export="${esc(exportKey)}">${esc(label)}</div><div class="tr-val">${esc(val)}</div><div class="tr-tag"><input type="text" placeholder="Etiqueta..."></div>`;
+    parent.appendChild(d);
+}
+
+// ==================== PERFIL ====================
+function syncProfile() { document.getElementById('profileBadge').textContent = document.getElementById('profileName').value.trim() || 'Sin perfil'; }
+function agregarRegla(field='', expected='', desc='', level='error') {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="text" class="r-field" value="${esc(field)}" oninput="syncRules()"></td><td><input type="text" class="r-expected" value="${esc(expected)}" oninput="syncRules()"></td><td><input type="text" class="r-desc" value="${esc(desc)}" oninput="syncRules()"></td><td><select class="r-level" onchange="syncRules()"><option value="error" ${level==='error'?'selected':''}>🔴 Error</option><option value="warning" ${level==='warning'?'selected':''}>🟡 Aviso</option></select></td><td><button class="btn-table-action btn-delete" style="background:var(--danger);" onclick="this.closest('tr').remove(); syncRules()">✕</button></td>`;
+    document.getElementById('rulesBody').appendChild(tr); syncRules();
+}
+
+function agregarReglaUI(field, expected, desc, level) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="text" class="r-field" value="${esc(field)}" oninput="syncRules()"></td><td><input type="text" class="r-expected" value="${esc(expected)}" oninput="syncRules()"></td><td><input type="text" class="r-desc" value="${esc(desc)}" oninput="syncRules()"></td><td><select class="r-level" onchange="syncRules()"><option value="error" ${level==='error'?'selected':''}>🔴 Error</option><option value="warning" ${level==='warning'?'selected':''}>🟡 Aviso</option></select></td><td><button class="btn-table-action btn-delete" style="background:var(--danger);" onclick="this.closest('tr').remove(); syncRules()">✕</button></td>`;
+    document.getElementById('rulesBody').appendChild(tr);
+}
+
+function syncRules() {
+    validationRules = Array.from(document.querySelectorAll('#rulesBody tr')).map(tr => ({
+        field: tr.querySelector('.r-field').value.trim().toUpperCase(), expected: tr.querySelector('.r-expected').value.trim(),
+        desc: tr.querySelector('.r-desc').value.trim(), level: tr.querySelector('.r-level').value
+    }));
+}
+function addReqField() {
+    const v = document.getElementById('newReqField').value.trim().toUpperCase();
+    if (v && !requiredFields.includes(v)) { requiredFields.push(v); renderReqChips(); document.getElementById('newReqField').value=''; }
+}
+function removeReqField(f) { requiredFields = requiredFields.filter(x => x !== f); renderReqChips(); }
+function renderReqChips() {
+    document.getElementById('reqChips').innerHTML = requiredFields.map(f => `<span class="req-chip">${f} <span class="rm" onclick="removeReqField('${f}')">✕</span></span>`).join('');
+}
+function limpiarPerfil() { document.getElementById('profileName').value=''; document.getElementById('profileHIS').value=''; document.getElementById('profileRIS').value=''; document.getElementById('rulesBody').innerHTML=''; requiredFields=[]; renderReqChips(); syncProfile(); syncRules(); }
+
+// ==================== SIMULADOR ====================
+function generarRespuesta(tipo) {
+    const acc = document.getElementById('risAccession').value.trim(), user = document.getElementById('risUser').value.trim(), rpt = document.getElementById('reportText').value.trim(), sApp = document.getElementById('risSendApp').value.trim() || 'ESTENSARADIO', sFac = document.getElementById('risSendFac').value.trim() || 'ESTENSARADIO';
+    if (!acc) return showToast('⚠️ Ingrese un Accession Number.');
+    const now = ts(), id = uuid(), placer = parsedData.orc2 || 'PLACER_001', filler = `${acc}^${sApp}`, pid = parsedData.pid || 'PID|||UNKNOWN', pv1 = parsedData.pv1 || 'PV1||O', obr4 = parsedData.obr4 || 'CODE^PROCEDURE';
+    let msg;
+    if (tipo === 'INFORME') {
+        msg = [`MSH|^~\\&|${sApp}|${sFac}|HIS|HOSP|${now}||ORU^R01|${id}|P|2.5`, pid, pv1, `ORC||${placer}|${filler}||||||${now}`, `OBR|1|${placer}|${filler}|${obr4}|||||||||||||||||||||||&&${user}`, `OBX|1|TX|${obr4}|${acc}-1|\\.br\\${rpt}||||||F|||${now}`, `OBX|101|ED|${obr4}|${acc}-1|^multipart^Octet-stream^Base64^${blankPdf}||||||F|||${now}`].join('\r');
+    } else {
+        const o1 = tipo === 'EJECUCION' ? 'SC' : 'CA', o5 = tipo === 'EJECUCION' ? 'CM' : 'CA';
+        msg = [`MSH|^~\\&|${sApp}|${sFac}|HIS|HOSP|${now}||ORM^O01|${id}|P|2.5`, pid, pv1, `ORC|${o1}|${placer}|${filler}||${o5}||||${now}`, `OBR||${placer}|${filler}|${obr4}|||||||||||||||||||||||&&${user}`].join('\r');
+    }
+    document.getElementById('outHL7').value = msg; document.getElementById('outMeta').style.display = 'block'; document.getElementById('outMeta').textContent = `→ ${msg.split('\r').length} segs | ${tipo}`; showToast('✅ Mensaje generado');
+}
+
+// ==================== EXPORT & UTILS ====================
+function exportarCSV() {
+    let csv = '\uFEFFIndice HL7,Valor,Etiqueta de Mapeo\n';
+    document.querySelectorAll('.tree-row').forEach(r => csv += `"${r.querySelector('.tr-idx').getAttribute('data-export')||''}","${(r.querySelector('.tr-val').textContent||'').replace(/"/g,'""')}","${(r.querySelector('input').value||'').replace(/,/g,'-').trim()}"\n`);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })); a.download = `Diccionario_HL7.csv`; a.click();
+}
+function copiarReporte() { navigator.clipboard.writeText(auditLogs.map(l => `[${l.type.toUpperCase()}] ${l.text.replace(/<[^>]+>/g,'')}`).join('\n')).then(() => showToast('📋 Copiado')); }
+function copiarSalida() { navigator.clipboard.writeText(document.getElementById('outHL7').value).then(() => showToast('📋 Copiado')); }
+function clearAll() { document.getElementById('hl7Input').value=''; document.getElementById('reportPanel').innerHTML='<div class="empty-state">Pegue un mensaje y presione <strong>Analizar</strong></div>'; document.getElementById('treeContainer').innerHTML=''; parsedData={}; auditLogs=[]; }
+function cargarEjemplo() { document.getElementById('hl7Input').value = `MSH|^~\\&|HIS_HOSPITAL|HOSPITAL|ESTENSARADIO|ESTENSARADIO|20240315143022||ORM^O01|MSG001|P|2.5\nPID|||DNI12345678^^^RENAPER^MR||García^María\nORC|SN|HIS-001\nOBR|||HIS-001|RX.TX.AP^RADIOGRAFIA TORAX`; showToast('📄 Ejemplo cargado'); }
+let toastTimer; function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 2600); }
+
+// ==================== MÓDULO 4: WORKFLOW & INTEGRATION ====================
+
+function renderWfActors() {
+    const tbody = document.getElementById('wfActorsBody');
+    const s1 = document.getElementById('wfEventSource'), s2 = document.getElementById('wfEventTarget');
+    tbody.innerHTML = ''; s1.innerHTML = '<option value="">-- Seleccione --</option>'; s2.innerHTML = '<option value="">-- Seleccione --</option>';
+    
+    if (wfActors.length === 0) {
+        tbody.innerHTML = '<tr id="wfActorsEmpty"><td colspan="3" style="text-align:center; color:#999;">No hay sistemas definidos</td></tr>';
+        return;
+    }
+    
+    wfActors.forEach((a, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><strong>${esc(a.name)}</strong></td><td style="font-family:monospace; color:var(--primary);">${esc(a.alias)}</td><td><button class="btn-table-action btn-delete" style="background:var(--danger);" onclick="removeWfActor(${i})">✕</button></td>`;
+        tbody.appendChild(tr);
+        s1.innerHTML += `<option value="${esc(a.alias)}">${esc(a.name)}</option>`;
+        s2.innerHTML += `<option value="${esc(a.alias)}">${esc(a.name)}</option>`;
+    });
+}
+
+function addWfActor() {
+    const n = document.getElementById('wfActorName'), a = document.getElementById('wfActorAlias');
+    const name = n.value.trim(), alias = a.value.trim().replace(/\s+/g, '_').toUpperCase();
+    if (!name || !alias) return showToast('⚠️ Complete Nombre y Alias');
+    wfActors.push({ name, alias }); n.value = ''; a.value = ''; renderWfActors();
+}
+
+function removeWfActor(idx) { wfActors.splice(idx, 1); renderWfActors(); }
+
+function renderWfEvents() {
+    const tbody = document.getElementById('wfEventsBody');
+    tbody.innerHTML = '';
+    
+    if (wfEvents.length === 0) {
+        tbody.innerHTML = '<tr id="wfEventsEmpty"><td colspan="5" style="text-align:center; color:#999;">No hay eventos en la secuencia</td></tr>';
+        return;
+    }
+    
+    wfEvents.forEach((e, i) => {
+        const tr = document.createElement('tr');
+        
+        let dirVisual = '➔';
+        let dirColor = 'var(--primary)';
+        if(e.dir === '<<->>') { dirVisual = '↔'; dirColor = 'var(--warning)'; }
+        if(e.dir === '-->>') { dirVisual = '⇢'; dirColor = 'var(--success)'; }
+
+        tr.innerHTML = `<td style="font-weight:bold; color:#7f8c8d;">${i+1}</td>
+                        <td style="font-family:monospace;">${esc(e.source)} <span style="color:${dirColor}; font-weight:bold;">${dirVisual}</span> ${esc(e.target)}</td>
+                        <td style="font-weight:bold; color:var(--purple);">${esc(e.msg)}</td>
+                        <td>${esc(e.name)}</td>
+                        <td style="text-align: right; min-width: 140px;">
+                            <button class="btn-table-action" onclick="moveWfEvent(${i}, -1)" ${i === 0 ? 'disabled' : ''}>▲</button>
+                            <button class="btn-table-action" onclick="moveWfEvent(${i}, 1)" ${i === wfEvents.length - 1 ? 'disabled' : ''}>▼</button>
+                            <button class="btn-table-action" style="background:var(--primary);" onclick="editWfEvent(${i})">✎</button>
+                            <button class="btn-table-action btn-delete" style="background:var(--danger);" onclick="removeWfEvent(${i})">✕</button>
+                        </td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function saveWfEvent() {
+    const source = document.getElementById('wfEventSource').value;
+    const target = document.getElementById('wfEventTarget').value;
+    const dir = document.getElementById('wfEventDirection').value;
+    const msg = document.getElementById('wfEventMsg').value.trim();
+    const name = document.getElementById('wfEventName').value.trim();
+    
+    if (!source || !target || !msg || !name) return showToast('⚠️ Complete todos los campos del evento');
+    if (source === target && dir !== '<<->>') return showToast('⚠️ Origen y destino coinciden. Use bidireccional si es un bucle.');
+    
+    if (editingEventIndex >= 0) {
+        wfEvents[editingEventIndex] = { source, target, dir, msg, name };
+        cancelEditEvent(); // Resetea UI
+        showToast('✅ Evento actualizado');
+    } else {
+        wfEvents.push({ source, target, dir, msg, name });
+        showToast('✅ Evento agregado');
+    }
+    
+    document.getElementById('wfEventMsg').value = '';
+    document.getElementById('wfEventName').value = '';
+    document.getElementById('wfEventDirection').value = '->>';
+    renderWfEvents();
+}
+
+function editWfEvent(idx) {
+    const e = wfEvents[idx];
+    document.getElementById('wfEventSource').value = e.source;
+    document.getElementById('wfEventTarget').value = e.target;
+    document.getElementById('wfEventDirection').value = e.dir || '->>';
+    document.getElementById('wfEventMsg').value = e.msg;
+    document.getElementById('wfEventName').value = e.name;
+    
+    editingEventIndex = idx;
+    const btnSave = document.getElementById('btnSaveEvent');
+    btnSave.textContent = '💾 Guardar Cambios';
+    btnSave.classList.add('btn-warning');
+    document.getElementById('btnCancelEdit').style.display = 'inline-flex';
+}
+
+function cancelEditEvent() {
+    editingEventIndex = -1;
+    document.getElementById('wfEventMsg').value = '';
+    document.getElementById('wfEventName').value = '';
+    document.getElementById('wfEventDirection').value = '->>';
+    
+    const btnSave = document.getElementById('btnSaveEvent');
+    btnSave.textContent = '+ Agregar Evento al Flujo';
+    btnSave.classList.remove('btn-warning');
+    document.getElementById('btnCancelEdit').style.display = 'none';
+}
+
+function moveWfEvent(idx, offset) {
+    if (idx + offset < 0 || idx + offset >= wfEvents.length) return;
+    const temp = wfEvents[idx];
+    wfEvents[idx] = wfEvents[idx + offset];
+    wfEvents[idx + offset] = temp;
+    renderWfEvents();
+}
+
+function removeWfEvent(idx) {
+    if(editingEventIndex === idx) cancelEditEvent();
+    wfEvents.splice(idx, 1);
+    renderWfEvents();
+}
+
+async function generateDiagram() {
+    if (wfActors.length === 0 || wfEvents.length === 0) {
+        return showToast('⚠️ Defina actores y eventos primero.');
+    }
+
+    let code = 'sequenceDiagram\nautonumber\n';
+    
+    // Declarar participantes
+    wfActors.forEach(a => {
+        code += `participant ${a.alias} as ${a.name}\n`;
+    });
+    
+    // Declarar mensajes
+    wfEvents.forEach(e => {
+        const arrow = e.dir || '->>';
+        code += `${e.source}${arrow}${e.target}: ${e.msg} (${e.name})\n`;
+    });
+
+    const container = document.getElementById('mermaidContainer');
+    container.innerHTML = `<div class="mermaid">${code}</div>`;
+    
+    try {
+        await mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+        showToast('✅ Diagrama generado con éxito');
+        document.getElementById('btnDownloadDiag').style.display = 'inline-flex';
+    } catch (err) {
+        container.innerHTML = `<div style="color:var(--danger); padding:20px;">Error al generar diagrama: ${err.message}</div>`;
+        document.getElementById('btnDownloadDiag').style.display = 'none';
+    }
+}
+
+function descargarDiagrama() {
+    const svg = document.querySelector('#mermaidContainer svg');
+    if (!svg) return showToast('⚠️ No hay diagrama para descargar');
+
+    // Forzar fondo blanco para evitar problemas de transparencia en PNG
+    svg.style.backgroundColor = '#ffffff';
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    // Multiplicador para alta resolución (HD)
+    const scale = 2;
+    const bbox = svg.getBoundingClientRect();
+    canvas.width = bbox.width * scale;
+    canvas.height = bbox.height * scale;
+
+    img.onload = function() {
+        // Pintar fondo blanco
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, bbox.width, bbox.height);
+        
+        const a = document.createElement('a');
+        a.download = `Flujo_Integracion_ARIS_${ts()}.png`;
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+        
+        showToast('📥 Imagen descargada con éxito');
+    };
+
+    const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+    img.src = URL.createObjectURL(blob);
+}
+
+// ==================== GESTIÓN DE PROYECTOS ====================
+
+function openNewProjectModal() {
+    document.getElementById('modalNewProject').style.display = 'flex';
+}
+
+function closeNewProjectModal() {
+    document.getElementById('modalNewProject').style.display = 'none';
+}
+
+function applyNewProject() {
+    const pName = document.getElementById('modalProjName').value.trim();
+    const pHIS = document.getElementById('modalProjHIS').value.trim();
+    const pRIS = document.getElementById('modalProjRIS').value.trim();
+    
+    if (!pName) return showToast('⚠️ El nombre del proyecto es obligatorio');
+
+    // 1. Limpiar todo el entorno
+    clearAll();
+    limpiarPerfil();
+    wfActors = [];
+    wfEvents = [];
+    renderWfActors();
+    renderWfEvents();
+    cancelEditEvent();
+    document.getElementById('btnDownloadDiag').style.display = 'none';
+    document.getElementById('mermaidContainer').innerHTML = '<div style="color:#bdc3c7; font-style:italic; align-self: center;">Presione "Generar Diagrama" para visualizar el flujo.</div>';
+
+    // 2. Inyectar datos en el perfil
+    document.getElementById('profileName').value = pName;
+    document.getElementById('profileHIS').value = pHIS;
+    document.getElementById('profileRIS').value = pRIS || 'ESTENSARADIO';
+    syncProfile();
+
+    // 3. Cerrar modal y avisar
+    closeNewProjectModal();
+    showToast('🚀 Proyecto creado: ' + pName);
+
+    // 4. Cambiar a la vista del perfil para que vea los datos cargados
+    switchView('profile', document.querySelectorAll('.nav-btn')[1]);
+}
+
+function exportProject() {
+    const projName = document.getElementById('profileName').value.trim() || 'Proyecto_ARIS';
+    const data = {
+        metadata: {
+            name: projName,
+            sourceHIS: document.getElementById('profileHIS').value.trim(),
+            targetRIS: document.getElementById('profileRIS').value.trim(),
+            exportDate: new Date().toISOString(),
+            version: "1.0"
+        },
+        hl7Profile: {
+            requiredFields: requiredFields,
+            validationRules: validationRules
+        },
+        workflow: {
+            actors: wfActors,
+            events: wfEvents
+        }
+    };
+    
+    const jsonStr = JSON.stringify(data, null, 4);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${projName.replace(/\s+/g, '_')}_${ts()}.json`;
+    a.click();
+    showToast('💾 Proyecto exportado con éxito');
+}
+
+function importProject(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            const data = JSON.parse(evt.target.result);
+            
+            // 1. Cargar Metadata (Perfil)
+            document.getElementById('profileName').value = data.metadata?.name || '';
+            document.getElementById('profileHIS').value = data.metadata?.sourceHIS || '';
+            document.getElementById('profileRIS').value = data.metadata?.targetRIS || '';
+            syncProfile();
+
+            // 2. Cargar Reglas HL7
+            document.getElementById('rulesBody').innerHTML = '';
+            validationRules = data.hl7Profile?.validationRules || [];
+            validationRules.forEach(r => agregarReglaUI(r.field, r.expected, r.desc, r.level));
+            
+            requiredFields = data.hl7Profile?.requiredFields || [];
+            renderReqChips();
+
+            // 3. Cargar Workflow
+            wfActors = data.workflow?.actors || [];
+            wfEvents = data.workflow?.events || [];
+            renderWfActors();
+            renderWfEvents();
+            cancelEditEvent();
+            document.getElementById('btnDownloadDiag').style.display = 'none';
+            document.getElementById('mermaidContainer').innerHTML = '<div style="color:#bdc3c7; font-style:italic; align-self: center;">Presione "Generar Diagrama" para visualizar el flujo.</div>';
+
+            showToast(`📂 Proyecto "${data.metadata?.name || 'Importado'}" cargado exitosamente`);
+            switchView('profile', document.querySelectorAll('.nav-btn')[1]);
+            
+        } catch (err) {
+            showToast('❌ Error al leer el archivo JSON: formato inválido');
+            console.error(err);
+        }
+        // Reset input
+        document.getElementById('importFile').value = '';
+    };
+    reader.readAsText(file);
+}
+
+// Inicialización: Limpiamos todo al arrancar para tener un lienzo 100% en blanco.
+limpiarPerfil();
+
+</script>
+</body>
+</html>

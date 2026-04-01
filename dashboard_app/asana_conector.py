@@ -17,6 +17,15 @@ FOLLOWERS_GIDS     = os.environ.get("FOLLOWERS_GIDS", "").split(",")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("asana-conector")
 
+# ==========================================
+# 🛡️ CIRCUIT BREAKER: Bandera global de estado
+# ==========================================
+ASANA_ENABLED = bool(ASANA_ACCESS_TOKEN)
+
+if not ASANA_ENABLED:
+    logger.warning("⚠️ ASANA_ACCESS_TOKEN no encontrado. La integración con Asana está deshabilitada.")
+
+
 def _obtener_icono(nivel):
     """Devuelve el icono de semáforo según el nivel de alerta."""
     if nivel == "CRITICAL": return "🔴"
@@ -27,6 +36,10 @@ def _obtener_icono(nivel):
 
 def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_project_gid=None):
     """Crea una tarea nueva con el nivel correspondiente."""
+    # 🛡️ Cortocircuito
+    if not ASANA_ENABLED:
+        return None
+
     configuration = asana.Configuration()
     configuration.access_token = ASANA_ACCESS_TOKEN
     api_client = asana.ApiClient(configuration)
@@ -74,7 +87,9 @@ Asignada automáticamente por TecnoMonitor."""
 
 def actualizar_tarea_asana(task_gid, hospital_id, tipo, nivel, mensaje_detalle, reabrir=False):
     """Actualiza título, comenta y opcionalmente reabre una tarea existente."""
-    if not task_gid: return
+    # 🛡️ Cortocircuito
+    if not ASANA_ENABLED or not task_gid: 
+        return
 
     configuration = asana.Configuration()
     configuration.access_token = ASANA_ACCESS_TOKEN
@@ -105,7 +120,9 @@ def actualizar_tarea_asana(task_gid, hospital_id, tipo, nivel, mensaje_detalle, 
 
 def cerrar_tarea_asana(task_gid, hospital_id, tipo, fecha_fin):
     """Marca la tarea como normalizada (Verde) y la completa."""
-    if not task_gid: return
+    # 🛡️ Cortocircuito
+    if not ASANA_ENABLED or not task_gid: 
+        return
 
     configuration = asana.Configuration()
     configuration.access_token = ASANA_ACCESS_TOKEN
@@ -128,7 +145,8 @@ def cerrar_tarea_asana(task_gid, hospital_id, tipo, fecha_fin):
 
 def adjuntar_pdf_a_tarea(task_gid, pdf_bytes, filename):
     """Sube un archivo PDF en memoria a una tarea de Asana."""
-    if not task_gid: 
+    # 🛡️ Cortocircuito
+    if not ASANA_ENABLED or not task_gid: 
         return None
     
     url = f"https://app.asana.com/api/1.0/tasks/{task_gid}/attachments"
@@ -155,7 +173,12 @@ def adjuntar_pdf_a_tarea(task_gid, pdf_bytes, filename):
         return None
 
 def notificar_solicitud_acceso(email, nombre, apellido, motivo):
-    """Crea una tarea en Asana para la solicitud de un nuevo usuario (sin colaboradores por ahora)."""
+    """Crea una tarea en Asana para la solicitud de un nuevo usuario."""
+    # 🛡️ Cortocircuito
+    if not ASANA_ENABLED:
+        logger.error("No se pudo enviar solicitud de acceso: Asana deshabilitado.")
+        return False
+
     configuration = asana.Configuration()
     configuration.access_token = ASANA_ACCESS_TOKEN
     api_client = asana.ApiClient(configuration)

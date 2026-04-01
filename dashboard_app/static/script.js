@@ -4,6 +4,47 @@
 const EXCLUDED_AETS = ['CLIENT', 'WADO', 'PACS' ];
 const EXCLUDED_MODS = ['DOC'];
 
+let mapDashInstance = null;
+let mapDashMarkers = null;
+let currentDashMapFilter = 'all';
+
+// --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
+async function authFetch(url, options = {}) {
+    // 1. Preparamos las opciones de la petición
+    const fetchOptions = {
+        ...options,
+        // 🛡️ CRÍTICO: 'include' obliga al navegador a adjuntar la cookie 
+        // automáticamente en cada petición, incluso si cambia de subdominio.
+        credentials: 'include', 
+        headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {})
+        }
+    };
+
+    try {
+        // 2. Ejecutamos la petición al backend
+        const response = await fetch(url, fetchOptions);
+
+        // 3. Control de Seguridad Centralizado
+        // Si el backend devuelve un 401 (Unauthorized), significa que la 
+        // cookie expiró, fue alterada, o el usuario fue desactivado en la BD.
+        if (response.status === 401) {
+            console.warn("Acceso denegado o sesión expirada. Redirigiendo...");
+            sessionStorage.clear(); // Limpiamos datos visuales (nombre, rol)
+            window.location.href = '/'; // Expulsamos al usuario al login
+            throw new Error('Sesión expirada.');
+        }
+
+        // 4. Si todo está OK, devolvemos la respuesta normal
+        return response;
+
+    } catch (error) {
+        console.error("Error de red en authFetch:", error);
+        throw error; // Propagamos el error para que la vista lo maneje (ej: mostrar un toast)
+    }
+}
+
 let currentHospitalId = null;
 let currentHistoryData = [];      // Datos de Infraestructura
 let currentKpiHistoryData = [];   // Datos de Software/KPIs
@@ -24,6 +65,8 @@ let tourInterval = null;
 let currentMapFilter = 'all';
 let listaHospitalesCache = [];
 
+let wsAlertas;
+
 const HTML_MODAL_PDF_ORIGINAL = `
     <h3 style="margin-top:0; color:#2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px;">Configurar Reporte PDF</h3>
     
@@ -39,12 +82,31 @@ const HTML_MODAL_PDF_ORIGINAL = `
     </div>
 
     <div class="input-group" style="margin-bottom: 15px;">
-        <label style="font-weight: 600; color: #7f8c8d;">Alcance del Reporte</label>
-        <select id="pdf-export-scope" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; background: #fdfdfd; color: #2c3e50; font-size: 1em;">
-            <option value="total">Total (RIS + PACS)</option>
-            <option value="ris">Solo RIS (Órdenes e Informes)</option>
-            <option value="pacs">Solo PACS (Imágenes Almacenadas)</option>
-        </select>
+        <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">Tipo de Reporte</label>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8f9fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #e1e4e8;">
+                <input type="radio" name="pdf_tipo" id="pdf-type-clinico" value="clinico" checked style="width: 16px; height: 16px; accent-color: #e74c3c; cursor: pointer; margin: 0;" onchange="document.getElementById('pdf-scope-container').style.display='block'">
+                <span style="font-weight: 600; color: #2c3e50; font-size: 0.9em;">📊 Reporte de Uso Clínico (RIS/PACS)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8f9fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #e1e4e8;">
+                <input type="radio" name="pdf_tipo" id="pdf-type-infra" value="infra" style="width: 16px; height: 16px; accent-color: #e74c3c; cursor: pointer; margin: 0;" onchange="document.getElementById('pdf-scope-container').style.display='none'">
+                <span style="font-weight: 600; color: #2c3e50; font-size: 0.9em;">🖥️ Reporte de Salud de Infraestructura (IT)</span>
+            </label>
+        </div>
+    </div>
+
+    <div id="pdf-scope-container" class="input-group" style="margin-bottom: 15px;">
+        <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">Alcance del Reporte</label>
+        <div style="display: flex; gap: 15px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8f9fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #e1e4e8; flex: 1;">
+                <input type="checkbox" id="pdf-scope-ris" checked style="width: 16px; height: 16px; accent-color: #e74c3c; cursor: pointer; margin: 0;">
+                <span style="font-weight: 600; color: #2c3e50; font-size: 0.9em;">RIS (Órdenes e Informes)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8f9fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #e1e4e8; flex: 1;">
+                <input type="checkbox" id="pdf-scope-pacs" checked style="width: 16px; height: 16px; accent-color: #e74c3c; cursor: pointer; margin: 0;">
+                <span style="font-weight: 600; color: #2c3e50; font-size: 0.9em;">PACS (Imágenes)</span>
+            </label>
+        </div>
     </div>
 
     <div class="input-group" style="margin-bottom: 20px;">
@@ -82,11 +144,21 @@ document.addEventListener('DOMContentLoaded', () => {
         Chart.defaults.color = '#666';
     }
 
+    // Limpieza agresiva del buscador por si el navegador lo autocompleta
+    const searchInput = document.getElementById('filter-hospital');
+    if (searchInput) {
+        searchInput.value = '';
+        setTimeout(() => { searchInput.value = ''; }, 500);
+    }
+
     // 3. Carga Inicial y Ruteo
     cargarConfiguracionGlobal().then(() => { 
         const params = new URLSearchParams(window.location.search);
         const hospId = params.get('hospital');
         if (hospId) verDetalle(hospId); else cargarDatos(); 
+        
+        // INICIALIZAR EL NUEVO MAPA DEL DASHBOARD
+        initMapaDashboard();
     });
 
     cargarListaHospitalesIA();
@@ -94,13 +166,12 @@ document.addEventListener('DOMContentLoaded', () => {
         cambiarTipoProcesamiento('pdf');
     }, 50);
     
-    // 4. Intervalos de Refresco (Solo si la vista está activa)
+    // 4. Intervalos de Refresco
     setInterval(() => { if(document.getElementById('view-dashboard').classList.contains('active')) cargarDatos(); }, 30000);
     setInterval(() => { if(document.getElementById('view-mapa').classList.contains('active')) cargarDatosMapa(); }, 60000);
-    setInterval(() => { if(document.getElementById('view-alertas').classList.contains('active')) cargarAlertas(); }, 15000);
     
-    chequearAlertasBackground(); 
-    setInterval(chequearAlertasBackground, 30000); 
+    initWebSocket();
+    chequearAlertasBackground();
 
     // 5. Filtros Listeners
     document.querySelectorAll('.dash-toggle-btn').forEach(btn => {
@@ -120,18 +191,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // NUEVO: Listeners para el mapa del Resumen Ejecutivo
+    document.querySelectorAll('.dash-map-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.dash-map-toggle-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentDashMapFilter = this.getAttribute('data-map-status');
+            renderizarMarcadoresDash(); 
+        });
+    });
 });
 
 // --- GESTIÓN DE ALERTAS EN SEGUNDO PLANO ---
 async function chequearAlertasBackground() {
     try {
-        const res = await fetch('/api/alertas');
+        const res = await authFetch('/api/alertas');
         const data = await res.json();
         const hayAlertasActivas = data.activas && data.activas.length > 0;
         actualizarBotonAlertas(hayAlertasActivas);
     } catch(e) {
         console.error("Error chequeando alertas en background:", e);
     }
+}
+
+function initWebSocket() {
+    // Construimos la URL del WS dinámicamente según el entorno (http/https)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    wsAlertas = new WebSocket(`${protocol}//${window.location.host}/ws/alertas`);
+    
+    wsAlertas.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'ALERTA_UPDATE') {
+            console.log("Notificación push recibida: Actualizando alertas...");
+            
+            // 1. Actualizamos la campanita roja en el menú
+            chequearAlertasBackground(); 
+            
+            // 2. Si el usuario está justo en la pestaña de alertas, recargamos la tabla para que vea el cambio
+            if (document.getElementById('view-alertas').classList.contains('active')) {
+                cargarAlertas();
+            }
+        }
+    };
+    
+    wsAlertas.onclose = function(e) {
+        console.log("WebSocket cerrado. Reconectando en 5 segundos...");
+        setTimeout(initWebSocket, 5000); // Reconexión automática si se corta internet
+    };
 }
 
 function actualizarBotonAlertas(activar) {
@@ -164,18 +271,18 @@ function toggleSidebar() {
 // --- SISTEMA DE NAVEGACIÓN ---
 // ==========================================
 function navegar(idVista, idBoton, btnMobile) {
-    // Visibilidad de Vistas
+    // 1. Visibilidad de Vistas
     document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
     const vistaDestino = document.getElementById(idVista);
     if (vistaDestino) vistaDestino.classList.add('active');
 
-    // Persistencia de URL
+    // 2. Persistencia de URL
     const url = new URL(window.location);
     if (idVista === 'view-detalle' && currentHospitalId) url.searchParams.set('hospital', currentHospitalId);
     else url.searchParams.delete('hospital');
     window.history.pushState({}, '', url);
 
-    // Resaltar Botones
+    // 3. Resaltar Botones
     if (idBoton) {
         document.querySelectorAll('.sidebar-right .nav-btn').forEach(btn => btn.classList.remove('active'));
         const btn = document.getElementById(idBoton);
@@ -186,11 +293,41 @@ function navegar(idVista, idBoton, btnMobile) {
         btnMobile.classList.add('active');
     }
 
-    // Fixes específicos
-    if (idVista === 'view-mapa' && mapInstance) setTimeout(() => mapInstance.invalidateSize(), 200);
+    // 4. Fixes específicos de redimensionamiento de mapas (Leaflet)
+    if (idVista === 'view-mapa' && typeof mapInstance !== 'undefined' && mapInstance) {
+        setTimeout(() => mapInstance.invalidateSize(), 200);
+    }
+    if (idVista === 'view-resumen' && typeof mapDashInstance !== 'undefined' && mapDashInstance) {
+        setTimeout(() => mapDashInstance.invalidateSize(), 200);
+    }
+    
+    // Otros fixes de vistas específicas
     if (idVista === 'view-ia') renderizarHistorial();
 
-    // Auto-cierre de Sidebar en Mobile
+    // 5. APAGADO DE RECORRIDOS (Tours)
+    // Detener el tour del mapa principal si salimos de su vista
+    if (idVista !== 'view-mapa' && typeof tourInterval !== 'undefined' && tourInterval) {
+        clearInterval(tourInterval);
+        tourInterval = null;
+        const btnTour = document.getElementById('btn-tour');
+        if (btnTour) {
+            btnTour.innerHTML = "▶ INICIAR RECORRIDO";
+            btnTour.classList.remove('active');
+        }
+    }
+
+    // Detener el tour del mapa del Dashboard si salimos de su vista
+    if (idVista !== 'view-resumen' && typeof tourDashInterval !== 'undefined' && tourDashInterval) {
+        clearInterval(tourDashInterval);
+        tourDashInterval = null;
+        const btnTourDash = document.getElementById('btn-tour-dash');
+        if (btnTourDash) {
+            btnTourDash.innerHTML = "▶ INICIAR RECORRIDO";
+            btnTourDash.classList.remove('active');
+        }
+    }
+
+    // 6. Auto-cierre de Sidebar en Mobile
     const sidebar = document.getElementById('sidebar');
     if (window.innerWidth <= 768 && sidebar) sidebar.classList.add('collapsed');
     
@@ -206,7 +343,7 @@ function volverAlDashboard() {
 // --- CONFIGURACIÓN GLOBAL ---
 async function cargarConfiguracionGlobal() {
     try {
-        const res = await fetch('/api/config');
+        const res = await authFetch('/api/config');
         const data = await res.json();
         limitOfflineMinutes = parseInt(data.offline_minutes);
     } catch (e) { console.error(e); }
@@ -214,7 +351,7 @@ async function cargarConfiguracionGlobal() {
 
 async function cargarConfigUI() {
     try {
-        const res = await fetch('/api/config');
+        const res = await authFetch('/api/config');
         const data = await res.json();
         
         document.getElementById('conf-offline').value = data.offline_minutes;
@@ -254,7 +391,7 @@ async function guardarConfig() {
         enable_raid: document.getElementById('check-raid').checked
     };
     try {
-        await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        await authFetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         limitOfflineMinutes = payload.offline_minutes; 
         alert("✅ Configuración guardada correctamente");
     } catch (e) { alert("Error guardando configuración"); }
@@ -289,7 +426,7 @@ async function cargarDatos() {
     }
 
     try {
-        const response = await fetch('/api/resumen-hospitales');
+        const response = await authFetch('/api/resumen-hospitales');
         const data = await response.json();
         
         // Una vez que llegan los datos, renderizarTabla borra el loader y dibuja los resultados
@@ -308,24 +445,35 @@ function renderizarTabla(data) {
     tbody.innerHTML = '';
     const ahora = new Date();
 
+    actualizarResumenDashboard(data);
+
     data.forEach(h => {
         const diffMinutos = Math.floor((ahora - new Date(h.timestamp)) / 60000); 
         let fechaVisual = h.timestamp; 
-        try { const p = h.timestamp.split(' '); if(p.length === 2) { const [f,time] = p; const [y,m,d] = f.split('-'); fechaVisual = `${d}/${m}/${y} ${time.substring(0,5)}`; } } catch(e){}
+        try { 
+            const p = h.timestamp.split(' '); 
+            if(p.length === 2) { 
+                const [f,time] = p; 
+                const [y,m,d] = f.split('-'); 
+                fechaVisual = `${d}/${m}/${y} ${time.substring(0,5)}`; 
+            } 
+        } catch(e){}
 
-        let estadoClass = '', estadoTexto = h.status, rowColorClass = '';
-        if (diffMinutos > limitOfflineMinutes) { 
-            estadoClass = 'status-offline'; estadoTexto = 'Offline'; rowColorClass = 'row-status-danger';
+        // --- LÓGICA ESTRICTA BINARIA (Solo tiempo) ---
+        let estadoClass = '', estadoTexto = '', rowColorClass = '';
+        
+        // Si el reporte entró dentro del tiempo permitido (y no es NaN por un error de fecha)
+        if (!isNaN(diffMinutos) && diffMinutos <= limitOfflineMinutes) { 
+            estadoClass = 'status-online'; 
+            estadoTexto = 'Online'; 
+            rowColorClass = 'row-status-success';
         } else {
-            switch (h.status) {
-                case 'Online': case 'Parcial': case 'Solo VMs':
-                    estadoClass = 'status-online'; rowColorClass = 'row-status-success'; break;
-                case 'Warning':
-                    estadoClass = 'status-warning'; rowColorClass = 'row-status-warning'; break;
-                default:
-                    estadoClass = 'status-offline'; rowColorClass = 'row-status-danger';
-            }
+            // Si superó el tiempo (ej: más de 10 min) o la fecha es inválida (NaN)
+            estadoClass = 'status-offline'; 
+            estadoTexto = 'Offline'; 
+            rowColorClass = 'row-status-danger';
         }
+        // ---------------------------------------------
 
         let etiquetasHtml = '';
         if (h.elements && Array.isArray(h.elements)) {
@@ -336,6 +484,10 @@ function renderizarTabla(data) {
                 etiquetasHtml += `<span class="status-badge ${c}" style="font-size:0.75em; margin-right:5px; margin-bottom:4px; padding:2px 8px; display:inline-block;">${elem.label}</span>`;
             });
         }
+
+        // Textos y colores seguros por si diffMinutos es NaN
+        const textoHaceMinutos = isNaN(diffMinutos) ? 'Sin conexión' : `hace ${diffMinutos} min`;
+        const colorHaceMinutos = (isNaN(diffMinutos) || diffMinutos > limitOfflineMinutes) ? '#dc3545' : '#7f8c8d';
 
         const tr = document.createElement('tr');
         tr.className = rowColorClass;
@@ -350,11 +502,19 @@ function renderizarTabla(data) {
             </td>
             <td><span class="status-badge ${estadoClass}">${estadoTexto}</span></td>
             <td>${etiquetasHtml}</td>
-            <td><span style="color: #2c3e50; font-weight: 600;">${fechaVisual}</span><br><small style="color: ${diffMinutos > limitOfflineMinutes ? '#dc3545' : '#7f8c8d'};">hace ${diffMinutos} min</small></td>
-            <td style="text-align: right;"><svg class="chevron-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></td>
+            <td>
+                <span style="color: #2c3e50; font-weight: 600;">${fechaVisual}</span><br>
+                <small style="color: ${colorHaceMinutos}; font-weight: 500;">${textoHaceMinutos}</small>
+            </td>
+            <td style="text-align: right;">
+                <svg class="chevron-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </td>
         `;
         tbody.appendChild(tr);
     });
+    
     aplicarFiltros();
 }
 
@@ -452,14 +612,14 @@ async function verDetalle(hospitalId) {
     navegar('view-detalle');
 
     try {
-        const response = await fetch(`/api/hospital/${hospitalId}`);
+        const response = await authFetch(`/api/hospital/${hospitalId}`);
         if (currentHospitalId !== hospitalId) return; 
         const data = await response.json();
         if (data.error) { alert(data.error); return; }
 
         let nombreReal = "Hospital Desconocido";
         try {
-            const metaRes = await fetch('/api/hospitales-metadata');
+            const metaRes = await authFetch('/api/hospitales-metadata');
             const metaList = await metaRes.json();
             const metaObj = metaList.find(h => h.hospital_id === hospitalId);
             if (metaObj && metaObj.nombre) nombreReal = metaObj.nombre;
@@ -828,7 +988,7 @@ async function cargarHistorial(horas, idSolicitado) {
     const loader = document.getElementById('chart-loader');
     if(loader) loader.style.display = 'flex';
     try {
-        const response = await fetch(`/api/hospital/${idSolicitado}/history?horas=${horas}`);
+        const response = await authFetch(`/api/hospital/${idSolicitado}/history?horas=${horas}`);
         if (currentHospitalId !== idSolicitado) return;
         currentHistoryData = await response.json();
         
@@ -991,7 +1151,7 @@ function actualizarGrafico() {
 
 // --- ALERTAS (VISTA) ---
 async function cargarAlertas() {
-    try { const res = await fetch('/api/alertas'); renderizarAlertas(await res.json()); } catch (e) { console.error("Error alertas:", e); }
+    try { const res = await authFetch('/api/alertas'); renderizarAlertas(await res.json()); } catch (e) { console.error("Error alertas:", e); }
 }
 
 // --- ALERTAS (VISTA) ---
@@ -1090,7 +1250,7 @@ async function listarHospitalesConfig() {
     tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
     
     try {
-        const res = await fetch('/api/hospitales-metadata');
+        const res = await authFetch('/api/hospitales-metadata');
         const lista = await res.json();
         
         tbody.innerHTML = '';
@@ -1138,7 +1298,7 @@ async function listarHospitalesConfig() {
 
 async function toggleAlertas(id) {
     try {
-        const res = await fetch(`/api/hospitales-metadata/${id}/toggle-alerts`, { method: 'PATCH' });
+        const res = await authFetch(`/api/hospitales-metadata/${id}/toggle-alerts`, { method: 'PATCH' });
         if (res.ok) {
             listarHospitalesConfig(); 
         } else {
@@ -1165,7 +1325,7 @@ function filtrarHospitalesConfig() {
 
 async function toggleVisibilidad(id) {
     try {
-        const res = await fetch(`/api/hospitales-metadata/${id}/toggle`, { method: 'PATCH' });
+        const res = await authFetch(`/api/hospitales-metadata/${id}/toggle`, { method: 'PATCH' });
         if (res.ok) {
             listarHospitalesConfig(); 
         } else {
@@ -1227,7 +1387,7 @@ async function guardarHospital() {
     const method = isEditing ? 'PUT' : 'POST';
 
     try {
-        const res = await fetch(url, {
+        const res = await authFetch(url, {
             method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
@@ -1247,69 +1407,20 @@ async function eliminarHospital(id) {
     if(!confirm(`¿Seguro que deseas eliminar la ficha de ${id}?`)) return;
     
     try {
-        const res = await fetch(`/api/hospitales-metadata/${id}`, { method: 'DELETE' });
+        const res = await authFetch(`/api/hospitales-metadata/${id}`, { method: 'DELETE' });
         if(res.ok) listarHospitalesConfig();
         else alert("Error eliminando");
     } catch(e) { alert("Error de conexión"); }
 }
 
-// --- AUTENTICACIÓN ADMIN GENÉRICA (MODIFICADO) ---
-let tempAdminTarget = { viewId: null, idBoton: null, btnMobile: null };
-
+// --- NAVEGACIÓN DIRECTA A SECCIONES RESTRINGIDAS ---
+// El control de acceso está manejado por el JWT en el backend y por
+// aplicarRestriccionesUI() que oculta los botones según el rol en el frontend.
+// Ya no se necesita un modal de código adicional.
 function verificarAccesoConfig(viewId, idBoton, btnMobile) {
-    // 1. Si ya se verificó en esta sesión, pase directo
-    if (sessionStorage.getItem('admin_verified') === 'true') {
-        navegar(viewId, idBoton, btnMobile);
-        
-        // Si es config, cargamos los datos
-        if (viewId === 'view-config') cargarConfigUI();
-        return;
-    }
-
-    // 2. Si no, mostramos modal y guardamos destino
-    tempAdminTarget = { viewId, idBoton, btnMobile };
-    
-    const modal = document.getElementById('modal-admin-auth');
-    const input = document.getElementById('admin-code-input');
-    
-    modal.style.display = 'flex';
-    input.value = '';
-    setTimeout(() => input.focus(), 100);
+    navegar(viewId, idBoton, btnMobile);
+    if (viewId === 'view-config') cargarConfigUI();
 }
-
-function validarAdminCode() {
-    const input = document.getElementById('admin-code-input');
-    const code = input.value;
-    
-    // CONTRASEÑA MAESTRA
-    if (code === 'TM4dm1n') {
-        sessionStorage.setItem('admin_verified', 'true');
-        document.getElementById('modal-admin-auth').style.display = 'none';
-        
-        // Redirigir al destino original
-        if (tempAdminTarget.viewId) {
-            navegar(tempAdminTarget.viewId, tempAdminTarget.idBoton, tempAdminTarget.btnMobile);
-            
-            if (tempAdminTarget.viewId === 'view-config') {
-                cargarConfigUI();
-            }
-        }
-    } else {
-        alert('❌ Código incorrecto');
-        input.value = '';
-        input.focus();
-    }
-}
-
-function cerrarModalAdmin() {
-    document.getElementById('modal-admin-auth').style.display = 'none';
-}
-
-document.getElementById('admin-code-input').addEventListener('keypress', function (e) {
-    if (e.key === 'Enter') {
-        validarAdminCode();
-    }
-});
 
 // --- MÓDULO MAPA (LEAFLET) ---
 function initMapa() {
@@ -1338,7 +1449,7 @@ function initMapa() {
 
 async function cargarDatosMapa() {
     try {
-        const res = await fetch('/api/mapa-data');
+        const res = await authFetch('/api/mapa-data');
         mapData = await res.json();
         
         // Ordenar de Norte a Sur para el tour
@@ -1444,7 +1555,7 @@ async function renderizarHistorial() {
     if (!tbody) return;
     
     try {
-        const response = await fetch('/api/informes/historial');
+        const response = await authFetch('/api/informes/historial');
         const historial = await response.json();
         
         if (historial.length === 0) {
@@ -1512,17 +1623,34 @@ function cambiarTipoProcesamiento(tipo) {
     const inputTipo = document.getElementById('proc-tipo');
     if (inputTipo) inputTipo.value = tipo;
     
-    // 2. Gestionar estado visual de las pestañas (con validación de existencia)
+    // 2. Gestionar estado visual de las pestañas
     const btnIA = document.getElementById('btn-tipo-ia');
-    const btnKPI = document.getElementById('btn-tipo-kpi');
     const btnPDF = document.getElementById('btn-tipo-pdf');
 
-    if (btnIA) btnIA.classList.remove('active');
-    if (btnKPI) btnKPI.classList.remove('active');
-    if (btnPDF) btnPDF.classList.remove('active');
+    // Reseteamos colores primero
+    if (btnIA) {
+        btnIA.classList.remove('active');
+        btnIA.style.backgroundColor = '';
+        btnIA.style.color = '';
+    }
+    if (btnPDF) {
+        btnPDF.classList.remove('active');
+        btnPDF.style.backgroundColor = '';
+        btnPDF.style.color = '';
+    }
 
+    // Pintamos el activo con su color de "marca"
     const targetBtn = document.getElementById('btn-tipo-' + tipo);
-    if (targetBtn) targetBtn.classList.add('active');
+    if (targetBtn) {
+        targetBtn.classList.add('active');
+        if (tipo === 'pdf') {
+            targetBtn.style.backgroundColor = '#e74c3c'; // Rojo PDF
+            targetBtn.style.color = 'white';
+        } else if (tipo === 'ia') {
+            targetBtn.style.backgroundColor = '#9b59b6'; // Violeta IA
+            targetBtn.style.color = 'white';
+        }
+    }
 
     // 3. Referencias a elementos de la interfaz
     const extraDivKpi = document.getElementById('opciones-kpi-extra');
@@ -1573,6 +1701,30 @@ function cambiarTipoProcesamiento(tipo) {
     }
 }
 
+// --- FUNCION PARA BOTONES DE FECHAS RÁPIDAS ---
+function setFechasRapidas(meses, btn) {
+    // 1. Lógica Visual: Pintar el botón activo y despintar el resto
+    if (btn) {
+        document.querySelectorAll('.quick-date-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    // 2. Lógica de Fechas
+    const hoy = new Date();
+    // Ajuste para la zona horaria local (evita que cambie de día por UTC)
+    const localHoy = new Date(hoy.getTime() - (hoy.getTimezoneOffset() * 60000));
+    const fHasta = localHoy.toISOString().split('T')[0];
+
+    // Clonamos la fecha y restamos los meses
+    const fDesdeObj = new Date(localHoy);
+    fDesdeObj.setMonth(fDesdeObj.getMonth() - meses);
+    const fDesde = fDesdeObj.toISOString().split('T')[0];
+
+    // Asignamos a los inputs
+    document.getElementById('ia-date-from').value = fDesde;
+    document.getElementById('ia-date-to').value = fHasta;
+}
+
 // Interceptor del botón principal
 function iniciarProcesamiento() {
     const tipo = document.getElementById('proc-tipo').value;
@@ -1619,33 +1771,56 @@ async function ejecutarGeneracionPDF() {
     const id = rawIdInput.split(' - ')[0].toUpperCase();
     const f1 = document.getElementById('ia-date-from').value;
     const f2 = document.getElementById('ia-date-to').value;
-    
-    const scopeElement = document.getElementById('pdf-export-scope');
-    const scopeValue = scopeElement.value; 
     const taskId = document.getElementById('pdf-asana-task').value.trim();
 
+    // --- 1. DETERMINAR TIPO DE REPORTE ---
+    const isInfra = document.getElementById('pdf-type-infra').checked;
+    const tipoReporte = isInfra ? 'infra' : 'clinico';
+
+    // --- 2. DETERMINAR ALCANCE (Solo relevante para Clínico) ---
+    const chkRis = document.getElementById('pdf-scope-ris').checked;
+    const chkPacs = document.getElementById('pdf-scope-pacs').checked;
+    
+    // Validamos que haya al menos uno seleccionado si el reporte es Clínico
+    if (!isInfra && !chkRis && !chkPacs) {
+        alert("⚠️ Por favor selecciona al menos un alcance para el reporte (RIS o PACS).");
+        return;
+    }
+    
+    let scopeValue = 'total';
+    if (chkRis && !chkPacs) scopeValue = 'ris';
+    else if (!chkRis && chkPacs) scopeValue = 'pacs';
+
+    // --- 3. VALIDACIONES GENERALES ---
+    if (!id || !f1 || !f2) {
+        alert("⚠️ Por favor completa el hospital y el rango de fechas.");
+        return;
+    }
+
     if (!taskId) {
-        alert("⚠️ Por favor ingresa el ID de la tarea de Asana.");
+        alert("⚠️ Por favor ingresa el ID de la tarea de Asana destino.");
         document.getElementById('pdf-asana-task').focus();
         return;
     }
 
+    // --- 4. PREPARAR PAYLOAD ---
     const payload = {
         hospital_id: id,
         fecha_desde: f1,
         fecha_hasta: f2,
         alcance: scopeValue,
+        tipo_reporte: tipoReporte, // Nuevo parámetro para el backend
         asana_task_id: taskId
     };
 
-    // UI Feedback
+    // UI Feedback: Desactivar botón y mostrar carga
     const btn = document.querySelector('#modal-pdf-options .btn-action:last-child');
     const btnOriginalText = btn.innerHTML;
     btn.innerHTML = '⏳ Generando...';
     btn.disabled = true;
 
     try {
-        const response = await fetch('/api/informes/pdf', {
+        const response = await authFetch('/api/informes/pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1655,35 +1830,33 @@ async function ejecutarGeneracionPDF() {
             const contentType = response.headers.get("content-type");
             
             if (contentType && contentType.includes("application/pdf")) {
-                // --- FALLBACK ACTIVO --- (Descargó el PDF)
+                // FALLBACK: Si el backend devuelve el archivo directo (ej. fallo subida Asana)
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `Reporte_${id}.pdf`;
+                a.download = `Reporte_${tipoReporte.toUpperCase()}_${id}.pdf`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
                 
-                alert("⚠️ Se generó el PDF y se descargó en tu equipo, pero NO se pudo adjuntar en Asana (Verifica que el ID de la tarea sea correcto).");
+                alert("⚠️ El reporte se descargó localmente porque no pudo adjuntarse a Asana automáticamente.");
                 cerrarModalPDF();
                 
             } else {
-                // --- ÉXITO --- (Subió a Asana)
+                // ÉXITO: Se adjuntó a Asana
                 const data = await response.json();
                 
-                // Transformamos el Modal en una pantalla de éxito
-                
+                // Mostrar pantalla de éxito dentro del modal
                 const modalBody = document.querySelector('#modal-pdf-options .modal-content');
                 modalBody.innerHTML = `
                     <div style="text-align: center; padding: 20px;">
                         <div style="font-size: 3em; margin-bottom: 10px;">✅</div>
                         <h3 style="color: #27ae60; margin-top: 0;">¡Reporte Generado!</h3>
-                        <p style="color: #7f8c8d; margin-bottom: 25px;">El PDF fue creado y adjuntado exitosamente a la tarea de Asana.</p>
+                        <p style="color: #7f8c8d; margin-bottom: 25px;">El PDF de ${tipoReporte === 'infra' ? 'Infraestructura' : 'Uso Clínico'} fue creado y adjuntado a Asana.</p>
                         <a href="${data.asana_url}" target="_blank" class="btn-action" style="background: #3498db; text-decoration: none; padding: 12px 25px; display: inline-block; color: white; border-radius: 6px; font-weight: bold; box-shadow: 0 4px 6px rgba(52, 152, 219, 0.3);">
                             Abrir Tarea en Asana ↗
                         </a>
-                        
                         <button onclick="finalizarProcesoPDF()" style="display: block; margin: 20px auto 0; background: transparent; border: none; color: #95a5a6; cursor: pointer; text-decoration: underline;">Cerrar y volver</button>
                     </div>
                 `;
@@ -1691,13 +1864,12 @@ async function ejecutarGeneracionPDF() {
         } else {
             const err = await response.json();
             alert("Error del servidor: " + (err.detail || "Desconocido"));
-            cerrarModalPDF();
         }
     } catch (error) {
-        alert("Error de conexión al generar PDF.");
-        cerrarModalPDF();
+        console.error("Error generating PDF:", error);
+        alert("Error de conexión al generar el reporte.");
     } finally {
-        // Solo restauramos el botón si no cambiamos el HTML del modal por la pantalla de éxito
+        // Restaurar botón si el modal no se transformó en pantalla de éxito
         if (document.querySelector('#modal-pdf-options .btn-action:last-child')) {
             btn.innerHTML = btnOriginalText;
             btn.disabled = false;
@@ -1790,7 +1962,7 @@ function seleccionarHospitalIA(textoCompleto) {
 // --- CARGAR LISTA DE HOSPITALES PARA EL BUSCADOR DE REPORTES ---
 async function cargarListaHospitalesIA() {
     try {
-        const res = await fetch('/api/hospitales-metadata');
+        const res = await authFetch('/api/hospitales-metadata');
         const lista = await res.json();
         listaHospitalesCache = lista.filter(h => h.is_visible !== false);
         
@@ -1860,24 +2032,6 @@ function ejecutarIA() {
     cerrarModalIA();
 }
 
-// --- LÓGICA DE PESTAÑAS DETALLE V4 ---
-function switchTab(tabId, btn) {
-    // 1. Quitar 'active' de todos los botones de pestañas
-    const tabBtns = document.querySelectorAll('#view-detalle .tab-btn');
-    tabBtns.forEach(b => b.classList.remove('active'));
-    
-    // 2. Darle 'active' al botón clickeado
-    if (btn) btn.classList.add('active');
-    
-    // 3. Ocultar todos los contenedores de contenido
-    const tabContents = document.querySelectorAll('#view-detalle .tab-content');
-    tabContents.forEach(c => c.classList.remove('active'));
-    
-    // 4. Mostrar el contenedor correspondiente
-    const targetTab = document.getElementById(`tab-${tabId}`);
-    if (targetTab) targetTab.classList.add('active');
-}
-
 // ==========================================
 // --- MOTOR GLOBAL DE KPIs Y SOFTWARE (V4) ---
 // ==========================================
@@ -1899,7 +2053,7 @@ async function cargarHistorialKpiGlobal(horas, idSolicitado) {
     if(loader) loader.style.display = 'flex';
     
     try {
-        const response = await fetch(`/api/hospital/${idSolicitado}/kpi-history?horas=${horas}`);
+        const response = await authFetch(`/api/hospital/${idSolicitado}/kpi-history?horas=${horas}`);
         if (currentHospitalId !== idSolicitado) return;
         currentKpiHistoryData = await response.json();
         
@@ -2401,9 +2555,7 @@ function actualizarLeyendaKpis() {
     legendEl.innerHTML = `Datos tomados desde el <b style="color:var(--primary)">${fechaStr} hs</b> cada <b style="color:var(--primary)">${intervalo} ${textoHoras}</b>`;
 }
 
-// ==========================================
 // --- LÓGICA DE PESTAÑAS (VISTA DETALLE) ---
-// ==========================================
 function switchTab(tabId, btn) {
     // 1. Quitar la clase 'active' de todos los botones de las pestañas
     const tabBtns = document.querySelectorAll('#view-detalle .tab-btn');
@@ -2412,13 +2564,30 @@ function switchTab(tabId, btn) {
     // 2. Darle la clase 'active' al botón que el usuario acaba de clickear
     if (btn) btn.classList.add('active');
     
-    // 3. Ocultar todos los contenedores de contenido (Infra, Logs, KPIs)
+    // 3. Ocultar todos los contenedores de contenido
     const tabContents = document.querySelectorAll('#view-detalle .tab-content');
     tabContents.forEach(c => c.classList.remove('active'));
     
     // 4. Mostrar solo el contenedor que corresponde al botón clickeado
     const targetTab = document.getElementById(`tab-${tabId}`);
     if (targetTab) targetTab.classList.add('active');
+
+    // 5. FIX: Forzar redibujado de Chart.js al volver a hacer visible el contenedor
+    setTimeout(() => {
+        if (tabId === 'infra' && typeof myChart !== 'undefined' && myChart) {
+            myChart.resize();
+            myChart.update();
+        } else if (tabId === 'kpis') {
+            if (typeof kpiRisChart !== 'undefined' && kpiRisChart) {
+                kpiRisChart.resize();
+                kpiRisChart.update();
+            }
+            if (typeof kpiDonutChart !== 'undefined' && kpiDonutChart) {
+                kpiDonutChart.resize();
+                kpiDonutChart.update();
+            }
+        }
+    }, 50); // Un delay minúsculo para asegurar que el DOM ya aplicó el display: block
 }
 
 function abrirModalPassword() {
@@ -2453,7 +2622,7 @@ async function ejecutarCambioPassword() {
     console.log("Enviando cambio para:", user.email);
 
     try {
-        const response = await fetch('/api/user/change-password', {
+        const response = await authFetch('/api/user/change-password', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2474,6 +2643,184 @@ async function ejecutarCambioPassword() {
         }
     } catch (e) {
         alert("❌ Error de red.");
+    }
+}
+
+async function logout() {
+    // 🛡️ Llamamos al servidor para que destruya la cookie
+    await fetch('/api/logout', { method: 'POST' });
+    sessionStorage.clear();
+    window.location.href = '/';
+}
+
+function actualizarResumenDashboard(data) {
+    let total = data.length;
+    let online = 0;
+    let offline = 0;
+    let nodos = 0;
+    const ahora = new Date();
+
+    data.forEach(h => {
+        // Calculamos el tiempo para cada hospital igual que en la tabla
+        const diffMinutos = Math.floor((ahora - new Date(h.timestamp)) / 60000); 
+
+        // Lógica Binaria: Solo cuenta como Online si está dentro del tiempo límite
+        if (!isNaN(diffMinutos) && diffMinutos <= limitOfflineMinutes) {
+            online++;
+        } else {
+            offline++;
+        }
+        
+        // Sumamos los elementos (VMs + Server)
+        if (h.elements && Array.isArray(h.elements)) {
+            nodos += h.elements.filter(e => !e.label.startsWith('+')).length;
+        }
+    });
+
+    // Actualizamos el HTML de las tarjetas
+    const elTotal = document.getElementById('sum-total');
+    const elOnline = document.getElementById('sum-online');
+    const elOffline = document.getElementById('sum-offline');
+    const elNodos = document.getElementById('sum-elementos');
+
+    if(elTotal) elTotal.innerText = total;
+    if(elOnline) elOnline.innerText = online;
+    if(elOffline) elOffline.innerText = offline;
+    if(elNodos) elNodos.innerText = nodos;
+}
+
+// ==========================================
+// --- MÓDULO MAPA (RESUMEN EJECUTIVO) ---
+// ==========================================
+
+function initMapaDashboard() {
+    if (mapDashInstance) {
+        cargarDatosMapaDashboard();
+        return;
+    }
+
+    // Inicializar mapa (Vista Argentina)
+    mapDashInstance = L.map('map-dashboard-container', { zoomControl: true }).setView([-38.4161, -63.6167], 4);
+    
+    // Capa visual
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(mapDashInstance);
+
+    mapDashMarkers = L.layerGroup().addTo(mapDashInstance);
+    
+    setTimeout(() => mapDashInstance.invalidateSize(), 100);
+    cargarDatosMapaDashboard();
+}
+
+async function cargarDatosMapaDashboard() {
+    try {
+        const res = await authFetch('/api/mapa-data');
+        mapData = await res.json(); 
+        
+        // Reutilizamos mapData que es global y ordenamos
+        mapData.sort((a, b) => b.lat - a.lat);
+        renderizarMarcadoresDash();
+    } catch (e) { console.error("Error mapa dashboard:", e); }
+}
+
+function renderizarMarcadoresDash() {
+    if (!mapDashInstance || !mapDashMarkers) return;
+    mapDashMarkers.clearLayers(); 
+
+    mapData.forEach(h => {
+        const color = h.status === 'Online' ? '#2ecc71' : '#e74c3c';
+        
+        // Filtro de estados
+        if (currentDashMapFilter === 'online' && h.status !== 'Online') return; 
+        if (currentDashMapFilter === 'offline' && h.status === 'Online') return;
+
+        const marker = L.circleMarker([h.lat, h.lng], {
+            radius: 8,
+            fillColor: color,
+            color: "#fff",
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
+        });
+
+        // Popup idéntico al mapa original
+        marker.bindPopup(`
+            <div style="text-align:center; font-family:sans-serif; min-width: 120px;">
+                <b style="color:#2c3e50; font-size:1.1em;">${h.nombre}</b><br>
+                <small style="color:#7f8c8d; font-weight:bold;">${h.id}</small><br>
+                <div style="margin-top:5px; margin-bottom:8px;">
+                    <span style="background:${color}20; color:${color}; padding:2px 8px; border-radius:10px; font-weight:bold; font-size:0.85em;">● ${h.status}</span>
+                </div>
+                <button onclick="verDetalle('${h.id}')" style="background:#3498db; color:white; border:none; border-radius:4px; padding:6px 12px; cursor:pointer; font-size:0.85em; width:100%;">Ver Detalles</button>
+            </div>
+        `);
+
+        mapDashMarkers.addLayer(marker);
+    });
+}
+
+// Variables para el recorrido del Dashboard
+let tourDashInterval = null;
+let tourDashIndex = 0;
+
+function siguienteDestinoDash() {
+    // Filtramos los datos igual que en los marcadores para no visitar hospitales ocultos
+    const filteredData = mapData.filter(h => {
+        if (currentDashMapFilter === 'online' && h.status !== 'Online') return false;
+        if (currentDashMapFilter === 'offline' && h.status === 'Online') return false;
+        return true;
+    });
+
+    if (filteredData.length === 0) return;
+
+    // Aseguramos que el índice no se salga del array filtrado
+    tourDashIndex = tourDashIndex % filteredData.length;
+    const h = filteredData[tourDashIndex];
+    
+    // Vuelo suave al destino
+    mapDashInstance.flyTo([h.lat, h.lng], 9, {
+        animate: true,
+        duration: 4 
+    });
+
+    // Abrir el popup exacto al llegar
+    setTimeout(() => {
+        mapDashMarkers.eachLayer(layer => {
+            const latlng = layer.getLatLng();
+            if (Math.abs(latlng.lat - h.lat) < 0.0001 && Math.abs(latlng.lng - h.lng) < 0.0001) {
+                layer.openPopup();
+            }
+        });
+    }, 4500);
+
+    tourDashIndex++;
+}
+
+function toggleTourDash() {
+    const btn = document.getElementById('btn-tour-dash');
+    
+    if (tourDashInterval) {
+        // Detener recorrido
+        clearInterval(tourDashInterval);
+        tourDashInterval = null;
+        if (btn) {
+            btn.innerHTML = "▶ INICIAR RECORRIDO";
+            btn.classList.remove('active');
+        }
+        // Alejar la cámara a vista general
+        mapDashInstance.flyTo([-38.4161, -63.6167], 4, { duration: 2 });
+    } else {
+        // Iniciar recorrido
+        tourDashIndex = 0;
+        siguienteDestinoDash(); 
+        tourDashInterval = setInterval(siguienteDestinoDash, 10000); // 10 segundos por punto
+        if (btn) {
+            btn.innerHTML = "■ DETENER";
+            btn.classList.add('active');
+        }
     }
 }
 

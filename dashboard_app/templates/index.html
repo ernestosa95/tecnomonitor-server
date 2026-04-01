@@ -27,8 +27,15 @@
             </div>
             <button id="toggle-sidebar" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg></button>
         </div>
+
+        <button id="btn-resumen" class="nav-btn active" onclick="navegar('view-resumen', 'btn-resumen'); cargarDatos();">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path>
+            </svg>
+            <span class="nav-label">Resumen Ejecutivo</span>
+        </button>
         
-        <button id="btn-dash" class="nav-btn active" onclick="navegar('view-dashboard', 'btn-dash'); cargarDatos();">
+        <button id="btn-dash" class="nav-btn" onclick="navegar('view-dashboard', 'btn-dash'); cargarDatos();">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
             <span class="nav-label">Monitor Global</span>
         </button>
@@ -37,10 +44,10 @@
             <span class="nav-label">Alertas</span>
         </button>
         
-        <button id="btn-mapa" class="nav-btn" onclick="navegar('view-mapa', 'btn-mapa'); initMapa();">
+        <!--<button id="btn-mapa" class="nav-btn" onclick="navegar('view-mapa', 'btn-mapa'); initMapa();">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
             <span class="nav-label">Mapa en Vivo</span>
-        </button>
+        </button>-->
 
         <button id="btn-ia" class="nav-btn" onclick="verificarAccesoConfig('view-ia', 'btn-ia')">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -89,7 +96,66 @@
         </div>
     </div>
 
-    <div id="view-dashboard" class="content active">
+    <div id="view-resumen" class="content active">
+        <h2 style="margin-bottom: 25px; color: #2c3e50; font-weight: 700;">Panel de Control y Estado General</h2>
+        
+        <div class="summary-map-wrapper">
+            <div class="summary-cards-vertical">
+                
+                <div class="card" style="padding: 20px; margin-bottom: 0; display: flex; align-items: center; border-left: 4px solid #3498db;">
+                    <div style="flex: 1;">
+                        <div style="color: #7f8c8d; font-size: 0.85em; font-weight: 700; text-transform: uppercase;">Hospitales Totales</div>
+                        <div id="sum-total" style="font-size: 2.2em; font-weight: 800; color: #2c3e50; margin-top: 5px;">-</div>
+                    </div>
+                    <div style="font-size: 2.5em; opacity: 0.15;">🏥</div>
+                </div>
+
+                <div class="card" style="padding: 20px; margin-bottom: 0; display: flex; align-items: center; border-left: 4px solid #2ecc71;">
+                    <div style="flex: 1;">
+                        <div style="color: #7f8c8d; font-size: 0.85em; font-weight: 700; text-transform: uppercase;">Operando Normal</div>
+                        <div id="sum-online" style="font-size: 2.2em; font-weight: 800; color: #27ae60; margin-top: 5px;">-</div>
+                    </div>
+                    <div style="font-size: 2.5em; opacity: 0.15;">✅</div>
+                </div>
+
+                <div class="card" style="padding: 20px; margin-bottom: 0; display: flex; align-items: center; border-left: 4px solid #e74c3c;">
+                    <div style="flex: 1;">
+                        <div style="color: #7f8c8d; font-size: 0.85em; font-weight: 700; text-transform: uppercase;">Con Problemas</div>
+                        <div id="sum-offline" style="font-size: 2.2em; font-weight: 800; color: #c0392b; margin-top: 5px;">-</div>
+                    </div>
+                    <div style="font-size: 2.5em; opacity: 0.15;">⚠️</div>
+                </div>
+
+                <div class="card" style="padding: 20px; margin-bottom: 0; display: flex; align-items: center; border-left: 4px solid #9b59b6;">
+                    <div style="flex: 1;">
+                        <div style="color: #7f8c8d; font-size: 0.85em; font-weight: 700; text-transform: uppercase;">Nodos Monitoreados</div>
+                        <div id="sum-elementos" style="font-size: 2.2em; font-weight: 800; color: #8e44ad; margin-top: 5px;">-</div>
+                        <div style="font-size: 0.75em; color: #95a5a6; margin-top: 2px;">Servers físicos + VMs</div>
+                    </div>
+                    <div style="font-size: 2.5em; opacity: 0.15;">🖥️</div>
+                </div>
+            </div>
+
+            <div class="card card-map-large" style="position: relative; padding: 25px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                    <h3 style="margin: 0; color: #2c3e50; font-size: 1.1em;">Vista Geográfica de la Red</h3>
+                    <div class="status-toggle-bar" style="box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <button class="toggle-btn dash-map-toggle-btn active" data-map-status="all">Todos</button>
+                        <button class="toggle-btn dash-map-toggle-btn" data-map-status="online">Online</button>
+                        <button class="toggle-btn dash-map-toggle-btn" data-map-status="offline">Offline</button>
+                    </div>
+                </div>
+                
+                <div id="map-dashboard-container" style="flex-grow: 1; border-radius: 8px; overflow: hidden; border: 1px solid #e1e4e8; min-height: 450px; z-index: 1;"></div>
+                
+                <button id="btn-tour-dash" onclick="toggleTourDash()" class="map-tour-btn" style="position: absolute; bottom: 40px; right: 40px; padding: 10px 20px; font-size: 0.8em; z-index: 2000;">
+                    ▶ INICIAR RECORRIDO
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-dashboard" class="content">
         <div class="header-actions">
             <div class="filter-bar">
                 <div class="search-pill">
@@ -314,7 +380,7 @@
         <div style="height: 80px;"></div>
     </div>
 
-    <div id="view-mapa" class="content" style="padding: 0; height: 100%; position: relative;">
+    <!--<div id="view-mapa" class="content" style="padding: 0; height: 100%; position: relative;">
         <div style="position: absolute; top: 15px; right: 15px; z-index: 1000;">
             <div class="status-toggle-bar" style="box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
                 <button class="toggle-btn map-toggle-btn active" data-map-status="all">Todos</button>
@@ -326,7 +392,7 @@
             ▶ INICIAR RECORRIDO
         </button>
         <div id="map-container" style="width: 100%; height: 100%;"></div>
-    </div>
+    </div>-->
 
     <div id="view-ia" class="content">
         <h2 style="margin-bottom: 20px; color: #2c3e50;">Centro de Reportes & IA</h2>
@@ -340,8 +406,7 @@
                 <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">1. Seleccione el Tipo de Reporte</label>
                 <div class="chart-toggles" style="display: flex; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap;">
                     <button id="btn-tipo-ia" class="chart-btn" onclick="cambiarTipoProcesamiento('ia')" style="flex: 1; padding: 8px 20px;">🤖 Análisis IA</button>
-                    <!-- <button id="btn-tipo-kpi" class="chart-btn" onclick="cambiarTipoProcesamiento('kpi')" style="flex: 1; padding: 8px 20px;">📊 KPIs (Excel)</button>--> 
-                    <button id="btn-tipo-pdf" class="chart-btn active" onclick="cambiarTipoProcesamiento('pdf')" style="flex: 1; padding: 8px 20px;">📄 Reporte Uso (PDF)</button>
+                    <button id="btn-tipo-pdf" class="chart-btn active" onclick="cambiarTipoProcesamiento('pdf')" style="flex: 1; padding: 8px 20px; background-color: #e74c3c; color: white;">📄 Reporte Uso (PDF)</button>
                 </div>
                 <input type="hidden" id="proc-tipo" value="pdf">
             </div>
@@ -349,23 +414,34 @@
             <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">2. Parámetros Generales</label>
             <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
                 
-                <div class="input-group" style="flex: 1; min-width: 250px; position: relative;"> <div class="search-pill" style="width: 100%; margin:0; border: 1px solid #ddd; background: #fff;">
+                <div class="input-group" style="flex: 1; min-width: 250px; position: relative; margin-bottom: 0;"> 
+                    <div class="search-pill" style="width: 100%; margin:0; border: 1px solid #ddd; background: #fff;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#95a5a6" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        
                         <input type="text" id="ia-input-id" placeholder="Buscar Hospital (Ej: H05)..." style="background: transparent;" autocomplete="off">
                     </div>
+                    <div id="ia-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #ddd; border-top:none; border-radius:0 0 8px 8px; z-index:4000; max-height:250px; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 300px;">
                     
-                    <div id="ia-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #ddd; border-top:none; border-radius:0 0 8px 8px; z-index:4000; max-height:250px; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <div class="chart-toggles" style="box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; display: flex; width: 100%;">
+                        <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(1, this)" style="flex: 1; padding: 4px 0; font-size: 0.8em; border-right: 1px solid #ddd;" title="Último mes">1 M</button>
+                        <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(6, this)" style="flex: 1; padding: 4px 0; font-size: 0.8em; border-right: 1px solid #ddd;" title="Últimos 6 meses">6 M</button>
+                        <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(12, this)" style="flex: 1; padding: 4px 0; font-size: 0.8em; border-right: 1px solid #ddd;" title="Último año">1 A</button>
+                        <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(24, this)" style="flex: 1; padding: 4px 0; font-size: 0.8em; border-right: 1px solid #ddd;" title="Últimos 2 años">2 A</button>
+                        <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(60, this)" style="flex: 1; padding: 4px 0; font-size: 0.8em;" title="Últimos 5 años">5 A</button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; width: 100%;">
+                        <div class="input-group" style="flex: 1; margin-bottom: 0;">
+                            <input type="date" id="ia-date-from" onchange="document.querySelectorAll('.quick-date-btn').forEach(b => b.classList.remove('active'))" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; color: #2c3e50;" title="Fecha Desde">
+                        </div>
+                        <div class="input-group" style="flex: 1; margin-bottom: 0;">
+                            <input type="date" id="ia-date-to" onchange="document.querySelectorAll('.quick-date-btn').forEach(b => b.classList.remove('active'))" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; color: #2c3e50;" title="Fecha Hasta">
+                        </div>
                     </div>
                 </div>
 
-                <div class="input-group" style="flex: 0 0 160px;">
-                    <input type="date" id="ia-date-from" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; color: #2c3e50;" title="Fecha Desde">
-                </div>
-
-                <div class="input-group" style="flex: 0 0 160px;">
-                    <input type="date" id="ia-date-to" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; color: #2c3e50;" title="Fecha Hasta">
-                </div>
             </div>
 
             <div id="opciones-kpi-extra" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee; gap: 20px; flex-wrap: wrap;">
@@ -388,14 +464,15 @@
             </div>
 
             <div style="margin-top: 20px; text-align: right;">
-                <button id="btn-procesar-accion" class="btn-action" style="background: linear-gradient(135deg, #9b59b6, #8e44ad); border: none; height: 42px; box-shadow: 0 4px 6px rgba(142, 68, 173, 0.3); display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 25px; transition: all 0.3s ease;" onclick="iniciarProcesamiento()">
-                    <svg id="icono-procesar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z"></path></svg>
-                    <span id="btn-procesar-texto">Generar PDF con IA</span>
+                <button id="btn-procesar-accion" class="btn-action" style="background: linear-gradient(135deg, #e74c3c, #c0392b); border: none; height: 42px; box-shadow: 0 4px 6px rgba(231, 76, 60, 0.3); display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 25px; transition: all 0.3s ease;" onclick="iniciarProcesamiento()">
+                    <svg id="icono-procesar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <span id="btn-procesar-texto">Configurar Reporte PDF</span>
                 </button>
             </div>
 
-        </div> <div class="card" style="margin-top: 25px; padding: 0; overflow: hidden; border-top: 4px solid #3498db; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-            
+        </div> 
+        
+        <div class="card" style="margin-top: 25px; padding: 0; overflow: hidden; border-top: 4px solid #3498db; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
             <div style="padding: 15px 20px; border-bottom: 1px solid #eee; background: #f8f9fa; display:flex; justify-content:space-between; align-items:center;">
                 <h3 style="margin:0; font-size:1em; color:#2c3e50; font-weight: 700;">📜 Historial de Informes Generados</h3>
                 <span style="font-size: 0.75em; background: #ebf5fb; color: #2980b9; padding: 4px 12px; border-radius: 12px; font-weight: 600; border: 1px solid #d6eaf8;">Base de Datos Local</span>
@@ -506,17 +583,6 @@
     </div>
 </div>
 
-<div id="modal-admin-auth" class="modal-overlay" style="display:none; z-index:2000;">
-    <div class="modal-content" style="max-width: 350px; text-align: center;">
-        <h3 style="margin-top:0; color:#2c3e50;">🔒 Acceso Restringido</h3>
-        <p style="color:#7f8c8d; font-size:0.9em; margin-bottom:20px;">Esta sección requiere permisos de administrador.</p>
-        <div class="input-group"><input type="password" id="admin-code-input" placeholder="Ingrese código de acceso" style="text-align:center; font-size:1.1em;"></div>
-        <div style="display:flex; gap:10px; margin-top:20px;">
-            <button class="btn-action" onclick="cerrarModalAdmin()" style="background:#95a5a6;">Cancelar</button>
-            <button class="btn-action" onclick="validarAdminCode()">Ingresar</button>
-        </div>
-    </div>
-</div>
 
 <nav class="bottom-nav" id="bottom-nav">
     <button class="nav-item active" onclick="navegar('view-dashboard', null, this); cargarDatos();">
@@ -527,10 +593,10 @@
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
         <span>Alertas</span>
     </button>
-    <button class="nav-item" onclick="navegar('view-mapa', null, this); initMapa();">
+    <!--<button class="nav-item" onclick="navegar('view-mapa', null, this); initMapa();">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
         <span>Mapa</span>
-    </button>
+    </button>-->
     
     <button class="nav-item" onclick="toggleTema()">
         <span id="theme-icon-mobile" style="font-size: 1.4rem; line-height: 24px; height: 24px; display: block;">🌙</span>
@@ -598,12 +664,17 @@
         </div>
 
         <div class="input-group" style="margin-bottom: 15px;">
-            <label style="font-weight: 600; color: #7f8c8d;">Alcance del Reporte</label>
-            <select id="pdf-export-scope" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; background: #fdfdfd; color: #2c3e50; font-size: 1em;">
-                <option value="total">Total (RIS + PACS)</option>
-                <option value="ris">Solo RIS (Órdenes e Informes)</option>
-                <option value="pacs">Solo PACS (Imágenes Almacenadas)</option>
-            </select>
+            <label style="font-weight: 600; color: #7f8c8d; display: block; margin-bottom: 8px;">Alcance del Reporte</label>
+            <div style="display: flex; gap: 15px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8f9fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #e1e4e8; flex: 1;">
+                    <input type="checkbox" id="pdf-scope-ris" checked style="width: 16px; height: 16px; accent-color: #e74c3c; cursor: pointer; margin: 0;">
+                    <span style="font-weight: 600; color: #2c3e50; font-size: 0.9em;">RIS (Órdenes e Informes)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8f9fa; padding: 10px 15px; border-radius: 6px; border: 1px solid #e1e4e8; flex: 1;">
+                    <input type="checkbox" id="pdf-scope-pacs" checked style="width: 16px; height: 16px; accent-color: #e74c3c; cursor: pointer; margin: 0;">
+                    <span style="font-weight: 600; color: #2c3e50; font-size: 0.9em;">PACS (Imágenes)</span>
+                </label>
+            </div>
         </div>
 
         <div class="input-group" style="margin-bottom: 20px;">

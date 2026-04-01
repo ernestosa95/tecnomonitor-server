@@ -101,6 +101,8 @@
                 });
                 const data = await response.json();
                 if (data.success) {
+                    // Guardamos el token para adjuntarlo en cada petición a la API
+                    sessionStorage.setItem('tecnomonitor_token', data.token);
                     sessionStorage.setItem('tecnomonitor_user', JSON.stringify(data.user));
                     window.location.href = '/monitor';
                 } else {

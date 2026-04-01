@@ -1,10 +1,13 @@
 import sys
 import os
 import json
+import database
+import matplotlib.dates as mdates
+from database import HospitalMetadata, HistorialReportes, AlertaModel, ReporteModel
 from database import HistorialReportes
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -23,6 +26,17 @@ from reportlab.lib.utils import ImageReader
 import numpy as np
 import asana_conector
 import auth
+import time
+from fastapi import WebSocket, WebSocketDisconnect
+import asyncio
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import re
+from fastapi import Response
+from fastapi.middleware.gzip import GZipMiddleware
 
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
@@ -35,6 +49,12 @@ ESTADOS_COLORS = {
     'Almacenados': '#1abc9c' # Verde/Teal para PACS
 }
 
+# ==========================================
+# ⚡ CACHÉ EN MEMORIA PARA EL DASHBOARD
+# ==========================================
+_cache_resumen = {"data": None, "ts": 0}
+CACHE_TTL_SEGUNDOS = 30
+
 # Ajuste de Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,8 +64,6 @@ import alerts_engine
 from dotenv import load_dotenv
 
 load_dotenv()
-#CODIGO_ACCESO = os.getenv("ACCESS_CODE", "Tecno2026")
-CODIGO_ACCESO = os.environ["ACCESS_CODE"]
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(base_dir, "static")
@@ -54,6 +72,72 @@ templates_dir = os.path.join(base_dir, "templates")
 app = FastAPI(title="TecnoXaas Dashboard")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
+
+# ==========================================
+# 🛡️ RATE LIMITING (Control de tráfico)
+# ==========================================
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ==========================================
+# 🛡️ 1. CONFIGURACIÓN DE CORS
+# ==========================================
+# Aquí debes listar los dominios EXACTOS desde donde vas a entrar.
+# Si lo vas a publicar, reemplaza el localhost por tu dominio real.
+ORIGINES_PERMITIDOS = [
+    "http://localhost",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+    "https://tecnomonitor.tecnoimagen.com.ar/"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ORIGINES_PERMITIDOS,
+    allow_credentials=True,
+    allow_methods=["*"], # Permite todos los métodos (GET, POST, PUT, etc)
+    allow_headers=["Authorization", "Content-Type"], # Solo permitimos estas cabeceras
+)
+
+# ==========================================
+# 🚀 1.5 COMPRESIÓN GZIP (Nuevo)
+# ==========================================
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# ==========================================
+# 🛡️ 2. CABECERAS DE SEGURIDAD (Security Headers)
+# ==========================================
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    
+    # Evita que el sitio se incruste en un iframe malicioso (Clickjacking)
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    # Evita que el navegador adivine tipos de archivos maliciosos (MIME Sniffing)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # Fuerza el uso de HTTPS por 1 año (HSTS) - Muy importante en producción
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    # Content-Security-Policy (CSP)
+    # Adaptado específicamente para permitir Chart.js, Leaflet y los estilos inline de tu index.html
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "img-src 'self' data: https://a.basemaps.cartocdn.com https://b.basemaps.cartocdn.com https://c.basemaps.cartocdn.com https://d.basemaps.cartocdn.com;"
+    )
+    response.headers["Content-Security-Policy"] = csp
+    
+    return response
+
+# --- CONTROL DE SEGURIDAD EN MEMORIA ---
+# Estructura: {"ip_cliente": {"intentos": int, "bloqueado_hasta": float}}
+login_attempts_db = {}
+MAX_INTENTOS_LOGIN = 5
+TIEMPO_BLOQUEO_SEG = 300  # 5 minutos
 
 # --- DTOs ACTUALIZADOS (Punto 1 y 2) ---
 class ConfigRequest(BaseModel):
@@ -96,172 +180,219 @@ class ReportePDFRequest(BaseModel):
     fecha_hasta: str
     alcance: str
     asana_task_id: str
+    tipo_reporte: str = "clinico"
 
 def get_db():
     db = database.SessionLocal()
     try: yield db
     finally: db.close()
 
+# Gestor de WebSockets
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                pass
+
+manager = ConnectionManager()
+
 # --- VISTAS ---
 @app.get("/")
 def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
+@app.websocket("/ws/alertas")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Mantenemos el canal abierto esperando mensajes del cliente (opcional)
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.post("/api/internal/trigger-ws")
+async def trigger_websocket_update():
+    """Ruta interna para emitir el broadcast a todos los clientes conectados"""
+    await manager.broadcast({"type": "ALERTA_UPDATE", "msg": "Hay cambios en las alertas"})
+    return {"status": "ok"}
+
 @app.get("/monitor")
 def dashboard_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-# --- API ---
 @app.post("/api/login")
-def verificar_login(login_data: LoginRequest, db: Session = Depends(get_db)):
-    # 1. Filtro de dominio obligatorio
+def verificar_login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_db)):
+    ip_cliente = request.client.host
+    ahora = time.time()
+
+    # 1. Verificar si la IP está bloqueada temporalmente
+    estado_ip = login_attempts_db.get(ip_cliente)
+    if estado_ip:
+        if estado_ip['bloqueado_hasta'] > ahora:
+            tiempo_restante = int((estado_ip['bloqueado_hasta'] - ahora) / 60)
+            return {"success": False, "message": f"Demasiados intentos fallidos. Cuenta bloqueada por {tiempo_restante or 1} minuto(s) por seguridad."}
+        elif estado_ip['bloqueado_hasta'] <= ahora and estado_ip['intentos'] >= MAX_INTENTOS_LOGIN:
+            # El tiempo de castigo ya pasó, reseteamos el contador
+            login_attempts_db[ip_cliente] = {'intentos': 0, 'bloqueado_hasta': 0}
+
+    # Inicializar registro si la IP es nueva
+    if ip_cliente not in login_attempts_db:
+        login_attempts_db[ip_cliente] = {'intentos': 0, 'bloqueado_hasta': 0}
+
+    # 2. Filtro de dominio obligatorio
     if not login_data.email.lower().endswith("@tecnoimagen.com.ar"):
+        _registrar_intento_fallido(ip_cliente, ahora)
         return {"success": False, "message": "Dominio no autorizado"}
 
-    # 2. Búsqueda de usuario
+    # 3. Búsqueda de usuario y validación de clave
     user = db.query(database.UserModel).filter(database.UserModel.email == login_data.email.lower()).first()
     
     if not user or not auth.verify_password(login_data.password, user.hashed_password):
-        return {"success": False, "message": "Credenciales inválidas"}
+        bloqueado = _registrar_intento_fallido(ip_cliente, ahora)
+        msg = "Demasiados intentos. Cuenta bloqueada." if bloqueado else "Credenciales inválidas"
+        return {"success": False, "message": msg}
 
     if not user.is_active:
         return {"success": False, "message": "Usuario inactivo"}
 
-    # 3. Generar token con el Rol incluido
+    # 4. ¡Login Exitoso! Resetear los intentos de la IP
+    login_attempts_db.pop(ip_cliente, None)
+
+    # Generar token con el Rol incluido
     token = auth.create_access_token(data={"sub": user.email, "role": user.role})
-    
+
+    response.set_cookie(
+        key="tecnomonitor_token",
+        value=token,
+        httponly=True,     # JS no puede leerla (Previene XSS)
+        secure=True,      # Ponelo en True si ya estás usando HTTPS en producción
+        samesite="Lax",    # Protege contra ataques CSRF
+        max_age=28800      # Expira en 8 horas (en segundos)
+    )
+
     return {
-        "success": True, 
+        "success": True,
+        "token": token,
         "user": {
             "name": user.full_name,
-            "email": user.email, 
+            "email": user.email,
             "role": user.role
         }
     }
 
+def _registrar_intento_fallido(ip_cliente: str, ahora: float) -> bool:
+    """Suma un intento fallido y bloquea si es necesario. Devuelve True si se bloqueó."""
+    login_attempts_db[ip_cliente]['intentos'] += 1
+    if login_attempts_db[ip_cliente]['intentos'] >= MAX_INTENTOS_LOGIN:
+        login_attempts_db[ip_cliente]['bloqueado_hasta'] = ahora + TIEMPO_BLOQUEO_SEG
+        return True
+    return False
+
+@app.post("/api/logout")
+def logout_usuario(response: Response):
+    # Le decimos al navegador que borre la cookie
+    response.delete_cookie("tecnomonitor_token", httponly=True, samesite="Lax")
+    return {"success": True}
+
 @app.get("/api/resumen-hospitales")
-def obtener_resumen(db: Session = Depends(get_db)):
-    # Procesar lógica de offline background
-    alerts_engine.procesar_offline(db) 
+def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(auth.get_current_user)):
+    global _cache_resumen
+    ahora = time.time()
+
+    # 🛡️ 1. Verificar si la caché es válida (tiene menos de 30 segundos)
+    if _cache_resumen["data"] is not None and (ahora - _cache_resumen["ts"] < CACHE_TTL_SEGUNDOS):
+        # Retornamos desde la RAM instantáneamente
+        return _cache_resumen["data"]
+
+    # =========================================================
+    # 2. LÓGICA DE BASE DE DATOS (Se ejecuta solo si la caché expiró)
+    # =========================================================
     
-    conf = db.query(database.ConfigModel).filter_by(clave="offline_minutes").first()
-    try: limit_min = int(conf.valor) if (conf and conf.valor) else 10
-    except: limit_min = 10
-    limit_delta = timedelta(minutes=limit_min)
-
-    hospitales_meta = db.query(HospitalMetadata).all()
-    whitelist = {h.hospital_id: h for h in hospitales_meta}
-
-    query = text("""
-        SELECT h.hospital_id, h.timestamp, h.host_status, h.host_cpu_usage, h.full_json_data
-        FROM reportes_historicos h
-        INNER JOIN (
-            SELECT hospital_id, MAX(timestamp) as max_time
-            FROM reportes_historicos
-            GROUP BY hospital_id
-        ) max_h ON h.hospital_id = max_h.hospital_id AND h.timestamp = max_h.max_time
-        ORDER BY h.timestamp DESC
-    """)
-    result = db.execute(query).fetchall()
+    # Obtenemos los metadatos de los hospitales (solo los que están visibles en la UI)
+    # Obtenemos los metadatos de los hospitales (solo los que están visibles en la UI)
+    hospitales_meta = db.query(database.HospitalMetadata).filter(
+        database.HospitalMetadata.is_visible == True
+    ).all()
     
-    data = []
-    ahora = datetime.now()
-
-    for row in result:
-        if row.hospital_id not in whitelist: continue
-        if not whitelist[row.hospital_id].is_visible: continue
+    resultado_final = []
+    
+    for hosp in hospitales_meta:
+        # Buscamos el ÚLTIMO reporte recibido de este hospital
+        ultimo_reporte = db.query(database.ReporteModel).filter(
+            database.ReporteModel.hospital_id == hosp.hospital_id
+        ).order_by(database.ReporteModel.timestamp.desc()).first()
         
-        nombre_real = whitelist[row.hospital_id].nombre
-        detalle = json.loads(row.full_json_data) if row.full_json_data else {}
+        # Valores por defecto si el hospital está recién creado y nunca reportó
+        estado_texto = "Offline"
+        fecha_reporte = "Sin datos"
+        elementos = []
         
-        # --- LÓGICA V3 (ADAPTADA) ---
-        # 1. Detectar capas
-        phy = detalle.get('physical_layer', {})
-        env = detalle.get('environment', {}) # Fallback v2
-        
-        # En v3 'sensors' está dentro de 'physical_layer', en v2 estaba en 'environment'
-        sensors = phy.get('sensors') or env.get('thermal') or {} 
-        
-        # VMs: En v3 es una lista, en v2 un dict
-        v_layer = detalle.get('virtual_layer') or detalle.get('vms') or []
-        
-        # Normalizar VMs a una lista simple para iterar
-        lista_vms = []
-        if isinstance(v_layer, list): # Es V3
-            lista_vms = v_layer
-        elif isinstance(v_layer, dict): # Es V2
-            for k, v in v_layer.items():
-                # Creamos un objeto similar a V3 al vuelo
-                v['id'] = k 
-                lista_vms.append(v)
-
-        # 2. Análisis de Estado
-        # Si es V3, error suele venir en sensors.status != OK
-        # Si es V2, error venía en physical_host.error
-        error_msg = None
-        if isinstance(sensors, dict) and sensors.get('status') == 'Error':
-            error_msg = "Fallo de Sensores Físicos"
-
-        elementos_status = []
-        
-        has_vms_data = len(lista_vms) > 0
-        # En V3 siempre asumimos que hay datos físicos si llegó el JSON
-        has_physical_data = bool(phy) 
-
-        last_seen = row.timestamp
-        if isinstance(last_seen, str):
-            try: last_seen = datetime.strptime(last_seen, "%Y-%m-%d %H:%M:%S.%f")
-            except: pass
-        
-        is_offline_by_time = (ahora - last_seen) > limit_delta
-        
-        # Lógica de Semáforo
-        calculated_status = "Offline"
-        if not is_offline_by_time:
-            if error_msg: 
-                calculated_status = "Warning"
-            elif has_physical_data and has_vms_data: 
-                calculated_status = "Online"
-            elif not has_physical_data and has_vms_data: 
-                calculated_status = "Solo VMs"
-            else: 
-                calculated_status = "Parcial"
-
-        # Generar chips de estado (Server + VMs)
-        if has_physical_data:
-            lbl_state = "danger" if is_offline_by_time else ("warning" if error_msg else "success")
-            elementos_status.append({"label": "SERVER", "state": lbl_state})
-
-        # Iterar VMs (Compatible v2 y v3)
-        for vm in lista_vms:
-            # En V3 es vm.id, en V2 lo inyectamos arriba
-            vm_name = vm.get('id') or "Unknown"
-            # En V3 es vm.state, en V2 vm.status
-            st = vm.get('state') or vm.get('status')
+        if ultimo_reporte:
+            # Formateamos la fecha para el frontend
+            fecha_reporte = str(ultimo_reporte.timestamp)[:19] 
+            estado_texto = ultimo_reporte.host_status or "Offline"
             
-            vm_state = "danger" if is_offline_by_time else ("success" if st in ['Online', 'Running'] else "danger")
-            elementos_status.append({"label": vm_name, "state": vm_state})
+            # Parseamos el JSON para armar las "pastillitas" de las VMs o Servicios
+            try:
+                if isinstance(ultimo_reporte.full_json_data, str):
+                    data_json = json.loads(ultimo_reporte.full_json_data)
+                else:
+                    data_json = ultimo_reporte.full_json_data or {}
+                    
+                # Extraemos la capa virtual para mostrarla en la tabla
+                virtual_layer = data_json.get("virtual_layer", [])
+                
+                if isinstance(virtual_layer, list):
+                    for vm in virtual_layer:
+                        estado_vm = vm.get("state", "unknown").lower()
+                        # Lógica de colores para los tags del frontend
+                        color_state = "success" if estado_vm in ["running", "online"] else ("warning" if estado_vm == "warning" else "error")
+                        
+                        elementos.append({
+                            "label": vm.get("id", "VM"), 
+                            "state": color_state
+                        })
+                        
+            except Exception as e:
+                # Si el JSON viene corrupto, simplemente no mostramos las pastillitas
+                pass 
         
-        # Limitar chips visuales si hay muchos
-        if len(elementos_status) > 6:
-            restantes = len(elementos_status) - 5
-            elementos_status = elementos_status[:5]
-            elementos_status.append({"label": f"+{restantes}", "state": "success"}) # Neutral
-
-        ts_str = str(row.timestamp)
-        data.append({
-            "id": row.hospital_id,
-            "name": nombre_real,
-            "raw_id": row.hospital_id,
-            "timestamp": ts_str[:19].replace("T", " "),
-            "status": calculated_status, 
-            "error_detail": error_msg,
-            "elements": elementos_status
+        # Armamos el diccionario exacto que necesita script.js para dibujar la tabla
+        resultado_final.append({
+            "raw_id": hosp.hospital_id,
+            "id": hosp.hospital_id,
+            "name": hosp.nombre,
+            "timestamp": fecha_reporte,
+            "status": estado_texto,
+            "elements": elementos
         })
-    return data
+        
+    # =========================================================
+    # 🛡️ 3. Guardar el resultado fresco en la caché
+    # =========================================================
+    _cache_resumen["data"] = resultado_final
+    _cache_resumen["ts"] = ahora
+
+    return resultado_final
 
 @app.get("/api/hospital/{hospital_id}")
-def obtener_detalle_hospital(hospital_id: str, db: Session = Depends(get_db)):
+def obtener_detalle_hospital(hospital_id: str,
+                             db: Session = Depends(get_db),
+                             current_user: dict = Depends(auth.get_current_user)):
     query = text("SELECT * FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1")
     result = db.execute(query, {"hid": hospital_id}).fetchone()
     if not result: return {"error": "Hospital no encontrado"}
@@ -274,23 +405,33 @@ def obtener_detalle_hospital(hospital_id: str, db: Session = Depends(get_db)):
 # --- EN DASHBOARD.PY ---
 # 1. Devuelve esta función a su estado original simplificado
 @app.get("/api/hospital/{hospital_id}/history")
-def obtener_historial(hospital_id: str, horas: int = 24, db: Session = Depends(get_db)):
+def obtener_historial(hospital_id: str, horas: int = 24,
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(auth.get_current_user)):
     flimit = datetime.now() - timedelta(hours=horas)
-    query = text("SELECT timestamp, host_cpu_usage, full_json_data FROM reportes_historicos WHERE hospital_id = :hid AND timestamp >= :flimit ORDER BY timestamp ASC")
+    
+    # 🛡️ FIX: Agregamos LIMIT 15000 para evitar desbordamientos de memoria
+    query = text("""
+        SELECT timestamp, host_cpu_usage, full_json_data 
+        FROM reportes_historicos 
+        WHERE hospital_id = :hid AND timestamp >= :flimit 
+        ORDER BY timestamp ASC
+        LIMIT 15000
+    """)
     result = db.execute(query, {"hid": hospital_id, "flimit": flimit}).fetchall()
     
     if not result: return []
 
-    # Downsampling simple
+    # 🛡️ FIX: Downsampling agresivo. Nunca devolvemos más de ~600 puntos al frontend.
     total_registros = len(result)
     step = 1
-    if total_registros > 600: step = int(total_registros / 600)
+    if total_registros > 600: 
+        step = max(1, int(total_registros / 600))
     muestras = result[::step]
     
     historial = []
     for row in muestras:
         try:
-            # Blindaje extra por si el JSON viene dañado en la base de datos
             if isinstance(row.full_json_data, str):
                 d = json.loads(row.full_json_data) if row.full_json_data else {}
             else:
@@ -345,74 +486,70 @@ def obtener_historial(hospital_id: str, horas: int = 24, db: Session = Depends(g
                 "vms": vms_data
             })
         except Exception as e:
-            # Si un registro falla, pasamos al siguiente silenciosamente
-            print(f"Error procesando fila historial: {e}")
             continue
         
     return historial
 
 # --- NUEVA RUTA PARA KPIS (Añadir a dashboard.py) ---
 @app.get("/api/hospital/{hospital_id}/kpi-history")
-def obtener_historial_kpi(hospital_id: str, horas: int = 24, db: Session = Depends(get_db)):
+def obtener_historial_kpi(hospital_id: str, horas: int = 24,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(auth.get_current_user)):
     
-    # 1. Calculamos la fecha límite real que pidió el usuario
     fecha_limite_real = datetime.now() - timedelta(hours=horas)
-    
-    # 2. Margen de seguridad para la consulta SQL (3 días antes)
-    # Esto previene que perdamos datos si el agente se desconectó y mandó info atrasada
     fecha_limite_sql = fecha_limite_real - timedelta(days=3)
     
-    # 3. Consulta SQL inicial
-    query = text("SELECT timestamp, kpi_json_data FROM reportes_uso WHERE hospital_id = :hid AND timestamp >= :flimit ORDER BY timestamp ASC")
+    # 🛡️ FIX: Agregamos LIMIT 15000 como cap absoluto
+    query = text("""
+        SELECT timestamp, kpi_json_data 
+        FROM reportes_uso 
+        WHERE hospital_id = :hid AND timestamp >= :flimit 
+        ORDER BY timestamp ASC
+        LIMIT 15000
+    """)
     result = db.execute(query, {"hid": hospital_id, "flimit": fecha_limite_sql}).fetchall()
     
     if not result: return []
 
     historial_kpi = []
     
-    # 4. Filtro fino en Python usando la fecha real de extracción clínica
     for row in result:
         try:
             metrics = json.loads(row.kpi_json_data) if row.kpi_json_data else {}
-            
-            # Buscar la fecha de extracción dentro del JSON
             fecha_extraccion_str = metrics.get("start_time_extraction")
             
             if fecha_extraccion_str:
                 try:
-                    # Convertir el string ISO ("2025-07-03T00:00:00") a objeto datetime
                     fecha_evento = datetime.fromisoformat(fecha_extraccion_str)
                 except ValueError:
-                    # Si el formato falla, usar timestamp como respaldo
                     fecha_evento = datetime.strptime(str(row.timestamp)[:19], "%Y-%m-%d %H:%M:%S") if isinstance(row.timestamp, str) else row.timestamp
             else:
-                # Si el campo no existe, usar timestamp como respaldo
                 fecha_evento = datetime.strptime(str(row.timestamp)[:19], "%Y-%m-%d %H:%M:%S") if isinstance(row.timestamp, str) else row.timestamp
                 
-            # 5. Filtrar estrictamente por la fecha límite real
             if fecha_evento >= fecha_limite_real:
                 historial_kpi.append({
-                    "timestamp": fecha_evento.strftime("%Y-%m-%d %H:%M:%S"), # Enviamos la fecha clínica real
+                    "timestamp": fecha_evento.strftime("%Y-%m-%d %H:%M:%S"),
                     "application_metrics": metrics
                 })
         except Exception as e:
-            # Ignorar errores de procesamiento en filas individuales
             continue
             
-    # Reordenar cronológicamente por la fecha real antes de enviar
     historial_kpi.sort(key=lambda x: x["timestamp"])
     
     return historial_kpi
 
 @app.get("/api/alertas")
-def obtener_alertas(db: Session = Depends(get_db)):
+def obtener_alertas(db: Session = Depends(get_db),
+                    # CORRECCIÓN: Solo roles autorizados pueden ver alertas
+                    current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria", "Comercial"))):
     activas = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1).order_by(database.AlertaModel.start_time.desc()).all()
     historial = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 0).order_by(database.AlertaModel.end_time.desc()).limit(50).all()
     return {"activas": activas, "historial": historial}
 
 # --- CONFIGURACIÓN ACTUALIZADA (Punto 1) ---
 @app.get("/api/config")
-def obtener_configuracion(db: Session = Depends(get_db)):
+def obtener_configuracion(db: Session = Depends(get_db),
+                          current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     def g(k, d, is_bool=False): 
         r = db.query(database.ConfigModel).filter_by(clave=k).first()
         if r:
@@ -435,7 +572,9 @@ def obtener_configuracion(db: Session = Depends(get_db)):
     }
 
 @app.post("/api/config")
-def guardar_configuracion(cfg: ConfigRequest, db: Session = Depends(get_db)):
+def guardar_configuracion(cfg: ConfigRequest,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     def s(k, v):
         c = db.query(database.ConfigModel).filter_by(clave=k).first()
         val_str = "1" if v is True else "0" if v is False else str(v)
@@ -459,11 +598,14 @@ def guardar_configuracion(cfg: ConfigRequest, db: Session = Depends(get_db)):
 
 # --- METADATA HOSPITALES (Punto 2) ---
 @app.get("/api/hospitales-metadata")
-def listar_hospitales_metadata(db: Session = Depends(get_db)):
+def listar_hospitales_metadata(db: Session = Depends(get_db),
+                               current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     return db.query(HospitalMetadata).all()
 
 @app.post("/api/hospitales-metadata")
-def crear_hospital_metadata(dto: HospitalDTO, db: Session = Depends(get_db)):
+def crear_hospital_metadata(dto: HospitalDTO,
+                            db: Session = Depends(get_db),
+                            current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     existe = db.query(HospitalMetadata).filter_by(hospital_id=dto.hospital_id).first()
     if existe: raise HTTPException(status_code=400, detail="El ID existe")
     nuevo = HospitalMetadata(**dto.dict())
@@ -471,7 +613,9 @@ def crear_hospital_metadata(dto: HospitalDTO, db: Session = Depends(get_db)):
     return {"status": "ok", "msg": "Creado"}
 
 @app.put("/api/hospitales-metadata/{hid}")
-def editar_hospital_metadata(hid: str, dto: HospitalDTO, db: Session = Depends(get_db)):
+def editar_hospital_metadata(hid: str, dto: HospitalDTO,
+                             db: Session = Depends(get_db),
+                             current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
     
@@ -488,7 +632,9 @@ def editar_hospital_metadata(hid: str, dto: HospitalDTO, db: Session = Depends(g
     return {"status": "ok", "msg": "Actualizado"}
 
 @app.patch("/api/hospitales-metadata/{hid}/toggle")
-def toggle_visibilidad(hid: str, db: Session = Depends(get_db)):
+def toggle_visibilidad(hid: str,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
     h.is_visible = not h.is_visible
@@ -497,7 +643,9 @@ def toggle_visibilidad(hid: str, db: Session = Depends(get_db)):
 
 # Nueva ruta para togglear alertas (Punto 2)
 @app.patch("/api/hospitales-metadata/{hid}/toggle-alerts")
-def toggle_alertas(hid: str, db: Session = Depends(get_db)):
+def toggle_alertas(hid: str,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
     h.alerts_enabled = not h.alerts_enabled
@@ -505,14 +653,17 @@ def toggle_alertas(hid: str, db: Session = Depends(get_db)):
     return {"status": "ok", "alerts_enabled": h.alerts_enabled}
 
 @app.delete("/api/hospitales-metadata/{hid}")
-def eliminar_hospital_metadata(hid: str, db: Session = Depends(get_db)):
+def eliminar_hospital_metadata(hid: str,
+                               db: Session = Depends(get_db),
+                               current_user: dict = Depends(auth.require_roles("Admin"))):
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
     db.delete(h); db.commit()
     return {"status": "ok", "msg": "Eliminado"}
 
 @app.get("/api/mapa-data")
-def obtener_datos_mapa(db: Session = Depends(get_db)):
+def obtener_datos_mapa(db: Session = Depends(get_db),
+                       current_user: dict = Depends(auth.get_current_user)):
     conf = db.query(database.ConfigModel).filter_by(clave="offline_minutes").first()
     limit_min = int(conf.valor) if (conf and conf.valor) else 10
     limit_delta = timedelta(minutes=limit_min)
@@ -633,7 +784,14 @@ def generar_grafico_temporal(datos_equipo):
     return buf
 
 @app.post("/api/informes/pdf")
-def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def generar_reporte_pdf(request: Request,
+                        req: ReportePDFRequest,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria", "Comercial"))):
+    if req.tipo_reporte == "infra":
+        return generar_reporte_infra_pdf(req, db)
+
     # 1. Obtener Nombre del Hospital
     hospital = db.query(HospitalMetadata).filter_by(hospital_id=req.hospital_id).first()
     nombre_hosp = hospital.nombre if hospital else "Hospital Desconocido"
@@ -764,111 +922,103 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
     c = canvas.Canvas(buffer_pdf, pagesize=A4)
     ancho, alto = A4
 
-    def dibujar_encabezado_y_pie(c_canvas, titulo_hoja, num_pagina):
-        c_canvas.setFont("Helvetica-Bold", 16)
-        c_canvas.setFillColorRGB(0.17, 0.24, 0.31)
-        c_canvas.setStrokeColorRGB(0.6, 0.6, 0.6)
-        c_canvas.setFillColorRGB(0.9, 0.9, 0.9)
-        c_canvas.roundRect(40, alto - 60, 45, 25, 4, fill=1, stroke=1)
-        c_canvas.setFillColorRGB(0.17, 0.24, 0.31)
-        c_canvas.drawString(45, alto - 53, req.hospital_id)
-        c_canvas.drawString(95, alto - 53, nombre_hosp)
-        c_canvas.setFont("Helvetica-Bold", 14)
-        c_canvas.drawString(40, alto - 85, titulo_hoja)
-        c_canvas.setFont("Helvetica", 11)
-        c_canvas.drawString(40, alto - 105, f"Período: {req.fecha_desde} - {req.fecha_hasta}")
-        
-        c_canvas.setFont("Helvetica-Bold", 14)
-        c_canvas.setFillColorRGB(0.16, 0.5, 0.72)
-        c_canvas.drawString(ancho/2 - 60, 30, "TECNOIMAGEN")
-        c_canvas.setFont("Helvetica", 9)
-        c_canvas.setFillColorRGB(0.5, 0.5, 0.5)
-        c_canvas.drawString(ancho - 100, 30, f"Página {num_pagina}")
-        return alto - 140
+    # --- HELPER LOCAL: Encabezado y pie de página ---
+    def _encabezado(titulo_hoja, num_pagina):
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.setFillColorRGB(0.9, 0.9, 0.9)
+        c.roundRect(40, alto - 60, 45, 25, 4, fill=1, stroke=1)
+        c.setFillColorRGB(0.17, 0.24, 0.31)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(45, alto - 53, req.hospital_id)
+        c.drawString(95, alto - 53, nombre_hosp[:40])
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, alto - 85, titulo_hoja)
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColorRGB(0.16, 0.5, 0.72)
+        c.drawString(ancho / 2 - 60, 30, "TECNOIMAGEN")
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(ancho - 100, 30, f"Página {num_pagina}")
+        return alto - 130
 
-    def dibujar_caja_totales(titulo, datos_dict, pos_y):
+    # --- HELPER LOCAL: Caja con dona + tabla ---
+    def _caja_totales(titulo, datos_dict, pos_y):
+        if not datos_dict:
+            return pos_y
         img_buf, total, colores = generar_grafico_dona(datos_dict)
         data_tabla = [["", "Equipo", "Cantidad", "%"]]
         filas = []
         for i, (eq, cant) in enumerate(datos_dict.items()):
             pct = f"{(cant / total * 100):.1f}%" if total > 0 else "0%"
             color_hex = colores[i] if i < len(colores) else '#bdc3c7'
-            # Cortamos a 22 caracteres para que no se estire a lo ancho
             data_tabla.append(["", eq[:22], f"{cant:,}".replace(',', '.'), pct])
             filas.append(color_hex)
-            
-        t = Table(data_tabla, colWidths=[15, 145, 55, 35])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#ecf0f1')),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#2c3e50')),
-            ('ALIGN', (2,0), (-1,-1), 'RIGHT'),
-            ('ALIGN', (0,0), (0,-1), 'CENTER'), 
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('TOPPADDING', (0,0), (-1,-1), 1),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#bdc3c7')),
-            ('FONTSIZE', (0,0), (-1,-1), 6),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+
+        tbl = Table(data_tabla, colWidths=[15, 145, 55, 35])
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ecf0f1')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+            ('FONTSIZE', (0, 0), (-1, -1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
-        
-        # ¡LA CLAVE ESTÁ AQUÍ! Le pedimos a ReportLab la altura EXACTA de la tabla (th)
-        tw, th = t.wrap(0, 0)
-        
-        # La caja ahora se ajusta milimétricamente a la tabla
+        tw, th = tbl.wrap(0, 0)
         alto_caja = max(200, th + 60)
-        
-        # Dibujamos el recuadro gris
+
         c.setStrokeColorRGB(0.8, 0.8, 0.8)
         c.setFillColorRGB(0.98, 0.98, 0.98)
         c.roundRect(40, pos_y - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
-        
-        # Título
         c.setFillColorRGB(0.1, 0.1, 0.1)
         c.setFont("Helvetica-Bold", 11)
         c.drawString(55, pos_y - 25, titulo)
-        
-        # Gráfico (Dona)
-        c.drawImage(ImageReader(img_buf), 50, pos_y - alto_caja + (alto_caja/2) - 75, width=150, height=150, mask='auto')
-        
-        # Ubicamos la tabla calculando el techo de la misma para que NUNCA pise el título
+        c.drawImage(ImageReader(img_buf), 50, pos_y - alto_caja + (alto_caja / 2) - 75,
+                    width=150, height=150, mask='auto')
         pos_tabla_y = pos_y - 45 - th
-        t.drawOn(c, 230, pos_tabla_y)
-
-        # Ubicamos los circulitos calculando matemáticamente el centro de cada fila real
-        alto_fila = th / len(data_tabla)
-        for i, color_hex in enumerate(filas):
-            y_circulo = pos_tabla_y + th - (alto_fila * (1.5 + i))
-            c.setFillColor(colors.HexColor(color_hex))
-            c.setStrokeColor(colors.HexColor(color_hex))
-            c.circle(240, y_circulo, 3, fill=1, stroke=0)
-            
+        tbl.drawOn(c, 230, pos_tabla_y)
+        if len(data_tabla) > 1:
+            alto_fila = th / len(data_tabla)
+            for i, color_hex in enumerate(filas):
+                y_circulo = pos_tabla_y + th - (alto_fila * (1.5 + i))
+                c.setFillColor(colors.HexColor(color_hex))
+                c.setStrokeColor(colors.HexColor(color_hex))
+                c.circle(240, y_circulo, 3, fill=1, stroke=0)
         return pos_y - alto_caja - 20
 
-    # === DIBUJAR PÁGINA 1: TOTALES ===
-    pos_y_actual = dibujar_encabezado_y_pie(c, "INFORME DE GESTIÓN DE EQUIPOS MÉDICOS", 1)
-    
-    if req.alcance in ['total', 'ris'] and datos_ris:
-        pos_y_actual = dibujar_caja_totales("ÓRDENES RIS POR EQUIPO (Órdenes Creadas)", datos_ris, pos_y_actual)
-    if req.alcance in ['total', 'pacs'] and datos_pacs:
-        pos_y_actual = dibujar_caja_totales("ESTUDIOS PACS POR EQUIPO (Estudios Almacenados)", datos_pacs, pos_y_actual)
+    # ==========================================
+    # PÁGINA 1: Resumen con donas
+    # ==========================================
+    pagina_actual = 1
+    pos_y_actual = _encabezado("INFORME DE GESTIÓN DE EQUIPOS MÉDICOS", pagina_actual)
 
-    # === DIBUJAR PÁGINAS 2+: EVOLUCIÓN TEMPORAL ===
+    if req.alcance in ['total', 'ris'] and datos_ris:
+        pos_y_actual = _caja_totales("ÓRDENES RIS POR EQUIPO (Órdenes Creadas)", datos_ris, pos_y_actual)
+    if req.alcance in ['total', 'pacs'] and datos_pacs:
+        pos_y_actual = _caja_totales("ESTUDIOS PACS POR EQUIPO (Estudios Almacenados)", datos_pacs, pos_y_actual)
+
+    # ==========================================
+    # PÁGINAS 2+: Evolución temporal por equipo
+    # ==========================================
     equipos_a_graficar = list(datos_temporales.keys())
-    pagina_actual = 2
-    
+
     if equipos_a_graficar:
         c.showPage()
-        pos_y_actual = dibujar_encabezado_y_pie(c, "EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
-        
+        pagina_actual += 1
+        pos_y_actual = _encabezado("EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
+
         for equipo in equipos_a_graficar:
             cols_activas = cols_activas_globales
 
             img_buf = generar_grafico_temporal(datos_temporales[equipo])
-            if not img_buf: continue
+            if not img_buf:
+                continue
 
             headers = ['Período'] + [col.capitalize() for col in cols_activas]
             data_tabla = [headers]
-            
             for tiempo in todos_los_tiempos:
                 fila = [tiempo]
                 for col in cols_activas:
@@ -876,70 +1026,55 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
                     fila.append(f"{val:,}".replace(',', '.'))
                 data_tabla.append(fila)
 
-            # 1. ARMAMOS LA TABLA PRIMERO (Para saber cuánto mide)
             ancho_col_base = (ancho - 120) / (len(cols_activas) + 1.5)
-            anchos = [ancho_col_base * 1.5] + [ancho_col_base]*len(cols_activas)
-            t = Table(data_tabla, colWidths=anchos)
-            
+            anchos = [ancho_col_base * 1.5] + [ancho_col_base] * len(cols_activas)
+            tbl = Table(data_tabla, colWidths=anchos)
+
             estilos = [
-                ('ALIGN', (1,0), (-1,-1), 'CENTER'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('TOPPADDING', (0,0), (-1,-1), 1),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#bdc3c7')),
-                ('FONTSIZE', (0,0), (-1,-1), 6),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('TOPPADDING', (0, 0), (-1, -1), 1),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+                ('FONTSIZE', (0, 0), (-1, -1), 6),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ]
-            
             for idx_col, col_name in enumerate(cols_activas):
                 color_hex = ESTADOS_COLORS.get(col_name.capitalize(), '#cccccc')
-                estilos.append(('BACKGROUND', (idx_col+1, 0), (idx_col+1, 0), colors.HexColor(color_hex)))
-                
+                estilos.append(('BACKGROUND', (idx_col + 1, 0), (idx_col + 1, 0), colors.HexColor(color_hex)))
             estilos.append(('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#ecf0f1')))
-            t.setStyle(TableStyle(estilos))
-            
-            # ¡EL TRUCO! Le pedimos a ReportLab que calcule el alto real (th) de la tabla
-            tw, th = t.wrap(ancho-80, 200)
+            tbl.setStyle(TableStyle(estilos))
 
-            # 2. CALCULAMOS EL ALTO DE LA CAJA (Gráfico 190px + Tabla th + 60px de márgenes)
+            tw, th = tbl.wrap(ancho - 80, 200)
             alto_caja = 190 + th + 60
-            
-            # Control de salto de página
+
+            # Salto de página si no entra
             if (pos_y_actual - alto_caja) < 50:
                 c.showPage()
                 pagina_actual += 1
-                pos_y_actual = dibujar_encabezado_y_pie(c, "EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
+                pos_y_actual = _encabezado("EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
 
-            # 3. DIBUJAMOS DE ABAJO HACIA ARRIBA
-            # Fondo Gris
             c.setStrokeColorRGB(0.8, 0.8, 0.8)
             c.setFillColorRGB(0.98, 0.98, 0.98)
             c.roundRect(40, pos_y_actual - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
-            
-            # Título (arriba de todo en la caja)
             c.setFillColorRGB(0.1, 0.1, 0.1)
             c.setFont("Helvetica-Bold", 12)
             c.drawString(55, pos_y_actual - 25, f"EVOLUCIÓN COMBINADA - {equipo}")
-            
-            # Gráfico (debajo del título). pos_y_actual - 35 (título) - 190 (alto gráfico)
-            c.drawImage(ImageReader(img_buf), 40, pos_y_actual - 225, width=ancho-80, height=190, mask='auto')
-            
-            # Tabla (debajo del gráfico, casi tocando el piso de la caja)
-            t.drawOn(c, 50, pos_y_actual - alto_caja + 15)
-
-            # Actualizamos la posición para el siguiente equipo
+            c.drawImage(ImageReader(img_buf), 40, pos_y_actual - 225,
+                        width=ancho - 80, height=190, mask='auto')
+            tbl.drawOn(c, 50, pos_y_actual - alto_caja + 15)
             pos_y_actual -= (alto_caja + 20)
 
     c.save()
-    
-    # Preparamos el archivo y el nombre
+
+    # ==========================================
+    # GUARDAR Y ENVIAR
+    # ==========================================
     filename = f"Reporte_TM_{req.hospital_id}_{req.fecha_desde}.pdf"
-    pdf_bytes = buffer_pdf.getvalue() # Obtenemos los bytes crudos
-    
-    # Intentamos subir a Asana
+    pdf_bytes = buffer_pdf.getvalue()
+
     asana_url = asana_conector.adjuntar_pdf_a_tarea(req.asana_task_id, pdf_bytes, filename)
-    
-    # NUEVO: Guardar en la Base de Datos
+
     nuevo_registro = HistorialReportes(
         hospital_id=req.hospital_id,
         tipo_reporte="PDF Completo",
@@ -950,19 +1085,305 @@ def generar_reporte_pdf(req: ReportePDFRequest, db: Session = Depends(get_db)):
     )
     db.add(nuevo_registro)
     db.commit()
-    
+
     if asana_url:
         return {"status": "success", "asana_url": asana_url, "message": "Adjuntado a Asana correctamente"}
     else:
         buffer_pdf.seek(0)
         return StreamingResponse(
-            buffer_pdf, 
-            media_type="application/pdf", 
+            buffer_pdf,
+            media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
+def generar_reporte_infra_pdf(req, db):
+    hospital = db.query(HospitalMetadata).filter_by(hospital_id=req.hospital_id).first()
+    nombre_hosp = hospital.nombre if hospital else "Hospital Desconocido"
+
+    def parse_f(s): return datetime.strptime(s, "%Y-%m-%d")
+    f_ini = parse_f(req.fecha_desde)
+    f_fin = parse_f(req.fecha_hasta) + timedelta(days=1)
+    
+    query = text("""
+        SELECT timestamp, host_cpu_usage, host_ram_usage, full_json_data 
+        FROM reportes_historicos 
+        WHERE hospital_id = :hid AND timestamp BETWEEN :f1 AND :f2
+        ORDER BY timestamp ASC
+    """)
+    result = db.execute(query, {"hid": req.hospital_id, "f1": f_ini, "f2": f_fin}).fetchall()
+
+    if not result:
+        return {"error": "No hay datos para el periodo"}
+
+    # --- PROCESAMIENTO DE KPIs ---
+    metrics_host = {"cpu": [], "ram": []}
+    for row in result:
+        data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
+        tele = (data.get("physical_layer") or {}).get("telemetry") or {}
+        cpu_p = tele.get("cpu", {}).get("usage_percent")
+        ram_p = tele.get("ram", {}).get("usage_percent")
+        if cpu_p is not None: metrics_host["cpu"].append(cpu_p)
+        if ram_p is not None: metrics_host["ram"].append(ram_p)
+
+    ultimo_json = json.loads(result[-1].full_json_data) if isinstance(result[-1].full_json_data, str) else result[-1].full_json_data
+    phy = ultimo_json.get("physical_layer") or {}
+    vms_raw = ultimo_json.get("virtual_layer") or []
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    ancho, alto = A4
+
+    # --- HELPER LOCAL: Encabezado y pie de página ---
+    def _encabezado(titulo_hoja, num_pagina):
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.setFillColorRGB(0.9, 0.9, 0.9)
+        c.roundRect(40, alto - 60, 45, 25, 4, fill=1, stroke=1)
+        c.setFillColorRGB(0.17, 0.24, 0.31)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(45, alto - 53, req.hospital_id)
+        c.drawString(95, alto - 53, nombre_hosp[:40])
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, alto - 85, titulo_hoja)
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColorRGB(0.16, 0.5, 0.72)
+        c.drawString(ancho / 2 - 60, 30, "TECNOIMAGEN")
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(ancho - 100, 30, f"Página {num_pagina}")
+        return alto - 130
+
+    # --- PÁGINA 1 ---
+    pos_y = _encabezado("REPORTE DE SALUD DE INFRAESTRUCTURA (IT)", 1)
+
+    # Bloque KPIs
+    c.setStrokeColorRGB(0.8, 0.8, 0.8); c.setFillColorRGB(0.98, 0.98, 0.98)
+    c.roundRect(40, pos_y - 70, ancho - 80, 70, 10, fill=1, stroke=1)
+    
+    def draw_kpi(label, val, x, y, color=(0,0,0)):
+        c.setFillColorRGB(0.5, 0.5, 0.5); c.setFont("Helvetica", 8); c.drawString(x, y, label)
+        c.setFillColorRGB(*color); c.setFont("Helvetica-Bold", 14); c.drawString(x, y - 18, val)
+
+    uptime_pct = min(100.0, (len(result) / ((f_fin - f_ini).total_seconds() / 60)) * 100)
+    draw_kpi("UPTIME ESTIMADO", f"{round(uptime_pct, 2)}%", 60, pos_y - 25, (0.15, 0.68, 0.37))
+    draw_kpi("AVG CPU HOST", f"{round(np.mean(metrics_host['cpu']), 1) if metrics_host['cpu'] else 'N/A'}%", 210, pos_y - 25)
+    draw_kpi("AVG RAM HOST", f"{round(np.mean(metrics_host['ram']), 1) if metrics_host['ram'] else 'N/A'}%", 360, pos_y - 25)
+    pos_y -= 95
+
+    # Gráfico Suavizado
+    c.setFont("Helvetica-Bold", 11); c.setFillColorRGB(0.1, 0.1, 0.1)
+    c.drawString(40, pos_y, "ESTADO DE SENSORES Y EVOLUCIÓN TÉRMICA")
+    pos_y -= 10
+    
+    img_temp = generar_grafico_temperaturas_infra(result)
+    if img_temp:
+        c.drawImage(ImageReader(img_temp), 35, pos_y - 210, width=ancho-70, height=210, mask='auto')
+        pos_y -= 230
+
+    # Tabla Sensores y RAID
+    if phy:
+        # Sensores
+        temps = phy.get("sensors", {}).get("temperatures", [])
+        if temps:
+            data_t = [["Sensor", "Valor Actual", "Estado"]] + [[t.get("name")[:40], f"{t.get('value')} {t.get('unit')}", t.get("status")] for t in temps[:4]]
+            t = Table(data_t, colWidths=[200, 80, 80])
+            t.setStyle(TableStyle([('FONTSIZE',(0,0),(-1,-1),8), ('GRID',(0,0),(-1,-1),0.5,colors.grey), ('BACKGROUND',(0,0),(-1,0),colors.whitesmoke)]))
+            tw, th = t.wrap(0,0); t.drawOn(c, 40, pos_y - th); pos_y -= (th + 20)
+
+        # RAID (Añadido)
+        vols = phy.get("storage_layer", {}).get("logical_volumes", [])
+        if vols:
+            c.setFont("Helvetica-Bold", 10); c.drawString(40, pos_y, "Almacenamiento Físico (RAID)")
+            pos_y -= 12
+            data_v = [["Volumen", "RAID", "Tamaño", "Estado"]] + [[v.get("name"), v.get("raid_level"), f"{v.get('size_gb')} GB", v.get("status")] for v in vols]
+            t_v = Table(data_v, colWidths=[120, 100, 70, 70])
+            t_v.setStyle(TableStyle([('FONTSIZE',(0,0),(-1,-1),7), ('GRID',(0,0),(-1,-1),0.5,colors.grey)]))
+            tw, th = t_v.wrap(0,0); t_v.drawOn(c, 40, pos_y - th); pos_y -= (th + 25)
+
+    # Referencias al pie
+    pos_ref = 80
+    c.setDash(1, 2); c.setStrokeColorRGB(0.7, 0.7, 0.7); c.line(40, pos_ref + 15, ancho - 40, pos_ref + 15); c.setDash()
+    c.setFillColorRGB(0.4, 0.4, 0.4); c.setFont("Helvetica-BoldOblique", 8); c.drawString(40, pos_ref, "REFERENCIAS TÉCNICAS:")
+    glosario = [
+        ("• Uptime Estimado:", "Disponibilidad del agente basada en el conteo de reportes de telemetría recibidos."),
+        ("• AVG CPU / RAM:", "Carga promedio de procesamiento y memoria del servidor físico durante el período."),
+        ("• Sensores / RAID:", "Estado de salud del hardware capturado en el último reporte válido enviado.")
+    ]
+    gy = pos_ref - 12
+    for tit, des in glosario:
+        c.setFont("Helvetica-Bold", 7); c.drawString(40, gy, tit)
+        c.setFont("Helvetica", 7); c.drawString(120, gy, des); gy -= 10
+
+    # --- PÁGINA 2 ---
+    c.showPage()
+    pos_y = _encabezado("DETALLE DE CAPA VIRTUAL E INCIDENTES", 2)
+
+    if vms_raw:
+        c.setFont("Helvetica-Bold", 11); c.drawString(40, pos_y, "RECURSOS POR MÁQUINA VIRTUAL")
+        pos_y -= 20
+        for vm in vms_raw:
+            if pos_y < 150: # Salto de página
+                c.showPage(); pos_y = _encabezado("DETALLE CAPA VIRTUAL (CONT.)", 3)
+            
+            c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0.2, 0.4, 0.6)
+            c.drawString(40, pos_y, f"■ {vm.get('id')} - Estado: {vm.get('state')}")
+            pos_y -= 15
+            
+            # Discos
+            discos = vm.get("storage", [])
+            if discos:
+                data_d = [["Disco", "Uso %", "Libre"]] + [[d.get("mount_point"), f"{d.get('usage_percent')}%", f"{d.get('free_gb')} GB"] for d in discos]
+                t_d = Table(data_d, colWidths=[80, 50, 80])
+                t_d.setStyle(TableStyle([('FONTSIZE',(0,0),(-1,-1),7), ('GRID',(0,0),(-1,-1),0.2,colors.grey)]))
+                tw, th = t_d.wrap(0,0); t_d.drawOn(c, 60, pos_y - th); pos_y -= (th + 15)
+
+    # Tabla Incidentes
+    alertas = db.query(AlertaModel).filter(AlertaModel.hospital_id == req.hospital_id, AlertaModel.start_time >= f_ini).all()
+    if alertas:
+        c.setFont("Helvetica-Bold", 11); c.setFillColorRGB(0.7, 0.1, 0.1)
+        c.drawString(40, pos_y - 10, "HISTORIAL DE INCIDENTES RELEVANTES"); pos_y -= 30
+        data_a = [["Inicio", "Tipo", "Mensaje", "Estado"]] + [[a.start_time.strftime("%d/%m %H:%M"), a.tipo[:15], a.mensaje[:65], "OK"] for a in alertas[:12]]
+        t_a = Table(data_a, colWidths=[70, 110, 285, 50])
+        t_a.setStyle(TableStyle([('FONTSIZE',(0,0),(-1,-1),7), ('GRID',(0,0),(-1,-1),0.5,colors.grey), ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('TEXTCOLOR',(0,1),(-1,-1),colors.darkred)]))
+        tw, th = t_a.wrap(0,0); t_a.drawOn(c, 40, pos_y - th)
+
+    c.save()
+    
+    # Manejo de Historial y Asana (Como lo tenías en el archivo original)
+    filename = f"Infra_{req.hospital_id}_{req.fecha_desde}.pdf"
+    pdf_bytes = buffer.getvalue()
+    asana_url = asana_conector.adjuntar_pdf_a_tarea(req.asana_task_id, pdf_bytes, filename)
+    
+    nuevo_reg = HistorialReportes(hospital_id=req.hospital_id, tipo_reporte="Infraestructura IT", fecha_desde=req.fecha_desde, fecha_hasta=req.fecha_hasta,
+                                  estado="Completado" if asana_url else "Descargado", asana_url=asana_url)
+    db.add(nuevo_reg); db.commit()
+
+    if asana_url: return {"status": "success", "asana_url": asana_url}
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+def generar_grafico_temperaturas_infra(result):
+    if not result: return None
+    
+    # --- PASO 1: Recolección de datos en estructura plana ---
+    # Usamos una lista de tuplas (timestamp, nombre_sensor, valor)
+    # para evitar cualquier desincronización entre fechas y arrays de sensores.
+    registros_planos = []
+    
+    for row in result:
+        try:
+            ts = row.timestamp
+            if isinstance(ts, str):
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+                    try:
+                        ts = datetime.strptime(ts, fmt)
+                        break
+                    except:
+                        continue
+            
+            # Si después del parsing ts sigue siendo string, saltamos este registro
+            if isinstance(ts, str):
+                continue
+
+            data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
+            if not data:
+                continue
+                
+            phy = data.get("physical_layer") or {}
+            sensors = phy.get("sensors") or {}
+            temps = sensors.get("temperatures") or []
+            
+            for t in temps:
+                name = t.get("name") or "Desc"
+                val = t.get("value")
+                # Solo registramos si el valor es numérico válido
+                if val is not None:
+                    try:
+                        registros_planos.append((ts, name, float(val)))
+                    except (TypeError, ValueError):
+                        continue
+        except:
+            continue
+
+    if not registros_planos:
+        return None
+
+    # --- PASO 2: Pivot — construimos una serie temporal por sensor ---
+    # Recolectamos todos los timestamps únicos (ordenados) y todos los sensores únicos.
+    todos_ts = sorted(set(r[0] for r in registros_planos))
+    
+    if len(todos_ts) < 5:
+        return None
+
+    todos_sensores = sorted(set(r[1] for r in registros_planos))
+    
+    # Índice rápido: {(ts, sensor): valor}
+    indice = {(r[0], r[1]): r[2] for r in registros_planos}
+    
+    # Para cada sensor construimos un array del mismo largo que todos_ts,
+    # rellenando con NaN donde no hay dato. Esto garantiza len(fechas) == len(y).
+    data_sensores = {}
+    for sname in todos_sensores:
+        data_sensores[sname] = [
+            indice.get((ts, sname), float('nan')) for ts in todos_ts
+        ]
+
+    if not data_sensores:
+        return None
+
+    # --- PASO 3: Dibujo con suavizado ---
+    window_size = min(12, max(1, len(todos_ts) // 20))  # Adaptativo según cantidad de puntos
+    
+    fig, ax = plt.subplots(figsize=(11, 4))
+    
+    for sname, valores in data_sensores.items():
+        y = np.array(valores, dtype=float)
+        
+        # Interpolación de NaNs internos (no extrapolamos extremos)
+        indices_validos = np.where(~np.isnan(y))[0]
+        if len(indices_validos) < 2:
+            continue  # Sensor con casi sin datos, no lo graficamos
+        
+        # Interpolamos solo los huecos internos
+        y_interp = np.copy(y)
+        y_interp[np.isnan(y_interp)] = np.interp(
+            np.where(np.isnan(y_interp))[0],
+            indices_validos,
+            y[indices_validos]
+        )
+        
+        # Suavizado con ventana adaptativa
+        kernel = np.ones(window_size) / window_size
+        y_smooth = np.convolve(y_interp, kernel, mode='same')
+        
+        # Verificación de seguridad: ambas dimensiones deben coincidir
+        if len(todos_ts) != len(y_smooth):
+            # Fallback: graficamos sin suavizado
+            y_smooth = y_interp
+        
+        ax.plot(todos_ts, y_smooth, label=sname, linewidth=1.5, alpha=0.8)
+    
+    # Si ningún sensor pudo graficarse, cerramos y retornamos None
+    if not ax.lines:
+        plt.close(fig)
+        return None
+
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=8, frameon=False)
+    ax.grid(True, linestyle='--', alpha=0.3)
+    plt.xticks(rotation=15, fontsize=8)
+    plt.tight_layout()
+    
+    img_buf = io.BytesIO()
+    fig.savefig(img_buf, format='png', dpi=130)
+    plt.close(fig)
+    img_buf.seek(0)
+    return img_buf
+
 @app.get("/api/informes/historial")
-def obtener_historial_reportes(db: Session = Depends(get_db)):
+def obtener_historial_reportes(db: Session = Depends(get_db),
+                               # CORRECCIÓN: Restringimos los roles explícitamente
+                               current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria", "Comercial"))):
     # Traemos los últimos 15 reportes generados
     historial = db.query(HistorialReportes).order_by(HistorialReportes.fecha_generacion.desc()).limit(15).all()
     
@@ -988,14 +1409,40 @@ async def get_herramientas(request: Request):
 async def get_ris_analytics(request: Request):
     return templates.TemplateResponse("solucion2.html", {"request": request})
 
+@app.get("/hl7-analytics")
+async def get_hl7_analytics(request: Request):
+    return templates.TemplateResponse("solucion1.html", {"request": request})
+
 # --- DTO para cambio de clave ---
 class ChangePasswordRequest(BaseModel):
     email: str
     current_password: str
     new_password: str
 
+# --- FUNCIÓN DE VALIDACIÓN DE CONTRASEÑAS ---
+def validar_password(pw: str):
+    if len(pw) < 10:
+        raise ValueError("La contraseña debe tener al menos 10 caracteres.")
+    if not re.search(r"[A-Z]", pw):
+        raise ValueError("La contraseña debe contener al menos una letra mayúscula.")
+    if not re.search(r"[0-9]", pw):
+        raise ValueError("La contraseña debe contener al menos un número.")
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", pw):
+        raise ValueError("La contraseña debe contener al menos un carácter especial.")
+
+# --- ENDPOINT ACTUALIZADO ---
 @app.post("/api/user/change-password")
-def cambiar_contrasena(req: ChangePasswordRequest, db: Session = Depends(get_db)):
+def cambiar_contrasena(req: ChangePasswordRequest,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(auth.get_current_user)):
+    
+    # Seguridad: el usuario solo puede cambiar su propia contraseña.
+    if current_user["email"].lower() != req.email.lower():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No podés modificar la contraseña de otro usuario."
+        )
+
     # 1. Buscar al usuario
     user = db.query(database.UserModel).filter(database.UserModel.email == req.email.lower()).first()
     if not user:
@@ -1005,7 +1452,14 @@ def cambiar_contrasena(req: ChangePasswordRequest, db: Session = Depends(get_db)
     if not auth.verify_password(req.current_password, user.hashed_password):
         raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
 
-    # 3. Hashear la nueva clave y guardar
+    # 3. VERIFICAR COMPLEJIDAD DE LA NUEVA CLAVE
+    try:
+        validar_password(req.new_password)
+    except ValueError as e:
+        # Si la contraseña no cumple las reglas, devolvemos el error al frontend
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 4. Hashear la nueva clave y guardar
     user.hashed_password = auth.get_password_hash(req.new_password)
     db.commit()
     
@@ -1037,4 +1491,3 @@ def solicitar_acceso(req: UserAccessRequest):
         return {"status": "ok", "message": "Solicitud enviada con éxito"}
     else:
         raise HTTPException(status_code=500, detail="Error al conectar con Asana")
-

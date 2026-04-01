@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
+import requests
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database
@@ -41,6 +42,17 @@ def procesar_offline(db: Session):
     config = cargar_config(db)
     _verificar_conectividad(db, config)
     try:
+        # =========================================================
+        # 🛡️ FIX BATCH: CARGA EN LOTE PARA EVITAR N+1 QUERIES
+        # =========================================================
+        # 1. Traemos TODA la metadata de una sola vez (1 query)
+        toda_la_metadata = db.query(database.HospitalMetadata).all()
+        
+        # 2. Armamos un Diccionario para búsqueda instantánea en RAM
+        # Estructura: {"H01": <Objeto Metadata>, "H02": <Objeto Metadata>}
+        meta_dict = {meta.hospital_id: meta for meta in toda_la_metadata}
+
+        # 3. Traemos el último reporte de cada hospital (1 query)
         query = text("""
             SELECT h.hospital_id, h.full_json_data 
             FROM reportes_historicos h
@@ -48,11 +60,15 @@ def procesar_offline(db: Session):
             ON h.hospital_id = max_h.hospital_id AND h.timestamp = max_h.max_t
         """)
         reportes = db.execute(query).fetchall()
+        
+        # 4. El bucle ahora es instantáneo, lee de la RAM (meta_dict) en vez de la DB
         for row in reportes:
-            meta = db.query(database.HospitalMetadata).filter_by(hospital_id=row.hospital_id).first()
+            meta = meta_dict.get(row.hospital_id)
+            
             if meta and meta.alerts_enabled and row.full_json_data:
                 data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
                 _evaluar_reglas_v3(row.hospital_id, data, db, config, meta.asana_project_id)
+                
     except Exception as e:
         print(f"❌ Error en ciclo de vigilancia: {e}")
 
@@ -165,6 +181,11 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             alerta.is_active = 0
             alerta.mensaje = f"[OK] Normalizado: {mensaje}"
             db.commit()
+
+            try:
+                requests.post("http://127.0.0.1:8001/api/internal/trigger-ws", timeout=1)
+            except:
+                pass
         return
 
     # CASO B: FALLO DETECTADO (NOTICE, WARNING, CRITICAL)

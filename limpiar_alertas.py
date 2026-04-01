@@ -1,13 +1,25 @@
 import sys
+import os
 import asana
 from asana.rest import ApiException
 from datetime import datetime
+from dotenv import load_dotenv
 
 # Importamos tu configuración de base de datos
 import database
 
+load_dotenv()
+
 # --- CONFIGURACIÓN ASANA ---
-ASANA_ACCESS_TOKEN = '2/1204918676406253/1212721843116117:412402d867f1baad79ddbe7138761cb7'
+# El token se lee exclusivamente desde la variable de entorno ASANA_ACCESS_TOKEN.
+# Nunca debe estar escrito en el código fuente.
+ASANA_ACCESS_TOKEN = os.environ.get("ASANA_ACCESS_TOKEN")
+
+if not ASANA_ACCESS_TOKEN:
+    raise EnvironmentError(
+        "❌ Variable de entorno ASANA_ACCESS_TOKEN no definida. "
+        "Agregala al archivo .env o al entorno del sistema antes de ejecutar este script."
+    )
 
 def limpiar_alertas_huerfanas():
     print("🔄 Iniciando limpieza manual de base de datos...")

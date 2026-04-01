@@ -738,3 +738,50 @@ body.dark-theme div[style*="background: #fdedec"] {
     background-color: #f8f9fa;
     color: #3498db;
 }
+
+/* --- RESUMEN EJECUTIVO (NUEVO LAYOUT) --- */
+.summary-map-wrapper {
+    display: flex;
+    gap: 25px;
+    align-items: stretch;
+    height: calc(100vh - 120px); /* Altura dinámica para ocupar la pantalla */
+    min-height: 550px;
+}
+
+.summary-cards-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 320px; /* Ancho fijo para las tarjetas */
+    flex-shrink: 0;
+    overflow-y: auto; /* Por si la pantalla es muy baja */
+    padding-right: 5px;
+}
+
+.card-map-large {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0 !important; /* Quita el margen base de .card */
+}
+
+/* Responsivo para tablets y móviles */
+@media (max-width: 900px) {
+    .summary-map-wrapper {
+        flex-direction: column;
+        height: auto;
+    }
+    .summary-cards-vertical {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        overflow-y: visible;
+    }
+    .summary-cards-vertical > div {
+        flex: 1;
+        min-width: 200px;
+    }
+    .card-map-large {
+        min-height: 500px;
+    }
+}

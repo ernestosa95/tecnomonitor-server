@@ -1,5 +1,5 @@
 # database.py
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Boolean, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Boolean, Text, Index
 from sqlalchemy import event  # <-- 1. NUEVO: Importamos event para configurar SQLite
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -45,6 +45,11 @@ class ReporteModel(Base):
     ambient_temp = Column(Integer, nullable=True)
     full_json_data = Column(JSON) 
 
+    # Índice compuesto
+    __table_args__ = (
+        Index('idx_hospital_timestamp', 'hospital_id', 'timestamp'),
+    )
+
 class AlertaModel(Base):
     __tablename__ = "alertas"
     id = Column(Integer, primary_key=True, index=True)
@@ -79,6 +84,11 @@ class ReporteUso(Base):
     hospital_id = Column(String(50), index=True)  # Indexado para buscar rápido por hospital
     timestamp = Column(DateTime, index=True)      # Indexado para filtrar rápido por fechas
     kpi_json_data = Column(Text)                  # Aquí guardaremos el JSON de application_metrics
+
+    # Índice compuesto
+    __table_args__ = (
+        Index('idx_uso_hospital_timestamp', 'hospital_id', 'timestamp'),
+    )
 
 class SoftwareMonitoring(Base):
     __tablename__ = "software_monitoring"

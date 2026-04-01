@@ -71,6 +71,9 @@ def procesar_bloque_30min(cursor, hospital_id, registros):
             if 'ram' not in phy_p['telemetry'] or phy_p['telemetry']['ram'] is None: phy_p['telemetry']['ram'] = {}
             phy_p['telemetry']['ram']['used_gb'] = round(mean(valores_ram_host), 2)
 
+        # Etiquetamos el registro para no volver a comprimirlo ---
+        data_plantilla['_is_compressed'] = True
+
         # SQL e Insert
         nuevo_json = json.dumps(data_plantilla)
         sql_status = (phy_p.get('sensors') or {}).get('status', 'Unknown')
@@ -99,7 +102,7 @@ def ejecutar_mantenimiento():
         cursor.execute("""
             SELECT id, hospital_id, timestamp, full_json_data 
             FROM reportes_historicos 
-            WHERE timestamp < ? 
+            WHERE timestamp < ? AND full_json_data NOT LIKE '%"_is_compressed": true%'
             ORDER BY hospital_id, timestamp ASC LIMIT ?
         """, (fecha_limite, BATCH_SIZE))
         
@@ -119,8 +122,16 @@ def ejecutar_mantenimiento():
             if nueva_llave != llave_actual and bloque_actual:
                 procesar_bloque_30min(cursor, llave_actual[0], bloque_actual)
                 bloque_actual = []
+            
             llave_actual = nueva_llave
             bloque_actual.append(row)
+        
+        # =========================================================
+        # 🛡️ FIX: Procesar el último bloque que quedó atrapado en memoria
+        # al terminar el ciclo for.
+        # =========================================================
+        if bloque_actual and llave_actual:
+            procesar_bloque_30min(cursor, llave_actual[0], bloque_actual)
         
         conn.commit()
         print(f"🚀 Batch de {len(rows)} registros procesado.")

@@ -12,6 +12,7 @@ from typing import Dict, Any
 import schemas      
 import transformer  
 import database
+import auth
 
 app = FastAPI(title="TecnoXaas Monitor V4")
 
@@ -30,7 +31,12 @@ class DictionaryPayload(BaseModel):
     dictionary: Dict[str, Dict[str, Any]]
 
 @app.post("/api/admin/diccionario-logs")
-def actualizar_diccionario_logs(payload: DictionaryPayload, db: Session = Depends(get_db)):
+def actualizar_diccionario_logs(
+    payload: DictionaryPayload, 
+    db: Session = Depends(get_db),
+    # AGREGAR LA SIGUIENTE LÍNEA PARA REQUERIR EL ROL ADMIN:
+    usuario_actual = Depends(auth.require_roles("Admin")) 
+):
     """
     Endpoint para cargar o actualizar masivamente el diccionario de logs.
     """
@@ -94,11 +100,13 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         return {"status": "error", "message": "Bad request format"}
 
     # =========================================================
-    # 2. LÓGICA DE PROCESAMIENTO INTACTA
+    # 2. LÓGICA DE PROCESAMIENTO
     # =========================================================
+    schema_version = "Desconocida"
+    is_legacy = False
+    
     try:
         final_payload = None
-        is_legacy = False
         
         # Extraemos la versión para evaluarla
         schema_version = raw_body.get("envelope", {}).get("schema_version")
@@ -121,7 +129,6 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         
         # Extracción segura de capas principales
         env = data_dict.get('envelope') or {}
-        # phy puede ser None o un dict con valores None dentro
         phy = data_dict.get('physical_layer') or {}
         
         # Manejo seguro de timestamp
@@ -149,26 +156,21 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
             p_watts = p_obj.get('watts_current', 0.0)
 
         # =========================================================
-        # --- NUEVO V4: EXTRAER Y GUARDAR MÉTRICAS DE USO (KPIs) ---
+        # --- EXTRAER Y GUARDAR MÉTRICAS DE USO (KPIs) ---
         # =========================================================
         app_metrics = data_dict.get('application_metrics')
         
         if app_metrics:
-            # 1. Creamos el registro para la nueva tabla
             nuevo_reporte_uso = database.ReporteUso(
                 hospital_id = env.get('hospital_id', 'UNKNOWN'),
                 timestamp = ts,
                 kpi_json_data = json.dumps(app_metrics)
             )
             db.add(nuevo_reporte_uso)
-            
-            # 2. Eliminamos las métricas del JSON gigante para ahorrar espacio
-            # Así la tabla reportes_historicos se queda solo con la infraestructura pura
             del data_dict['application_metrics']
+        
         # =========================================================
-
-        # =========================================================
-        # --- NUEVO: EXTRAER Y GUARDAR MONITOREO DE SOFTWARE ---
+        # --- EXTRAER Y GUARDAR MONITOREO DE SOFTWARE ---
         # =========================================================
         soft_monitoring = data_dict.get('software_monitoring')
         
@@ -184,7 +186,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     status_value=item.get("status", ""),
                     metric_value=item.get("queued", 0),
                     extra_data={"last_error": item.get("last_error", "")},
-                    timestamp=ts # Fallback a la hora de llegada
+                    timestamp=ts
                 ))
 
             # 2. Procesar Suitestensa
@@ -193,7 +195,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
             
             for ev in suite_data.get("evs", []):
                 raw_ts = ev.get("ts") or suite_scan_ts
-                ev_time = ts # Fallback
+                ev_time = ts
                 if raw_ts:
                     clean_ts = raw_ts.replace('Z', '')
                     try:
@@ -211,21 +213,16 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     timestamp=ev_time
                 ))
                 
-            # 3. Limpiar del JSON gigante para que la tabla histórica no engorde sin sentido
             del data_dict['software_monitoring']
-        # =========================================================
 
         # 4. CREAR REGISTRO DB (Infraestructura)
         nuevo_registro = database.ReporteModel(
             hospital_id = env.get('hospital_id', 'UNKNOWN'),
             timestamp = ts,
-            
             host_status = host_status,
             host_cpu_usage = host_cpu,
             host_ram_usage = host_ram,
             power_watts = p_watts,
-            
-            # Guardamos el JSON de infraestructura (ya sin los KPIs si venían)
             full_json_data = data_dict
         )
         
@@ -236,13 +233,26 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         logger.info(f"✅ Reporte guardado: {env.get('hospital_id')} (Versión: {schema_version} | Legacy: {is_legacy})")
         return {"status": "ok", "id": nuevo_registro.id, "v3_conversion": is_legacy, "version": schema_version}
 
+    # =========================================================
+    # 🛡️ BLOQUE CORREGIDO: RECHAZO SEGURO SIN DATA LEAKAGE
+    # =========================================================
     except Exception as e:
-        logger.error(f"❌ Error crítico procesando payload: {e}")
+        # Intentamos rescatar el hospital_id para saber quién falló
+        h_id = 'UNKNOWN'
+        if isinstance(raw_body, dict):
+            h_id = raw_body.get('envelope', {}).get('hospital_id', 'UNKNOWN')
+            
+        tamanio_payload = len(str(raw_body))
         
-        print("\n" + "="*50)
-        print("🚨 CONTENIDO RECHAZADO:")
-        print(json.dumps(raw_body, indent=2, default=str))
-        print("="*50 + "\n")
+        # Extraemos solo las llaves principales del JSON, nunca los valores
+        estructura_claves = list(raw_body.keys()) if isinstance(raw_body, dict) else "Formato no diccionario"
         
+        logger.error(
+            "❌ Payload rechazado de %s | Tamaño: %d bytes | Error: %s | Estructura enviada: %s",
+            h_id, tamanio_payload, str(e), estructura_claves
+        )
+        
+        # Opcional: registrar el traceback técnico sin exponer datos
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error interno de procesamiento: {str(e)}")
+        
+        raise HTTPException(status_code=500, detail="Error interno de procesamiento de formato")
