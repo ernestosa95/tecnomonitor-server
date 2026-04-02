@@ -37,6 +37,7 @@ from slowapi.errors import RateLimitExceeded
 import re
 from fastapi import Response
 from fastapi.middleware.gzip import GZipMiddleware
+import generator_report
 
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
@@ -789,313 +790,38 @@ def generar_reporte_pdf(request: Request,
                         req: ReportePDFRequest,
                         db: Session = Depends(get_db),
                         current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria", "Comercial"))):
+    
+    # 1. Delegar a la nueva lógica separada
     if req.tipo_reporte == "infra":
-        return generar_reporte_infra_pdf(req, db)
+        result = generator_report.generar_pdf_infra(req, db)
+    else:
+        result = generator_report.generar_pdf_clinico(req, db)
 
-    # 1. Obtener Nombre del Hospital
-    hospital = db.query(HospitalMetadata).filter_by(hospital_id=req.hospital_id).first()
-    nombre_hosp = hospital.nombre if hospital else "Hospital Desconocido"
+    # 2. Manejo de errores controlados
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
 
-    # 2. Convertir fechas y obtener datos
-    def parsear_fecha(fecha_str):
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
-            try:
-                return datetime.strptime(fecha_str, fmt)
-            except ValueError:
-                continue
-        raise ValueError("Formato desconocido")
-
-    try:
-        f_desde = parsear_fecha(req.fecha_desde)
-        f_hasta = parsear_fecha(req.fecha_hasta) + timedelta(days=1)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Formato de fecha inválido. Recibimos: {req.fecha_desde}")
-
-    f_desde_sql = f_desde - timedelta(days=3)
-    query = text("SELECT timestamp, kpi_json_data FROM reportes_uso WHERE hospital_id = :hid AND timestamp >= :f1")
-    result = db.execute(query, {"hid": req.hospital_id, "f1": f_desde_sql}).fetchall()
-
-    # 3. Agrupar Datos
-    datos_ris = {}
-    datos_pacs = {}
-    datos_temporales = {}
-    
-    EXCLUDED_AETS = ['CLIENT', 'WADO', 'PACS']
-    EXCLUDED_MODS = ['DOC']
-    diccionario_aet = {}
-    
-    agrupar_por_mes = (f_hasta - f_desde).days > 45
-
-    for row in result:
-        metrics = json.loads(row.kpi_json_data) if row.kpi_json_data else {}
-        fecha_extraccion_str = metrics.get("start_time_extraction")
-        
-        try:
-            if fecha_extraccion_str: 
-                fecha_evento = datetime.fromisoformat(fecha_extraccion_str).replace(tzinfo=None)
-            else: 
-                fecha_evento = (datetime.strptime(str(row.timestamp)[:19], "%Y-%m-%d %H:%M:%S") if isinstance(row.timestamp, str) else row.timestamp).replace(tzinfo=None)
-        except: 
-            continue
-
-        if f_desde <= fecha_evento < f_hasta:
-            k_tiempo = fecha_evento.strftime("%Y-%m") if agrupar_por_mes else fecha_evento.strftime("%Y-%m-%d")
-            
-            # PASO 1: RIS
-            for item in metrics.get("ris", []):
-                eq = item.get("equipo")
-                aet = item.get("aet")
-                mod = item.get("mod", "")
-                
-                if aet and eq: 
-                    diccionario_aet[aet] = eq
-                    
-                nombre_final_ris = eq or aet or "Desc"
-                
-                if nombre_final_ris not in EXCLUDED_AETS and aet not in EXCLUDED_AETS and mod not in EXCLUDED_MODS:
-                    if nombre_final_ris not in datos_temporales: datos_temporales[nombre_final_ris] = {}
-                    if k_tiempo not in datos_temporales[nombre_final_ris]: datos_temporales[nombre_final_ris][k_tiempo] = {}
-                    
-                    val = item.get("totales", 0)
-                    if val == 0:
-                        val = sum([item.get(k, 0) for k in ["citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos"]])
-                    
-                    if val > 0:
-                        datos_ris[nombre_final_ris] = datos_ris.get(nombre_final_ris, 0) + val
-                        
-                    for st in ["citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos"]:
-                        val_st = item.get(st, 0)
-                        if val_st > 0:
-                            key_st = 'asociados' if st == 'con_imagen' else st
-                            datos_temporales[nombre_final_ris][k_tiempo][key_st] = datos_temporales[nombre_final_ris][k_tiempo].get(key_st, 0) + val_st
-            
-            # PASO 2: PACS
-            for item in metrics.get("pacs", []):
-                aet = item.get("aet") or "Desc"
-                mod = item.get("mod", "")
-                nombre_final_pacs = diccionario_aet.get(aet, aet)
-                
-                if aet not in EXCLUDED_AETS and nombre_final_pacs not in EXCLUDED_AETS and mod not in EXCLUDED_MODS:
-                    if nombre_final_pacs not in datos_temporales: datos_temporales[nombre_final_pacs] = {}
-                    if k_tiempo not in datos_temporales[nombre_final_pacs]: datos_temporales[nombre_final_pacs][k_tiempo] = {}
-                    
-                    val = item.get("almacenados", 0)
-                    if val > 0:
-                        datos_pacs[nombre_final_pacs] = datos_pacs.get(nombre_final_pacs, 0) + val
-                        datos_temporales[nombre_final_pacs][k_tiempo]['almacenados'] = datos_temporales[nombre_final_pacs][k_tiempo].get('almacenados', 0) + val
-
-    datos_ris = dict(sorted(datos_ris.items(), key=lambda x: x[1], reverse=True))
-    datos_pacs = dict(sorted(datos_pacs.items(), key=lambda x: x[1], reverse=True))
-
-    # ==========================================
-    # NORMALIZACIÓN GLOBAL
-    # ==========================================
-    todos_los_tiempos = set()
-    for eq in datos_temporales:
-        todos_los_tiempos.update(datos_temporales[eq].keys())
-    
-    todos_los_tiempos = sorted(list(todos_los_tiempos))
-    
-    columnas_posibles = ['citados', 'admitidos', 'ejecutados', 'asociados', 'borradores', 'definitivos', 'suspendidos', 'almacenados']
-    cols_activas_globales = []
-    
-    for col in columnas_posibles:
-        if any(datos_temporales[eq].get(t, {}).get(col, 0) > 0 for eq in datos_temporales for t in datos_temporales[eq]):
-            cols_activas_globales.append(col)
-            
-    if not cols_activas_globales:
-        cols_activas_globales = ['citados', 'ejecutados', 'almacenados']
-            
-    for eq in datos_temporales:
-        for t in todos_los_tiempos:
-            if t not in datos_temporales[eq]:
-                datos_temporales[eq][t] = {col: 0 for col in cols_activas_globales}
-            else:
-                for col in cols_activas_globales:
-                    if col not in datos_temporales[eq][t]:
-                        datos_temporales[eq][t][col] = 0
-
-    # ==========================================
-    # 4. CREAR DOCUMENTO PDF
-    # ==========================================
-    buffer_pdf = io.BytesIO()
-    c = canvas.Canvas(buffer_pdf, pagesize=A4)
-    ancho, alto = A4
-
-    # --- HELPER LOCAL: Encabezado y pie de página ---
-    def _encabezado(titulo_hoja, num_pagina):
-        c.setStrokeColorRGB(0.6, 0.6, 0.6)
-        c.setFillColorRGB(0.9, 0.9, 0.9)
-        c.roundRect(40, alto - 60, 45, 25, 4, fill=1, stroke=1)
-        c.setFillColorRGB(0.17, 0.24, 0.31)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(45, alto - 53, req.hospital_id)
-        c.drawString(95, alto - 53, nombre_hosp[:40])
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(40, alto - 85, titulo_hoja)
-        c.setFont("Helvetica-Bold", 14)
-        c.setFillColorRGB(0.16, 0.5, 0.72)
-        c.drawString(ancho / 2 - 60, 30, "TECNOIMAGEN")
-        c.setFont("Helvetica", 9)
-        c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(ancho - 100, 30, f"Página {num_pagina}")
-        return alto - 130
-
-    # --- HELPER LOCAL: Caja con dona + tabla ---
-    def _caja_totales(titulo, datos_dict, pos_y):
-        if not datos_dict:
-            return pos_y
-        img_buf, total, colores = generar_grafico_dona(datos_dict)
-        data_tabla = [["", "Equipo", "Cantidad", "%"]]
-        filas = []
-        for i, (eq, cant) in enumerate(datos_dict.items()):
-            pct = f"{(cant / total * 100):.1f}%" if total > 0 else "0%"
-            color_hex = colores[i] if i < len(colores) else '#bdc3c7'
-            data_tabla.append(["", eq[:22], f"{cant:,}".replace(',', '.'), pct])
-            filas.append(color_hex)
-
-        tbl = Table(data_tabla, colWidths=[15, 145, 55, 35])
-        tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ecf0f1')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-            ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
-            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('TOPPADDING', (0, 0), (-1, -1), 1),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
-            ('FONTSIZE', (0, 0), (-1, -1), 6),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        tw, th = tbl.wrap(0, 0)
-        alto_caja = max(200, th + 60)
-
-        c.setStrokeColorRGB(0.8, 0.8, 0.8)
-        c.setFillColorRGB(0.98, 0.98, 0.98)
-        c.roundRect(40, pos_y - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
-        c.setFillColorRGB(0.1, 0.1, 0.1)
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(55, pos_y - 25, titulo)
-        c.drawImage(ImageReader(img_buf), 50, pos_y - alto_caja + (alto_caja / 2) - 75,
-                    width=150, height=150, mask='auto')
-        pos_tabla_y = pos_y - 45 - th
-        tbl.drawOn(c, 230, pos_tabla_y)
-        if len(data_tabla) > 1:
-            alto_fila = th / len(data_tabla)
-            for i, color_hex in enumerate(filas):
-                y_circulo = pos_tabla_y + th - (alto_fila * (1.5 + i))
-                c.setFillColor(colors.HexColor(color_hex))
-                c.setStrokeColor(colors.HexColor(color_hex))
-                c.circle(240, y_circulo, 3, fill=1, stroke=0)
-        return pos_y - alto_caja - 20
-
-    # ==========================================
-    # PÁGINA 1: Resumen con donas
-    # ==========================================
-    pagina_actual = 1
-    pos_y_actual = _encabezado("INFORME DE GESTIÓN DE EQUIPOS MÉDICOS", pagina_actual)
-
-    if req.alcance in ['total', 'ris'] and datos_ris:
-        pos_y_actual = _caja_totales("ÓRDENES RIS POR EQUIPO (Órdenes Creadas)", datos_ris, pos_y_actual)
-    if req.alcance in ['total', 'pacs'] and datos_pacs:
-        pos_y_actual = _caja_totales("ESTUDIOS PACS POR EQUIPO (Estudios Almacenados)", datos_pacs, pos_y_actual)
-
-    # ==========================================
-    # PÁGINAS 2+: Evolución temporal por equipo
-    # ==========================================
-    equipos_a_graficar = list(datos_temporales.keys())
-
-    if equipos_a_graficar:
-        c.showPage()
-        pagina_actual += 1
-        pos_y_actual = _encabezado("EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
-
-        for equipo in equipos_a_graficar:
-            cols_activas = cols_activas_globales
-
-            img_buf = generar_grafico_temporal(datos_temporales[equipo])
-            if not img_buf:
-                continue
-
-            headers = ['Período'] + [col.capitalize() for col in cols_activas]
-            data_tabla = [headers]
-            for tiempo in todos_los_tiempos:
-                fila = [tiempo]
-                for col in cols_activas:
-                    val = datos_temporales[equipo][tiempo].get(col, 0)
-                    fila.append(f"{val:,}".replace(',', '.'))
-                data_tabla.append(fila)
-
-            ancho_col_base = (ancho - 120) / (len(cols_activas) + 1.5)
-            anchos = [ancho_col_base * 1.5] + [ancho_col_base] * len(cols_activas)
-            tbl = Table(data_tabla, colWidths=anchos)
-
-            estilos = [
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
-                ('FONTSIZE', (0, 0), (-1, -1), 6),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]
-            for idx_col, col_name in enumerate(cols_activas):
-                color_hex = ESTADOS_COLORS.get(col_name.capitalize(), '#cccccc')
-                estilos.append(('BACKGROUND', (idx_col + 1, 0), (idx_col + 1, 0), colors.HexColor(color_hex)))
-            estilos.append(('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#ecf0f1')))
-            tbl.setStyle(TableStyle(estilos))
-
-            tw, th = tbl.wrap(ancho - 80, 200)
-            alto_caja = 190 + th + 60
-
-            # Salto de página si no entra
-            if (pos_y_actual - alto_caja) < 50:
-                c.showPage()
-                pagina_actual += 1
-                pos_y_actual = _encabezado("EVOLUCIÓN TEMPORAL POR EQUIPO", pagina_actual)
-
-            c.setStrokeColorRGB(0.8, 0.8, 0.8)
-            c.setFillColorRGB(0.98, 0.98, 0.98)
-            c.roundRect(40, pos_y_actual - alto_caja, ancho - 80, alto_caja, 10, fill=1, stroke=1)
-            c.setFillColorRGB(0.1, 0.1, 0.1)
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(55, pos_y_actual - 25, f"EVOLUCIÓN COMBINADA - {equipo}")
-            c.drawImage(ImageReader(img_buf), 40, pos_y_actual - 225,
-                        width=ancho - 80, height=190, mask='auto')
-            tbl.drawOn(c, 50, pos_y_actual - alto_caja + 15)
-            pos_y_actual -= (alto_caja + 20)
-
-    c.save()
-
-    # ==========================================
-    # GUARDAR Y ENVIAR
-    # ==========================================
-    filename = f"Reporte_TM_{req.hospital_id}_{req.fecha_desde}.pdf"
-    pdf_bytes = buffer_pdf.getvalue()
-
-    asana_url = asana_conector.adjuntar_pdf_a_tarea(req.asana_task_id, pdf_bytes, filename)
-
-    nuevo_registro = HistorialReportes(
-        hospital_id=req.hospital_id,
-        tipo_reporte="PDF Completo",
-        fecha_desde=req.fecha_desde,
-        fecha_hasta=req.fecha_hasta,
-        estado="Completado" if asana_url else "Descargado",
-        asana_url=asana_url
-    )
-    db.add(nuevo_registro)
-    db.commit()
+    # 3. Respuesta según resultado de Asana
+    pdf_bytes = result["pdf_bytes"]
+    filename = result["filename"]
+    asana_url = result["asana_url"]
 
     if asana_url:
-        return {"status": "success", "asana_url": asana_url, "message": "Adjuntado a Asana correctamente"}
+        return {
+            "status": "success", 
+            "asana_url": asana_url, 
+            "message": "Adjuntado a Asana correctamente"
+        }
     else:
+        # Descarga forzada local en caso de error en Asana
+        buffer_pdf = io.BytesIO(pdf_bytes)
         buffer_pdf.seek(0)
         return StreamingResponse(
             buffer_pdf,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
-
+    
 def generar_reporte_infra_pdf(req, db):
     hospital = db.query(HospitalMetadata).filter_by(hospital_id=req.hospital_id).first()
     nombre_hosp = hospital.nombre if hospital else "Hospital Desconocido"
