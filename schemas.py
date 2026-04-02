@@ -154,6 +154,8 @@ class ApplicationMetricsContent(BaseModel):
 
 class AgentReportV4(BaseModel):
     envelope: Dict[str, Any]
+    collection_meta: Optional[Dict[str, Any]] = None
+    software_monitoring: Optional[Dict[str, Any]] = None
     physical_layer: Dict[str, Any]
     virtual_layer: List[Dict[str, Any]]
     # Hacemos que este campo sea opcional para mantener compatibilidad

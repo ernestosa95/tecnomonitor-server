@@ -89,6 +89,16 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
     # =========================================================
     try:
         raw_body = await request.json()
+
+        # =========================================================
+        # 🔍 DEBUG TEMPORAL: IMPRIMIR PAYLOAD DE P10
+        # =========================================================
+        if isinstance(raw_body, dict):
+            h_id = raw_body.get("envelope", {}).get("hospital_id")
+            if h_id == "P10":
+                logger.info("🔔 [DEBUG P10] Capturado reporte entrante:")
+                #print(json.dumps(raw_body, indent=2))
+        # =========================================================
     except ClientDisconnect:
         logger.warning("⚠️ [Ingesta] Cliente desconectado a mitad del envío.")
         return {"status": "error", "message": "Client disconnected during transfer"}
@@ -112,7 +122,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         schema_version = raw_body.get("envelope", {}).get("schema_version")
 
         # 1. DETECCIÓN DE VERSIÓN (Acepta 3.0 y 4.0)
-        if schema_version in ["3.0", "4.0"]:
+        if schema_version in ["3.0", "4.0", "4.1"]:
             # Es V3 o V4 Nativo -> Pasa directo sin transformar
             final_payload = raw_body
         else:
@@ -172,36 +182,57 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         # =========================================================
         # --- EXTRAER Y GUARDAR MONITOREO DE SOFTWARE ---
         # =========================================================
+        # =========================================================
+        # --- EXTRAER Y GUARDAR MONITOREO DE SOFTWARE ---
+        # =========================================================
+        # 1. Definimos la variable (Evita el NameError)
         soft_monitoring = data_dict.get('software_monitoring')
         
         if soft_monitoring:
             h_id = env.get('hospital_id', 'UNKNOWN')
             
-            # 1. Procesar Mirth Connect
-            for item in soft_monitoring.get("mirth", []):
-                db.add(database.SoftwareMonitoring(
-                    hospital_id=h_id,
-                    app_name="mirth",
-                    component_id=item.get("channel", "unknown"),
-                    status_value=item.get("status", ""),
-                    metric_value=item.get("queued", 0),
-                    extra_data={"last_error": item.get("last_error", "")},
-                    timestamp=ts
-                ))
+            # --- PROCESAR MIRTH CONNECT (Soporta múltiples instancias) ---
+            mirth_data = soft_monitoring.get("mirth")
+            
+            # Detectamos formato: lista (v2) o diccionario (v3/v4 con instancias)
+            if isinstance(mirth_data, dict):
+                mirth_instances = mirth_data
+            elif isinstance(mirth_data, list):
+                mirth_instances = {"Default": mirth_data}
+            else:
+                mirth_instances = {}
 
-            # 2. Procesar Suitestensa
+            for instance_name, channels in mirth_instances.items():
+                for item in channels:
+                    nombre_canal = item.get("channel", "unknown")
+                    id_comp = f"[{instance_name}] {nombre_canal}" if instance_name != "Default" else nombre_canal
+
+                    db.add(database.SoftwareMonitoring(
+                        hospital_id=h_id,
+                        app_name="mirth",
+                        component_id=id_comp,
+                        status_value=item.get("status", ""),
+                        metric_value=item.get("queued", 0), # El encolado sigue siendo nuestra métrica de control
+                        extra_data={
+                            "instancia": instance_name, 
+                            "last_error": item.get("last_error", ""),
+                            # --- NUEVOS DATOS AGREGADOS ---
+                            "recibidos": item.get("received", 0),
+                            "enviados": item.get("sent", 0)
+                        },
+                        timestamp=ts
+                    ))
+
+            # --- PROCESAR SUITESTENSA (Logs) ---
             suite_data = soft_monitoring.get("suitestensa", {})
             suite_scan_ts = suite_data.get("scan_ts")
             
             for ev in suite_data.get("evs", []):
+                ev_time = ts # Default
                 raw_ts = ev.get("ts") or suite_scan_ts
-                ev_time = ts
                 if raw_ts:
-                    clean_ts = raw_ts.replace('Z', '')
-                    try:
-                        ev_time = datetime.fromisoformat(clean_ts[:26])
-                    except ValueError:
-                        pass
+                    try: ev_time = datetime.fromisoformat(raw_ts.replace('Z', '')[:26])
+                    except: pass
                         
                 db.add(database.SoftwareMonitoring(
                     hospital_id=h_id,
@@ -213,7 +244,9 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     timestamp=ev_time
                 ))
                 
+            # Limpiamos el JSON antes de guardar la infraestructura
             del data_dict['software_monitoring']
+
 
         # 4. CREAR REGISTRO DB (Infraestructura)
         nuevo_registro = database.ReporteModel(
