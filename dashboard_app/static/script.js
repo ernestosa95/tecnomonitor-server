@@ -7,6 +7,7 @@ const EXCLUDED_MODS = ['DOC'];
 let mapDashInstance = null;
 let mapDashMarkers = null;
 let currentDashMapFilter = 'all';
+let currentSoftwareMinutes = 0;
 
 // --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
 async function authFetch(url, options = {}) {
@@ -558,6 +559,15 @@ async function verDetalle(hospitalId) {
     currentHistoryData = [];
     currentRangeHours = 24; 
     currentKpiRangeHours = 24; // Reset del rango global de software a 24H
+
+    // Resetear Software a Total (0) al entrar a un nuevo hospital
+    currentSoftwareMinutes = 0;
+    document.querySelectorAll('.sw-time-btn').forEach(b => b.classList.remove('active'));
+    
+    // Seleccionamos el último botón (Total)
+    const botones = document.querySelectorAll('.sw-time-btn');
+    const btnTotal = botones[botones.length - 1]; 
+    if(btnTotal) btnTotal.classList.add('active');
     
     // Auto-colapsar barra lateral al ver detalles (si estás en PC)
     if (window.innerWidth > 768) { 
@@ -631,7 +641,8 @@ async function verDetalle(hospitalId) {
         // UNA SOLA LLAMADA PARA TODO EL SOFTWARE (Solicita 24hs por defecto)
         await Promise.all([
             cargarHistorial(24, hospitalId),
-            cargarHistorialKpiGlobal(168, hospitalId) 
+            cargarHistorialKpiGlobal(168, hospitalId),
+            cargarEstadoSoftware(hospitalId) // <--- ESTA ES LA LÍNEA NUEVA
         ]);
     } catch (e) { console.error("Error detalle:", e); }
 }
@@ -2822,5 +2833,128 @@ function toggleTourDash() {
             btn.classList.add('active');
         }
     }
+}
+
+async function cargarEstadoSoftware(idSolicitado) {
+    if (currentHospitalId !== idSolicitado) return;
+    const container = document.getElementById('logs-container');
+    const legend = document.getElementById('software-legend');
+    
+    if (legend) legend.innerText = 'Sincronizando información de integraciones...';
+    if (container) container.innerHTML = '<div style="text-align:center; padding: 40px; color:#7f8c8d;">Cargando estado de canales...</div>';
+    
+    try {
+        // Ahora pasamos la variable global currentSoftwareMinutes en la URL
+        const res = await authFetch(`/api/hospital/${idSolicitado}/software?minutos=${currentSoftwareMinutes}`);
+        const data = await res.json();
+        renderizarSoftware(data);
+    } catch(e) {
+        console.error("Error cargando software:", e);
+        if (legend) legend.innerText = '⚠️ Error de conexión al servidor';
+        if (container) container.innerHTML = '<div style="text-align:center; padding: 40px; color:#e74c3c;">Error al cargar los datos de integraciones.</div>';
+    }
+}
+
+function renderizarSoftware(data) {
+    const container = document.getElementById('logs-container');
+    const legend = document.getElementById('software-legend');
+    if (!container) return;
+    
+    // 1. LEYENDA DINÁMICA
+    if (legend && data.metadata) {
+        let textoTiempo = '';
+        if (data.metadata.minutos === 0) textoTiempo = 'Total Histórico';
+        else if (data.metadata.minutos === 30) textoTiempo = 'los últimos 30 minutos';
+        else if (data.metadata.minutos === 60) textoTiempo = 'la última hora';
+        else if (data.metadata.minutos === 1440) textoTiempo = 'las últimas 24 horas';
+        else if (data.metadata.minutos === 10080) textoTiempo = 'los últimos 7 días';
+        
+        if (data.metadata.minutos === 0) {
+            legend.innerHTML = `Tráfico <b style="color:#27ae60">${textoTiempo}</b> acumulado desde el último reinicio del servicio.`;
+        } else if (!data.metadata.is_historical) {
+            legend.innerHTML = `⚠️ Sin historial suficiente en este período. Mostrando solo valores actuales.`;
+        } else {
+            legend.innerHTML = `Tráfico de mensajes cursados en <b style="color:var(--primary)">${textoTiempo}</b>`;
+        }
+    }
+
+    // 2. RENDER DE TARJETAS (Sin cambios importantes respecto a la versión anterior)
+    container.innerHTML = '';
+    let html = '';
+    
+    if (!data || !data.mirth || Object.keys(data.mirth).length === 0) {
+        container.innerHTML = `
+            <div style="padding: 60px 20px; text-align: center; color: #7f8c8d;">
+                <h3 style="margin-top: 20px;">Sin Integraciones Reportadas</h3>
+                <p style="font-style: italic;">Este hospital no tiene canales de Mirth monitoreados actualmente.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const isDark = document.body.classList.contains('dark-theme');
+    const theadBg = isDark ? 'transparent' : '#fdfdfd';
+
+    Object.keys(data.mirth).forEach(instancia => {
+        const canales = data.mirth[instancia];
+        let tablaHtml = `
+            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #f39c12;">
+                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
+                    <span style="font-size: 1.5em;">🔄</span>
+                    <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Mirth Connect: <span style="color: #f39c12;">${instancia}</span></h3>
+                </div>
+                <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
+                    <table class="table-clean" style="margin:0; width:100%;">
+                        <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
+                            <tr>
+                                <th style="padding: 12px 20px;">Canal</th>
+                                <th style="padding: 12px 20px; text-align: center;">Estado</th>
+                                <th style="padding: 12px 20px; text-align: right;">Recibidos</th>
+                                <th style="padding: 12px 20px; text-align: right;">Enviados</th>
+                                <th style="padding: 12px 20px; text-align: right;">Encolados</th>
+                                <th style="padding: 12px 20px;">Último Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        canales.forEach(c => {
+            const status = (c.status || '').toUpperCase();
+            let statusColor = '#95a5a6'; let statusBg = 'rgba(149, 165, 166, 0.15)';
+            if (status === 'STARTED') { statusColor = '#27ae60'; statusBg = 'rgba(39, 174, 96, 0.15)'; }
+            else if (status === 'STOPPED') { statusColor = '#e74c3c'; statusBg = 'rgba(231, 76, 60, 0.15)'; }
+            else if (status === 'PAUSED') { statusColor = '#f39c12'; statusBg = 'rgba(243, 156, 18, 0.15)'; }
+            else if (status === 'ERROR') { statusColor = '#c0392b'; statusBg = 'rgba(192, 57, 43, 0.15)'; }
+            
+            const queuedStyle = c.queued > 0 ? 'color: #e74c3c; font-weight: bold; background: rgba(231, 76, 60, 0.15); padding: 2px 8px; border-radius: 10px;' : 'color: #7f8c8d;';
+            const valRecibidos = c.received !== undefined ? c.received.toLocaleString('es-AR') : '-';
+            const valEnviados = c.sent !== undefined ? c.sent.toLocaleString('es-AR') : '-';
+
+            tablaHtml += `
+                <tr style="border-bottom: 1px solid #f1f5f8;">
+                    <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50;">${c.channel}</td>
+                    <td style="padding: 12px 20px; text-align: center;">
+                        <span style="color: ${statusColor}; background: ${statusBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${statusColor}40;">${status}</span>
+                    </td>
+                    <td style="padding: 12px 20px; text-align: right; color: #3498db; font-weight: 500;">${valRecibidos}</td>
+                    <td style="padding: 12px 20px; text-align: right; color: #2ecc71; font-weight: 500;">${valEnviados}</td>
+                    <td style="padding: 12px 20px; text-align: right;">
+                        <span style="${queuedStyle}">${c.queued.toLocaleString('es-AR')}</span>
+                    </td>
+                    <td style="padding: 12px 20px; color: #e74c3c; font-size: 0.85em;">${c.last_error || '-'}</td>
+                </tr>
+            `;
+        });
+        tablaHtml += `</tbody></table></div></div>`;
+        html += tablaHtml;
+    });
+    container.innerHTML = html;
+}
+
+function cambiarRangoSoftware(minutos, btn) {
+    document.querySelectorAll('.sw-time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentSoftwareMinutes = minutos;
+    cargarEstadoSoftware(currentHospitalId);
 }
 

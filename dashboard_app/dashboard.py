@@ -1217,3 +1217,104 @@ def solicitar_acceso(req: UserAccessRequest):
         return {"status": "ok", "message": "Solicitud enviada con éxito"}
     else:
         raise HTTPException(status_code=500, detail="Error al conectar con Asana")
+
+@app.get("/api/hospital/{hospital_id}/software")
+def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = Depends(get_db), current_user: dict = Depends(auth.get_current_user)):
+    
+    # 1. Si minutos es 0, queremos el HISTÓRICO TOTAL (Sin calcular deltas)
+    if minutos == 0:
+        query = text("""
+            WITH RankedData AS (
+                SELECT component_id, status_value, metric_value, extra_data,
+                       ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
+                FROM software_monitoring
+                WHERE hospital_id = :hid AND app_name = 'mirth'
+            )
+            SELECT component_id, status_value, metric_value, extra_data, NULL as timestamp FROM RankedData WHERE rn = 1
+        """)
+        resultados = db.execute(query, {"hid": hospital_id}).fetchall()
+        is_historical = False
+    else:
+        # Lógica de intervalos de tiempo (Deltas)
+        time_limit = datetime.now() - timedelta(minutes=minutos)
+        query = text("""
+            SELECT component_id, status_value, metric_value, extra_data, timestamp
+            FROM software_monitoring
+            WHERE hospital_id = :hid AND app_name = 'mirth'
+              AND timestamp >= :time_limit
+            ORDER BY timestamp ASC
+        """)
+        resultados = db.execute(query, {"hid": hospital_id, "time_limit": time_limit}).fetchall()
+        
+        # Fallback si es un hospital nuevo sin historial
+        if not resultados:
+            query_last = text("""
+                WITH RankedData AS (
+                    SELECT component_id, status_value, metric_value, extra_data,
+                           ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
+                    FROM software_monitoring
+                    WHERE hospital_id = :hid AND app_name = 'mirth'
+                )
+                SELECT component_id, status_value, metric_value, extra_data, NULL as timestamp FROM RankedData WHERE rn = 1
+            """)
+            resultados = db.execute(query_last, {"hid": hospital_id}).fetchall()
+            is_historical = False
+        else:
+            is_historical = True
+
+    # 2. Agrupamos por canal
+    canales_historia = {}
+    for row in resultados:
+        cid = row.component_id
+        if cid not in canales_historia:
+            canales_historia[cid] = []
+        canales_historia[cid].append(row)
+
+    software_data = {
+        "metadata": {"minutos": minutos, "is_historical": is_historical},
+        "mirth": {}
+    }
+    
+    # 3. Procesamos los datos
+    for cid, history in canales_historia.items():
+        if not history: continue
+        
+        actual = history[-1]
+        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        instancia = extra_actual.get("instancia", "Default")
+        
+        if instancia not in software_data["mirth"]:
+            software_data["mirth"][instancia] = []
+            
+        canal_nombre = cid.replace(f"[{instancia}] ", "") if cid.startswith(f"[{instancia}] ") else cid
+        
+        # --- LÓGICA CLAVE: TOTALES vs DELTAS ---
+        if minutos == 0:
+            total_recibidos = extra_actual.get("recibidos", 0)
+            total_enviados = extra_actual.get("enviados", 0)
+        else:
+            total_recibidos = 0
+            total_enviados = 0
+            if is_historical and len(history) > 1:
+                prev_r = None
+                prev_s = None
+                for row in history:
+                    extra = json.loads(row.extra_data) if row.extra_data else {}
+                    r = extra.get("recibidos", 0)
+                    s = extra.get("enviados", 0)
+                    if prev_r is not None:
+                        total_recibidos += (r - prev_r) if r >= prev_r else r
+                        total_enviados += (s - prev_s) if s >= prev_s else s
+                    prev_r = r
+                    prev_s = s
+
+        software_data["mirth"][instancia].append({
+            "channel": canal_nombre,
+            "status": actual.status_value,
+            "queued": actual.metric_value,
+            "received": total_recibidos,
+            "sent": total_enviados,
+            "last_error": extra_actual.get("last_error", "")
+        })
+        
+    return software_data
