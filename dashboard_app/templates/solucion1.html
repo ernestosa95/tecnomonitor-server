@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sandbox HL7 | ARIS Tools</title>
+    <title>Sandbox HL7 | Integration Tools</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
         /* --- BASE & VARIABLES (del sistema) --- */
@@ -30,6 +30,40 @@
         }
 
         #app-container { display: flex; width: 100%; height: 100%; }
+
+        /* --- PANTALLA DE INICIO (STARTUP) --- */
+        .startup-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, var(--dark) 0%, #1a252f 100%);
+            display: flex; align-items: center; justify-content: center; z-index: 3000;
+        }
+        .startup-box {
+            background: white; width: 550px; border-radius: 12px;
+            padding: 35px 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            text-align: center; position: relative;
+        }
+        .startup-box h1 { 
+            color: var(--dark); font-size: 1.6em; margin-bottom: 12px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .startup-box p { color: #7f8c8d; font-size: 0.9em; margin-bottom: 25px; line-height: 1.5; }
+        .startup-box .input-group { text-align: left; }
+        .startup-divider {
+            margin: 20px 0; border-bottom: 1px solid #e1e4e8; position: relative;
+        }
+        .startup-divider span {
+            position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+            background: white; padding: 0 12px; color: #bdc3c7; font-size: 0.8em; font-weight: 700; letter-spacing: 1px;
+        }
+
+        /* --- VISTA IA (DENTRO DE STARTUP) --- */
+        #startupAI { display: none; text-align: left; }
+        .ai-prompt-box {
+            width: 100%; height: 250px; background: #f8f9fa; border: 1px solid #e1e4e8;
+            border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8em;
+            color: var(--dark); resize: none; margin-bottom: 15px;
+        }
+        .ai-prompt-box:focus { outline: none; border-color: var(--purple); }
 
         /* --- SIDEBAR --- */
         .sidebar-right {
@@ -62,7 +96,6 @@
         #toggle-sidebar {
             background: none; border: none; cursor: pointer; padding: 5px;
             display: flex; align-items: center; justify-content: center; color: #bdc3c7;
-            font-size: 1.1em;
         }
         #toggle-sidebar:hover { color: white; }
 
@@ -81,7 +114,7 @@
             border-left: 4px solid transparent;
             font-size: 0.9em; font-family: 'Segoe UI', Tahoma, sans-serif;
         }
-        .nav-btn .nav-icon { font-size: 1.1em; min-width: 20px; text-align: center; }
+        .nav-btn .nav-icon { width: 20px; height: 20px; flex-shrink: 0; text-align: center; }
         .nav-btn .nav-label { white-space: nowrap; opacity: 1; transition: 0.2s; }
         .sidebar-right.collapsed .nav-label { opacity: 0; width: 0; display: none; }
         .nav-btn:hover { background-color: rgba(255,255,255,0.05); color: white; }
@@ -200,6 +233,26 @@
             outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(52,152,219,0.12);
         }
         .input-group input::placeholder { color: #bdc3c7; }
+
+        /* --- AUTOCOMPLETE --- */
+        .autocomplete-wrapper { position: relative; }
+        .autocomplete-list {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;
+            background: white; border: 1px solid #e1e4e8; border-radius: 4px;
+            max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: none; flex-direction: column; margin-top: 4px;
+        }
+        .autocomplete-item {
+            padding: 8px 12px; cursor: pointer; font-size: 0.85em; font-family: monospace;
+            border-bottom: 1px solid #f8f9fa; transition: background 0.1s; color: var(--dark);
+        }
+        .autocomplete-item:hover { background: #f0f7ff; color: var(--primary); font-weight: bold; }
+        .autocomplete-add {
+            padding: 10px 12px; cursor: pointer; font-size: 0.85em; font-weight: 700;
+            color: var(--purple); background: #f9f5ff; text-align: center;
+            position: sticky; bottom: 0; border-top: 1px solid #e1e4e8;
+        }
+        .autocomplete-add:hover { background: #f3e8ff; }
 
         textarea.hl7-input {
             width: 100%; min-height: 130px; font-family: 'Courier New', monospace; font-size: 0.82em;
@@ -382,29 +435,16 @@
         /* Mermaid container - Ancho Ajustado y Responsivo */
         .mermaid-wrapper {
             background: white; border-radius: 8px; padding: 20px; border: 1px solid #e1e4e8;
-            overflow-x: auto; 
-            display: block; 
-            min-height: 200px; margin-top: 15px;
-            width: 100%;
-            text-align: center;
+            overflow-x: auto; display: block; min-height: 200px; margin-top: 15px; width: 100%; text-align: center;
         }
-        
-        #mermaidContainer .mermaid {
-            width: 100%;
-        }
-
-        #mermaidContainer svg {
-            width: 100% !important; 
-            max-width: none !important; 
-            height: auto !important;
-        }
+        #mermaidContainer .mermaid { width: 100%; }
+        #mermaidContainer svg { width: 100% !important; max-width: none !important; height: auto !important; }
         
         .btn-table-action {
             padding: 4px 8px; font-size: 0.85em; border-radius: 4px; border: none; cursor: pointer;
             color: white; font-family: monospace; transition: 0.2s; background: #95a5a6;
         }
         .btn-table-action:hover { background: #7f8c8d; }
-        .btn-table-action:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* --- MODAL (Nuevo Proyecto) --- */
         .modal-overlay {
@@ -429,252 +469,193 @@
         .help-list { margin-left: 20px; font-size: 0.9em; line-height: 1.6; color: var(--dark); margin-bottom: 15px; }
         .help-list li { margin-bottom: 8px; }
         .help-list code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.95em; color: var(--purple); }
+
+        /* --- DASHBOARD / KPI STYLES --- */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .kpi-card { background: white; padding: 20px 15px; border-radius: var(--radius); border: 1px solid #e1e4e8; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: transform 0.2s; }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        .kpi-val { font-size: 2.2em; font-weight: 700; color: var(--primary); margin-bottom: 5px; }
+        .kpi-label { font-size: 0.75em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+        .kpi-card.kpi-purple .kpi-val { color: var(--purple); }
+        .kpi-card.kpi-success .kpi-val { color: var(--success); }
+        .kpi-card.kpi-warning .kpi-val { color: #d68910; }
     </style>
 </head>
 <body>
+
+<div class="startup-overlay" id="startupOverlay">
+    <div class="startup-box">
+        <div id="startupMain">
+            <h1>
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.2em; height:1.2em;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                Integration Tools Workspace
+            </h1>
+            <p>Bienvenido. Para comenzar a orquestar la integración, debes crear un nuevo plano de arquitectura (Blueprint) o cargar uno existente.</p>
+            <div class="input-group">
+                <label>Nombre del Proyecto / Cliente</label>
+                <input type="text" id="startProjName" placeholder="Ej: Hospital Italiano, Swiss Medical...">
+            </div>
+            <div class="input-group">
+                <label>Sistema Origen (HIS / ERP)</label>
+                <input type="text" id="startProjHIS" placeholder="Ej: Dedalus Care, SAP, Tasy...">
+            </div>
+            <div class="input-group">
+                <label>Sistema Destino (RIS / PACS)</label>
+                <input type="text" id="startProjRIS" value="ESTENSARADIO">
+            </div>
+            <button class="btn-action btn-success" style="width: 100%; justify-content: center; margin-top: 10px; font-size: 1em;" onclick="startNewProject()">🚀 Crear Proyecto</button>
+            <div class="startup-divider"><span>O BIEN</span></div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-action btn-purple" style="flex:1; justify-content: center; font-size: 0.9em;" onclick="document.getElementById('importFile').click()">📂 Cargar (JSON)</button>
+                <button class="btn-action" style="flex:1; justify-content: center; font-size: 0.9em; background:var(--dark);" onclick="showAIView()">🤖 Asistente IA</button>
+            </div>
+        </div>
+
+        <div id="startupAI">
+            <div class="modal-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.2em; height:1.2em; margin-right:8px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                Generador de Blueprint (IA)
+            </div>
+            <p style="font-size:0.85em; color:#7f8c8d; margin-bottom:15px;">
+                Copia el siguiente <strong style="color:var(--purple);">Superprompt</strong> y pégalo en ChatGPT, Gemini o Claude junto con los documentos de relevamiento. La IA te devolverá un archivo JSON listo para cargar.
+            </p>
+            <textarea id="aiPromptText" class="ai-prompt-box" readonly></textarea>
+            <div class="btn-toolbar" style="margin-top: 15px; justify-content: space-between;">
+                <button class="btn-action btn-ghost" onclick="hideAIView()">Volver</button>
+                <button class="btn-action btn-purple" onclick="copyAIPrompt()">📋 Copiar Prompt Completo</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="importProject(event)">
 
 <div id="app-container">
 
     <div class="sidebar-right" id="sidebar">
         <div class="sidebar-header">
             <div class="logo-area">
-                ⚙️ ARIS Tools
+                <div style="display:flex; align-items:center;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.2em; height:1.2em; margin-right:8px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    Integration Tools
+                </div>
                 <div class="logo-sub">HL7 Integration Suite</div>
             </div>
-            <button id="toggle-sidebar" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">☰</button>
+            <button id="toggle-sidebar" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
         </div>
         <nav class="nav-section">
             <div class="nav-section-label">Módulos</div>
-            <button class="nav-btn active" onclick="switchView('sandbox', this)">
-                <span class="nav-icon">⚡</span>
-                <span class="nav-label">Analizador</span>
+            <button class="nav-btn active" id="btnNavDash" onclick="switchView('dashboard', this)">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+                <span class="nav-label">Resumen de Proyecto</span>
             </button>
-            <button class="nav-btn" onclick="switchView('profile', this)">
-                <span class="nav-icon">⚙️</span>
-                <span class="nav-label">Perfil de Integración</span>
-            </button>
-            <button class="nav-btn" onclick="switchView('generator', this)">
-                <span class="nav-icon">📤</span>
-                <span class="nav-label">Simulador RIS → HIS</span>
-            </button>
-            <button class="nav-btn" onclick="switchView('workflow', this)">
-                <span class="nav-icon">🔀</span>
+            <button class="nav-btn" id="btnNavWork" onclick="switchView('workflow', this)">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                 <span class="nav-label">Diseñador de Flujos</span>
             </button>
-
-            <div class="nav-section-label" style="margin-top: 15px;">Proyecto</div>
-            <button class="nav-btn" onclick="openNewProjectModal()">
-                <span class="nav-icon">📄</span>
-                <span class="nav-label">Nuevo Proyecto</span>
+            <button class="nav-btn" id="btnNavAna" onclick="switchView('sandbox', this)">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <span class="nav-label">Analizador</span>
             </button>
-            <button class="nav-btn" onclick="exportProject()">
-                <span class="nav-icon">💾</span>
-                <span class="nav-label">Guardar (JSON)</span>
+            <button class="nav-btn" id="btnNavGen" onclick="switchView('generator', this)">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <span class="nav-label">Simulador RIS → HIS</span>
             </button>
-            <button class="nav-btn" onclick="document.getElementById('importFile').click()">
-                <span class="nav-icon">📂</span>
-                <span class="nav-label">Cargar (JSON)</span>
+            <button class="nav-btn" id="btnNavProf" onclick="switchView('profile', this)">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <span class="nav-label">Perfil de Integración</span>
             </button>
-            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importProject(event)">
 
             <div class="nav-section-label" style="margin-top: 15px;">Soporte</div>
             <button class="nav-btn" onclick="switchView('help', this)">
-                <span class="nav-icon">ℹ️</span>
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
                 <span class="nav-label">Ayuda y Manual</span>
             </button>
         </nav>
     </div>
 
-    <div class="content active" id="view-sandbox">
+    <div class="content active" id="view-dashboard">
         <div class="page-header">
             <div class="page-header-row">
                 <div>
-                    <h2>Analizador y Validador HL7</h2>
-                    <p>Valide mensajes HIS → RIS contra el perfil de integración configurado</p>
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-0.15em; margin-right:4px;"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg> Dashboard del Proyecto</h2>
+                    <p>Centro de comando de la arquitectura de interoperabilidad actual.</p>
                 </div>
                 <div class="header-badges">
-                    <span class="status-badge badge-neutral" id="profileBadge">Sin perfil</span>
-                    <span class="status-badge badge-primary" id="msgTypeBadge" style="display:none;"></span>
+                    <button class="btn-action btn-purple" onclick="exportProject()">💾 Exportar Blueprint</button>
                 </div>
             </div>
         </div>
         <div class="content-scroll">
-
-            <div class="card">
-                <div class="card-title">
-                    📥 Mensaje HL7 de Entrada (HIS → RIS)
-                    <button class="btn-action btn-ghost btn-small" style="font-size:0.78em;" onclick="cargarEjemplo()">📄 Cargar ejemplo</button>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-val" id="kpiRules">0</div>
+                    <div class="kpi-label">Reglas HL7</div>
                 </div>
-                <textarea class="hl7-input" id="hl7Input" placeholder="Pegue el mensaje HL7 crudo aquí&#10;Ej: MSH|^~\&|SendingApp|Facility|ESTENSARADIO|..."></textarea>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:8px;">
-                    <div style="font-size:0.8em; color:#7f8c8d;">
-                        Segmentos detectados: <strong id="segCount">—</strong>
+                <div class="kpi-card kpi-purple">
+                    <div class="kpi-val" id="kpiReqs">0</div>
+                    <div class="kpi-label">Campos Requeridos</div>
+                </div>
+                <div class="kpi-card kpi-warning">
+                    <div class="kpi-val" id="kpiActors">0</div>
+                    <div class="kpi-label">Sistemas / Actores</div>
+                </div>
+                <div class="kpi-card kpi-success">
+                    <div class="kpi-val" id="kpiEvents">0</div>
+                    <div class="kpi-label">Eventos de Flujo</div>
+                </div>
+            </div>
+
+            <div class="card" style="border-left: 4px solid var(--primary);">
+                <div class="card-title">🏷️ Información General del Proyecto</div>
+                <div class="grid-form-3">
+                    <div class="input-group">
+                        <label>Nombre del Proyecto / Sanatorio</label>
+                        <input type="text" id="dashProjName" placeholder="Ej: Hospital Italiano..." oninput="syncMetadata('dash')">
                     </div>
-                    <div class="btn-toolbar">
-                        <button class="btn-action btn-ghost" onclick="clearAll()" style="color:#7f8c8d;">🗑 Limpiar</button>
-                        <button class="btn-action" onclick="analizarHL7()">⚡ Analizar y Validar</button>
+                    <div class="input-group">
+                        <label>Sistema Origen — MSH-3 (HIS)</label>
+                        <input type="text" id="dashProjHIS" placeholder="Ej: SAP, Dedalus" style="font-family:monospace;" oninput="syncMetadata('dash')">
+                    </div>
+                    <div class="input-group">
+                        <label>Sistema Destino — MSH-5 (RIS)</label>
+                        <input type="text" id="dashProjRIS" placeholder="Ej: ESTENSARADIO" style="font-family:monospace;" oninput="syncMetadata('dash')">
                     </div>
                 </div>
             </div>
 
             <div class="detail-top-grid">
                 <div class="detail-card">
-                    <div class="detail-card-header bg-primary">
-                        <span>📋 Reporte de Auditoría</span>
-                        <button class="btn-small btn-copy" onclick="copiarReporte()">📋 Copiar</button>
-                    </div>
-                    <div class="detail-card-body" id="reportPanel">
-                        <div class="empty-state">
-                            <div class="empty-icon">🔍</div>
-                            Pegue un mensaje y presione <strong>Analizar</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="detail-card">
                     <div class="detail-card-header bg-dark">
-                        <span>🌳 Árbol de Segmentos</span>
-                        <button class="btn-small btn-export" onclick="exportarCSV()">📥 CSV</button>
+                        <span>⚙️ Vista Rápida de Perfil</span>
+                        <button class="btn-small btn-view" onclick="switchView('profile', document.getElementById('btnNavProf'))">Editar Perfil</button>
                     </div>
-                    <div class="detail-card-body dark-bg">
-                        <div class="tree-container" id="treeContainer" style="min-height:60px;">
-                            <div style="padding:20px; color:#5d6d7e; font-style:italic;">// El árbol aparecerá aquí</div>
-                        </div>
+                    <div class="detail-card-body">
+                        <table class="rules-table">
+                            <thead><tr><th>Campo</th><th>Esperado</th><th>Nivel</th></tr></thead>
+                            <tbody id="dashRulesPreview">
+                                <tr><td colspan="3" style="text-align:center; color:#bdc3c7;">Sin reglas configuradas</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="detail-card">
+                    <div class="detail-card-header bg-purple">
+                        <span>🔀 Secuencia de Eventos</span>
+                        <button class="btn-small btn-view" style="background: rgba(255,255,255,0.2);" onclick="switchView('workflow', document.getElementById('btnNavWork'))">Ver Flujo Completo</button>
+                    </div>
+                    <div class="detail-card-body">
+                        <table class="rules-table">
+                            <thead><tr><th>Ord</th><th>Origen → Destino</th><th>Mensaje</th></tr></thead>
+                            <tbody id="dashEventsPreview">
+                                <tr><td colspan="3" style="text-align:center; color:#bdc3c7;">Sin eventos configurados</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-
-        </div>
-    </div>
-
-    <div class="content" id="view-profile">
-        <div class="page-header">
-            <div class="page-header-row">
-                <div>
-                    <h2>Perfil de Integración</h2>
-                    <p>Configure los valores esperados para cada campo HL7 en este proyecto</p>
-                </div>
-                <div class="header-badges">
-                    <button class="btn-action btn-ghost" style="font-size:0.82em;" onclick="limpiarPerfil()">🗑 Limpiar todo</button>
-                </div>
-            </div>
-        </div>
-        <div class="content-scroll">
-
-            <div class="card">
-                <div class="card-title">🏷️ Identificación del Perfil</div>
-                <div class="grid-form-3">
-                    <div class="input-group">
-                        <label>Nombre del Proyecto / Sanatorio</label>
-                        <input type="text" id="profileName" placeholder="Ej: Hospital Italiano, Swiss Medical..." oninput="syncProfile()">
-                    </div>
-                    <div class="input-group">
-                        <label>Sistema Origen — MSH-3 (HIS)</label>
-                        <input type="text" id="profileHIS" placeholder="Ej: SAP, Dedalus, Tasy" style="font-family:monospace;" oninput="syncProfile()">
-                    </div>
-                    <div class="input-group">
-                        <label>Sistema Destino — MSH-5 (RIS)</label>
-                        <input type="text" id="profileRIS" placeholder="Ej: ESTENSARADIO" style="font-family:monospace;" oninput="syncProfile()">
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">
-                    📐 Reglas de Validación de Campos
-                    <button class="btn-action" style="font-size:0.78em; padding:6px 12px;" onclick="agregarRegla()">+ Agregar regla</button>
-                </div>
-                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:14px;">
-                    Definí qué valor debe tener cada campo. Si <em>Valor Esperado</em> está vacío, solo se verifica que el campo exista.
-                    Podés separar alternativas con <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">|</code> (ej: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">SN|NW</code>).
-                </p>
-
-                <table class="rules-table">
-                    <thead>
-                        <tr>
-                            <th style="width:110px;">Campo HL7</th>
-                            <th>Valor Esperado</th>
-                            <th>Descripción / Etiqueta</th>
-                            <th style="width:80px;">Nivel</th>
-                            <th style="width:40px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rulesBody"></tbody>
-                </table>
-            </div>
-
-            <div class="card">
-                <div class="card-title">🔒 Campos Obligatorios</div>
-                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:10px;">Campos que nunca pueden estar vacíos para este perfil, independientemente de su valor.</p>
-                <div class="req-chips" id="reqChips"></div>
-                <div style="display:flex; gap:8px; margin-top:4px;">
-                    <input type="text" id="newReqField" style="flex:1; background:#f8f9fa; border:1px solid #e1e4e8; color:var(--dark); padding:7px 10px; border-radius:4px; font-family:monospace; font-size:0.85em;" placeholder="MSH-3, PID-3, ORC-2..." onkeydown="if(event.key==='Enter')addReqField()">
-                    <button class="btn-action btn-ghost" onclick="addReqField()">Agregar</button>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
-    <div class="content" id="view-generator">
-        <div class="page-header">
-            <div class="page-header-row">
-                <div>
-                    <h2>Simulador de Respuesta (RIS → HIS)</h2>
-                    <p>Genere mensajes de respuesta a partir del mensaje analizado</p>
-                </div>
-            </div>
-        </div>
-        <div class="content-scroll">
-
-            <div class="alert-inline alert-warning" id="genAlert" style="display:none;">
-                ⚠️ <div>Analizá primero un mensaje ORM válido para que el simulador tome los datos del contexto (ORC-2, PID, OBR-4, etc.).</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">⚙️ Parámetros del Sistema RIS</div>
-                <div class="grid-form-auto">
-                    <div class="input-group">
-                        <label>Accession Number (RIS)</label>
-                        <input type="text" id="risAccession" value="RIS19519" style="font-family:monospace;">
-                    </div>
-                    <div class="input-group">
-                        <label>Médico / Operador RIS</label>
-                        <input type="text" id="risUser" value="ebitadmin" style="font-family:monospace;">
-                    </div>
-                    <div class="input-group">
-                        <label>Sending App (RIS) — MSH-3</label>
-                        <input type="text" id="risSendApp" value="ESTENSARADIO" style="font-family:monospace;">
-                    </div>
-                    <div class="input-group">
-                        <label>Sending Facility — MSH-4</label>
-                        <input type="text" id="risSendFac" value="ESTENSARADIO" style="font-family:monospace;">
-                    </div>
-                    <div class="input-group" style="grid-column: 1/-1;">
-                        <label>Texto del Informe (para ORU)</label>
-                        <input type="text" id="reportText" value="Estudio sin hallazgos patológicos relevantes. Integración verificada correctamente." style="font-family:monospace;">
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">📤 Generar Mensaje de Respuesta</div>
-                <div class="btn-toolbar" style="margin-bottom:14px;">
-                    <button class="btn-action btn-success" onclick="generarRespuesta('EJECUCION')">⚙️ ORM — Ejecución (SC/CM)</button>
-                    <button class="btn-action btn-danger"  onclick="generarRespuesta('CANCELACION')">🛑 ORM — Cancelación (CA)</button>
-                    <button class="btn-action btn-purple"  onclick="generarRespuesta('INFORME')">📄 ORU — Informe + PDF</button>
-                </div>
-
-                <div style="position:relative; border:1px solid #e1e4e8; border-radius:6px; overflow:hidden;">
-                    <div style="background:#1e1e1e; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:#5d6d7e; font-family:monospace; font-size:0.78em;">// Mensaje generado</span>
-                        <button class="btn-small btn-copy" onclick="copiarSalida()">📋 Copiar</button>
-                    </div>
-                    <textarea id="outHL7" class="hl7-output" readonly placeholder="// Presione un botón para generar el mensaje..."></textarea>
-                    <div class="out-meta" id="outMeta" style="display:none;"></div>
-                </div>
-            </div>
-
         </div>
     </div>
 
@@ -682,7 +663,7 @@
         <div class="page-header">
             <div class="page-header-row">
                 <div>
-                    <h2>Análisis de Workflow & Integración</h2>
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-0.15em; margin-right:4px;"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg> Análisis de Workflow & Integración</h2>
                     <p>Defina los actores, secuencie los eventos, direcciones de flujo y genere la topología visual.</p>
                 </div>
             </div>
@@ -705,13 +686,7 @@
                     </div>
                 </div>
                 <table class="rules-table" style="margin-top: 10px;">
-                    <thead>
-                        <tr>
-                            <th>Nombre del Sistema</th>
-                            <th>Alias Técnico</th>
-                            <th style="width:40px;"></th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Nombre del Sistema</th><th>Alias Técnico</th><th style="width:40px;"></th></tr></thead>
                     <tbody id="wfActorsBody">
                         <tr id="wfActorsEmpty"><td colspan="3" style="text-align:center; color:#999;">No hay sistemas definidos</td></tr>
                     </tbody>
@@ -738,9 +713,10 @@
                         <label>Destino</label>
                         <select id="wfEventTarget"><option value="">-- Seleccione --</option></select>
                     </div>
-                    <div class="input-group">
+                    <div class="input-group autocomplete-wrapper">
                         <label>Conector (Mensaje)</label>
-                        <input type="text" id="wfEventMsg" placeholder="Ej: HL7 ADT^A04">
+                        <input type="text" id="wfEventMsg" placeholder="Buscar o escribir mensaje..." autocomplete="off">
+                        <div class="autocomplete-list" id="wfMsgAutocomplete"></div>
                     </div>
                     <div class="input-group">
                         <label>Descripción del Evento</label>
@@ -778,9 +754,172 @@
                     </div>
                 </div>
                 <p style="font-size:0.82em; color:#7f8c8d;">Diagrama generado automáticamente a partir de la secuencia estructurada superior (Arquitectura basada en IHE).</p>
-                
                 <div class="mermaid-wrapper" id="mermaidContainer">
                     <div style="color:#bdc3c7; font-style:italic; align-self: center;">Presione "Generar Diagrama" para visualizar el flujo.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="content" id="view-sandbox">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-0.15em; margin-right:4px;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg> Analizador y Validador HL7</h2>
+                    <p>Valide mensajes HIS → RIS contra el perfil de integración configurado</p>
+                </div>
+                <div class="header-badges">
+                    <span class="status-badge badge-neutral" id="profileBadge">Sin perfil</span>
+                    <span class="status-badge badge-primary" id="msgTypeBadge" style="display:none;"></span>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+            <div class="card">
+                <div class="card-title">
+                    📥 Mensaje HL7 de Entrada (HIS → RIS)
+                    <button class="btn-action btn-ghost btn-small" style="font-size:0.78em;" onclick="cargarEjemplo()">📄 Cargar ejemplo</button>
+                </div>
+                <textarea class="hl7-input" id="hl7Input" placeholder="Pegue el mensaje HL7 crudo aquí&#10;Ej: MSH|^~\&|SendingApp|Facility|ESTENSARADIO|..."></textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:8px;">
+                    <div style="font-size:0.8em; color:#7f8c8d;">
+                        Segmentos detectados: <strong id="segCount">—</strong>
+                    </div>
+                    <div class="btn-toolbar">
+                        <button class="btn-action btn-ghost" onclick="clearAll()" style="color:#7f8c8d;">🗑 Limpiar</button>
+                        <button class="btn-action" onclick="analizarHL7()">⚡ Analizar y Validar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-top-grid">
+                <div class="detail-card">
+                    <div class="detail-card-header bg-primary">
+                        <span>📋 Reporte de Auditoría</span>
+                        <button class="btn-small btn-copy" onclick="copiarReporte()">📋 Copiar</button>
+                    </div>
+                    <div class="detail-card-body" id="reportPanel">
+                        <div class="empty-state"><div class="empty-icon">🔍</div>Pegue un mensaje y presione <strong>Analizar</strong></div>
+                    </div>
+                </div>
+                <div class="detail-card">
+                    <div class="detail-card-header bg-dark">
+                        <span>🌳 Árbol de Segmentos</span>
+                        <button class="btn-small btn-export" onclick="exportarCSV()">📥 CSV</button>
+                    </div>
+                    <div class="detail-card-body dark-bg">
+                        <div class="tree-container" id="treeContainer" style="min-height:60px;">
+                            <div style="padding:20px; color:#5d6d7e; font-style:italic;">// El árbol aparecerá aquí</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content" id="view-generator">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-0.15em; margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> Simulador de Respuesta (RIS → HIS)</h2>
+                    <p>Genere mensajes de respuesta a partir del mensaje analizado</p>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+            <div class="alert-inline alert-warning" id="genAlert" style="display:none;">
+                ⚠️ <div>Analizá primero un mensaje ORM válido para que el simulador tome los datos del contexto (ORC-2, PID, OBR-4, etc.).</div>
+            </div>
+            <div class="card">
+                <div class="card-title">⚙️ Parámetros del Sistema RIS</div>
+                <div class="grid-form-auto">
+                    <div class="input-group"><label>Accession Number (RIS)</label><input type="text" id="risAccession" value="RIS19519" style="font-family:monospace;"></div>
+                    <div class="input-group"><label>Médico / Operador RIS</label><input type="text" id="risUser" value="ebitadmin" style="font-family:monospace;"></div>
+                    <div class="input-group"><label>Sending App (RIS)</label><input type="text" id="risSendApp" value="ESTENSARADIO" style="font-family:monospace;"></div>
+                    <div class="input-group"><label>Sending Facility</label><input type="text" id="risSendFac" value="ESTENSARADIO" style="font-family:monospace;"></div>
+                    <div class="input-group" style="grid-column: 1/-1;"><label>Texto del Informe (para ORU)</label><input type="text" id="reportText" value="Estudio sin hallazgos patológicos relevantes." style="font-family:monospace;"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📤 Generar Mensaje de Respuesta</div>
+                <div class="btn-toolbar" style="margin-bottom:14px;">
+                    <button class="btn-action btn-success" onclick="generarRespuesta('EJECUCION')">⚙️ ORM — Ejecución (SC/CM)</button>
+                    <button class="btn-action btn-danger"  onclick="generarRespuesta('CANCELACION')">🛑 ORM — Cancelación (CA)</button>
+                    <button class="btn-action btn-purple"  onclick="generarRespuesta('INFORME')">📄 ORU — Informe + PDF</button>
+                </div>
+                <div style="position:relative; border:1px solid #e1e4e8; border-radius:6px; overflow:hidden;">
+                    <div style="background:#1e1e1e; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#5d6d7e; font-family:monospace; font-size:0.78em;">// Mensaje generado</span>
+                        <button class="btn-small btn-copy" onclick="copiarSalida()">📋 Copiar</button>
+                    </div>
+                    <textarea id="outHL7" class="hl7-output" readonly placeholder="// Presione un botón para generar el mensaje..."></textarea>
+                    <div class="out-meta" id="outMeta" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content" id="view-profile">
+        <div class="page-header">
+            <div class="page-header-row">
+                <div>
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-0.15em; margin-right:4px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg> Perfil de Integración</h2>
+                    <p>Configure las reglas de validación y diccionarios personalizados para este proyecto</p>
+                </div>
+                <div class="header-badges">
+                    <button class="btn-action btn-ghost" style="font-size:0.82em;" onclick="limpiarPerfil()">🗑 Limpiar todo</button>
+                </div>
+            </div>
+        </div>
+        <div class="content-scroll">
+
+            <input type="hidden" id="profileName">
+            <input type="hidden" id="profileHIS">
+            <input type="hidden" id="profileRIS">
+
+            <div class="card">
+                <div class="card-title" id="seccionDiccionario">🔤 Conectores / Mensajes Personalizados</div>
+                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:10px;">
+                    Agregá tipos de mensajes específicos que no estén en el listado estándar de la industria (ej. WebService, API REST, Archivo TXT). Aparecerán en el diseñador de flujos.
+                </p>
+                <div class="req-chips" id="customMsgChips"></div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                    <input type="text" id="newCustomMsg" style="flex:1; background:#f8f9fa; border:1px solid #e1e4e8; color:var(--dark); padding:7px 10px; border-radius:4px; font-family:monospace; font-size:0.85em;" placeholder="Ej: JSON API REST..." onkeydown="if(event.key==='Enter')addCustomMsg()">
+                    <button class="btn-action btn-ghost" onclick="addCustomMsg()">Agregar al Diccionario</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    📐 Reglas de Validación de Campos
+                    <button class="btn-action" style="font-size:0.78em; padding:6px 12px;" onclick="agregarRegla()">+ Agregar regla</button>
+                </div>
+                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:14px;">
+                    Definí qué valor debe tener cada campo. Si <em>Valor Esperado</em> está vacío, solo se verifica que el campo exista.
+                    Podés separar alternativas con comas o barras (ej: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">SN, NW</code> o <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">SN|NW</code>).
+                </p>
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th style="width:110px;">Campo HL7</th>
+                            <th>Valor Esperado</th>
+                            <th>Descripción / Etiqueta</th>
+                            <th style="width:80px;">Nivel</th>
+                            <th style="width:40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rulesBody"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🔒 Campos Obligatorios</div>
+                <p style="font-size:0.82em; color:#7f8c8d; margin-bottom:10px;">Campos que nunca pueden estar vacíos para este perfil, independientemente de su valor.</p>
+                <div class="req-chips" id="reqChips"></div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                    <input type="text" id="newReqField" style="flex:1; background:#f8f9fa; border:1px solid #e1e4e8; color:var(--dark); padding:7px 10px; border-radius:4px; font-family:monospace; font-size:0.85em;" placeholder="MSH-3, PID-3, ORC-2..." onkeydown="if(event.key==='Enter')addReqField()">
+                    <button class="btn-action btn-ghost" onclick="addReqField()">Agregar</button>
                 </div>
             </div>
 
@@ -791,97 +930,20 @@
         <div class="page-header">
             <div class="page-header-row">
                 <div>
-                    <h2>ℹ️ Manual de Usuario y Ayuda (D.O.S.A.R)</h2>
-                    <p>Guía de uso de ARIS Tools para Arquitectos de Interoperabilidad</p>
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-0.15em; margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> Manual de Usuario y Ayuda (D.O.S.A.R)</h2>
+                    <p>Guía de uso de Integration Tools para Arquitectos de Interoperabilidad</p>
                 </div>
             </div>
         </div>
         <div class="content-scroll">
-
             <div class="alert-inline alert-info">
-                <strong>¡Hola! Soy ARIS.</strong> Esta herramienta web ha sido diseñada para optimizar los despliegues de interoperabilidad entre sistemas de información hospitalaria (HIS) y nuestro ecosistema (Suitestensa, Mindray, etc.).
+                <strong>¡Hola! Soy Integration Tools.</strong> Esta herramienta web ha sido diseñada para optimizar los despliegues de interoperabilidad entre sistemas de información hospitalaria (HIS) y nuestro ecosistema.
             </div>
-
-            <div class="card">
-                <div class="card-title">⚡ 1. Analizador y Validador HL7</div>
-                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Este módulo es tu herramienta de campo ("Troubleshooting") para leer logs crudos.</p>
-                <ul class="help-list">
-                    <li><strong>Pegar Mensaje:</strong> Traé un mensaje crudo desde Mirth Connect o Rhapsody y pegalo en el cuadro de texto.</li>
-                    <li><strong>Analizar:</strong> Al procesarlo, el sistema construirá un <em>Árbol Semántico</em>, permitiéndote navegar por la estructura (ej. <code>PID-3</code>, <code>OBR-4</code>) sin perderte en los delimitadores (<code>|</code>, <code>^</code>, <code>~</code>).</li>
-                    <li><strong>Auditoría:</strong> El mensaje se cruzará con las reglas que hayas configurado en el "Perfil de Integración". Si falta un campo clave, se marcará en rojo.</li>
-                </ul>
-            </div>
-
-            <div class="card">
-                <div class="card-title">⚙️ 2. Perfil de Integración</div>
-                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Aquí definís las "Reglas de Negocio" particulares de la clínica o sanatorio.</p>
-                <ul class="help-list">
-                    <li><strong>Campos Obligatorios:</strong> Definí qué posiciones HL7 (ej. <code>ORC-2</code>) jamás pueden estar vacías.</li>
-                    <li><strong>Reglas de Validación:</strong> Agregá expectativas de mapeo. Si el HIS debe mandar un estado de orden, podés decirle que en el campo <code>ORC-1</code> espere los valores <code>SN|NW</code> (separados por barra vertical).</li>
-                </ul>
-            </div>
-
-            <div class="card">
-                <div class="card-title">📤 3. Simulador RIS → HIS</div>
-                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Ideal para la fase de pruebas (UAT) antes de configurar el motor de integración.</p>
-                <ul class="help-list">
-                    <li><strong>Contexto:</strong> Primero, analizá un mensaje válido en el <em>Analizador</em>. El simulador tomará de ahí el paciente y el identificador del pedido (Placer Order Number).</li>
-                    <li><strong>Generar Respuestas:</strong> Podés generar mensajes de retorno. Por ejemplo, simular que el tomógrafo terminó el estudio y enviar un <code>ORM (SC)</code> al HIS, o generar un reporte completo <code>ORU^R01</code> que incluye un PDF codificado en Base64 en el segmento <code>OBX-101</code>.</li>
-                </ul>
-            </div>
-
-            <div class="card">
-                <div class="card-title">🔀 4. Diseñador de Flujos (Arquitectura)</div>
-                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Crea diagramas de secuencia basados en los perfiles IHE (Scheduled Workflow, PIR).</p>
-                <ul class="help-list">
-                    <li><strong>Definición de Actores:</strong> Creá las columnas de tu flujo (ej. <em>HIS, Mirth, Suitestensa, TC 64</em>) definiendo un Alias técnico sin espacios.</li>
-                    <li><strong>Secuenciador:</strong> Añadí eventos estableciendo <em>Origen</em> y <em>Destino</em>. Podés definir el sentido de la flecha:
-                        <ul>
-                            <li>➔ <strong>Unidireccional:</strong> Mensajes directos (ej. <code>ADT^A04</code>).</li>
-                            <li>↔ <strong>Bidireccional:</strong> Negociaciones o consultas síncronas (ej. <code>DICOM C-FIND</code>).</li>
-                            <li>⇢ <strong>Respuesta:</strong> Acuses de recibo (ej. <code>ACK</code>).</li>
-                        </ul>
-                    </li>
-                    <li><strong>Generación:</strong> El motor dibujará automáticamente la topología de red. Podés exportarla a PNG para tus presentaciones comerciales o técnicas.</li>
-                </ul>
-            </div>
-
-            <div class="card">
-                <div class="card-title">💾 Gestión de Proyectos (JSON)</div>
-                <p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">No pierdas tu trabajo. Guardá los perfiles y flujos como "Blueprints".</p>
-                <ul class="help-list">
-                    <li>Utilizá los botones del menú lateral <strong>Guardar (JSON)</strong> y <strong>Cargar (JSON)</strong>. Estos archivos contienen toda tu configuración de reglas y actores, permitiéndote retomar el relevamiento de un cliente (ej. <em>Hospital Italiano</em>) en cualquier momento, o compartirlo con otro ingeniero de soporte.</li>
-                </ul>
-            </div>
-
-        </div>
-    </div>
-
-</div>
-
-<div class="modal-overlay" id="modalNewProject">
-    <div class="modal-box">
-        <div class="modal-title">📄 Inicializar Nuevo Proyecto</div>
-        <p style="font-size:0.85em; color:#7f8c8d; margin-bottom:15px;">
-            Al crear un nuevo proyecto se limpiará el lienzo de trabajo actual. Por favor, ingresá los datos base de la integración.
-        </p>
-        
-        <div class="input-group">
-            <label>Nombre del Proyecto / Cliente</label>
-            <input type="text" id="modalProjName" placeholder="Ej: Sanatorio Los Arcos">
-        </div>
-        <div class="input-group">
-            <label>Sistema Origen (HIS)</label>
-            <input type="text" id="modalProjHIS" placeholder="Ej: SAP, Dedalus, Tasy">
-        </div>
-        <div class="input-group">
-            <label>Sistema Destino (RIS / PACS)</label>
-            <input type="text" id="modalProjRIS" value="ESTENSARADIO">
-        </div>
-        
-        <div class="btn-toolbar" style="margin-top: 20px; justify-content: flex-end;">
-            <button class="btn-action btn-ghost" onclick="closeNewProjectModal()">Cancelar</button>
-            <button class="btn-action" onclick="applyNewProject()">Crear Proyecto</button>
+            <div class="card"><div class="card-title">🔀 1. Diseñador de Flujos (Arquitectura)</div><p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Crea diagramas de secuencia basados en los perfiles IHE (Scheduled Workflow, PIR).</p><ul class="help-list"><li><strong>Definición de Actores:</strong> Creá las columnas de tu flujo (ej. <em>HIS, Mirth, Suitestensa, TC 64</em>) definiendo un Alias técnico sin espacios.</li><li><strong>Secuenciador:</strong> Añadí eventos estableciendo <em>Origen</em> y <em>Destino</em>. Podés definir el sentido de la flecha:<ul><li>➔ <strong>Unidireccional:</strong> Mensajes directos (ej. <code>ADT^A04</code>).</li><li>↔ <strong>Bidireccional:</strong> Negociaciones o consultas síncronas (ej. <code>DICOM C-FIND</code>).</li><li>⇢ <strong>Respuesta:</strong> Acuses de recibo (ej. <code>ACK</code>).</li></ul></li><li><strong>Generación:</strong> El motor dibujará automáticamente la topología de red. Podés exportarla a PNG para tus presentaciones comerciales o técnicas.</li></ul></div>
+            <div class="card"><div class="card-title">⚡ 2. Analizador y Validador HL7</div><p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Este módulo es tu herramienta de campo ("Troubleshooting") para leer logs crudos.</p><ul class="help-list"><li><strong>Pegar Mensaje:</strong> Traé un mensaje crudo desde Mirth Connect o Rhapsody y pegalo en el cuadro de texto.</li><li><strong>Analizar:</strong> Al procesarlo, el sistema construirá un <em>Árbol Semántico</em>, permitiéndote navegar por la estructura (ej. <code>PID-3</code>, <code>OBR-4</code>) sin perderte en los delimitadores (<code>|</code>, <code>^</code>, <code>~</code>).</li><li><strong>Auditoría:</strong> El mensaje se cruzará con las reglas que hayas configurado en el "Perfil de Integración". Si falta un campo clave, se marcará en rojo.</li></ul></div>
+            <div class="card"><div class="card-title">📤 3. Simulador RIS → HIS</div><p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Ideal para la fase de pruebas (UAT) antes de configurar el motor de integración.</p><ul class="help-list"><li><strong>Contexto:</strong> Primero, analizá un mensaje válido en el <em>Analizador</em>. El simulador tomará de ahí el paciente y el identificador del pedido (Placer Order Number).</li><li><strong>Generar Respuestas:</strong> Podés generar mensajes de retorno. Por ejemplo, simular que el tomógrafo terminó el estudio y enviar un <code>ORM (SC)</code> al HIS, o generar un reporte completo <code>ORU^R01</code> que incluye un PDF codificado en Base64 en el segmento <code>OBX-101</code>.</li></ul></div>
+            <div class="card"><div class="card-title">⚙️ 4. Perfil de Integración</div><p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">Aquí definís las "Reglas de Negocio" particulares de la clínica o sanatorio.</p><ul class="help-list"><li><strong>Campos Obligatorios:</strong> Definí qué posiciones HL7 (ej. <code>ORC-2</code>) jamás pueden estar vacías.</li><li><strong>Reglas de Validación:</strong> Agregá expectativas de mapeo. Si el HIS debe mandar un estado de orden, podés decirle que en el campo <code>ORC-1</code> espere los valores <code>SN|NW</code> (separados por barra vertical o comas).</li></ul></div>
+            <div class="card"><div class="card-title">💾 Gestión de Proyectos (JSON)</div><p style="font-size:0.9em; color:#5d6d7e; margin-bottom:10px;">No pierdas tu trabajo. Guardá los perfiles y flujos como "Blueprints".</p><ul class="help-list"><li>Utilizá los botones del menú lateral <strong>Guardar (JSON)</strong> y <strong>Cargar (JSON)</strong>. Estos archivos contienen toda tu configuración de reglas y actores, permitiéndote retomar el relevamiento de un cliente en cualquier momento.</li><li><strong>Asistente IA:</strong> Al crear un nuevo proyecto desde la pantalla de inicio, puedes utilizar el 🤖 Asistente IA para generar el archivo JSON automáticamente a partir de PDFs o manuales de integración, utilizando herramientas como ChatGPT o Gemini.</li></ul></div>
         </div>
     </div>
 </div>
@@ -903,7 +965,172 @@ let wfActors = [];
 let wfEvents = [];
 let editingEventIndex = -1; 
 
+// Centinela de cambios no guardados
+let isDirty = false;
+
+// DICCIONARIO DE MENSAJES ESTÁNDAR + PERSONALIZADOS
+const stdMessages = [
+    "HL7 ADT^A01 (Admisión Ingreso)", "HL7 ADT^A04 (Registro Paciente)", "HL7 ADT^A08 (Actualización Datos)", "HL7 ADT^A31 (Actualización Persona)", "HL7 ADT^A40 (Merge/Unificación)",
+    "HL7 ORM^O01 (Nueva Orden / NW)", "HL7 ORM^O01 (Cancelación / CA)", "HL7 ORM^O01 (Ejecución / SC-CM)", "HL7 ORU^R01 (Informe / Resultados)", "HL7 ACK (Acuse de recibo)",
+    "DICOM C-ECHO (Verificación)", "DICOM C-FIND (Consulta MWL)", "DICOM N-ACTION (Estado MPPS)", "DICOM C-STORE (Envío Imágenes)", "DICOM C-STORE-RSP (Acknowledge)",
+    "FHIR Patient (Recurso)", "FHIR ServiceRequest (Orden)", "FHIR DiagnosticReport (Informe)"
+];
+let customMessages = []; // Se llena desde Perfil de Integración
+
 const blankPdf = "JVBERi0xLjAKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqIDIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iaiAzIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzIDNdPj5lbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmCjAwMDAwMDAwMTAgMDAwMDAgbgowMDAwMDAwMDUzIDAwMDAwIG4KMDAwMDAwMDEwMiAwMDAwMCBuCnRyYWlsZXI8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxNDkKJSVFT0YK";
+
+// ==================== ALERTA ANTES DE SALIR ====================
+window.addEventListener('beforeunload', function (e) {
+    if (isDirty) {
+        var confirmationMessage = 'Tienes cambios sin guardar. ¿Seguro que deseas salir sin exportar tu Blueprint?';
+        e.returnValue = confirmationMessage;
+        return confirmationMessage;
+    }
+});
+
+// Configuración del AI Prompt
+const aiPromptTemplate = `Actúa como un Arquitecto de Interoperabilidad en Salud Senior (experto en HL7 v2, DICOM y perfiles IHE).
+Te proporcionaré documentos de relevamiento, manuales de integración o ejemplos de mensajería HL7 de un proyecto en particular.
+Tu objetivo es analizar esa información y generar un archivo de configuración JSON (Blueprint) para la herramienta Integration Tools.
+
+Reglas estrictas para el JSON:
+1. "metadata": Debe contener "name" (Nombre del proyecto), "sourceHIS" (Sistema de origen), "targetRIS" (Sistema destino), "exportDate" (Fecha actual en ISO) y "version" ("1.0").
+2. "hl7Profile": 
+   - "requiredFields": Array de strings con campos HL7 obligatorios (ej. ["MSH-3", "PID-3", "ORC-2", "OBR-4"]).
+   - "validationRules": Array de objetos con reglas. Cada objeto lleva: "field" (ej: "MSH-9"), "expected" (valor esperado), "desc" (descripción breve) y "level" ("error" o "warning").
+3. "workflow":
+   - "customMessages": Array de strings vacio [].
+   - "actors": Array de objetos con "name" (Nombre descriptivo del sistema) y "alias" (Código corto sin espacios para diagramar, ej: "HIS", "RIS", "MOD").
+   - "events": Secuencia cronológica del flujo de integración. Cada evento lleva: "source" (alias origen), "target" (alias destino), "dir" (dirección de la flecha: "->>" para unidireccional, "<<->>" para bidireccional, "-->>" para respuesta/ACK), "msg" (tipo de conector/mensaje, ej: "HL7 ADT^A04"), y "name" (descripción técnica corta).
+
+Esquema JSON base que DEBES respetar estrictamente (devuelve SOLO el código JSON, sin formato markdown extra):
+{
+    "metadata": {
+        "name": "",
+        "sourceHIS": "",
+        "targetRIS": "",
+        "exportDate": "2026-04-03T12:00:00.000Z",
+        "version": "1.0"
+    },
+    "hl7Profile": {
+        "requiredFields": [],
+        "validationRules": []
+    },
+    "workflow": {
+        "customMessages": [],
+        "actors": [],
+        "events": []
+    }
+}`;
+
+document.getElementById('aiPromptText').value = aiPromptTemplate;
+
+// ==================== AUTOCOMPLETE LÓGICA ====================
+const msgInput = document.getElementById('wfEventMsg');
+const msgList = document.getElementById('wfMsgAutocomplete');
+
+function updateMsgAutocomplete() {
+    const val = msgInput.value.toLowerCase();
+    const allMsgs = [...stdMessages, ...customMessages];
+    
+    // Filtrar coincidencias
+    const filtered = allMsgs.filter(m => m.toLowerCase().includes(val));
+
+    msgList.innerHTML = '';
+    
+    // Render opciones encontradas
+    filtered.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'autocomplete-item';
+        div.textContent = m;
+        div.onclick = () => { 
+            msgInput.value = m; 
+            msgList.style.display = 'none'; 
+        };
+        msgList.appendChild(div);
+    });
+
+    // Siempre agregar el botón al final
+    const addDiv = document.createElement('div');
+    addDiv.className = 'autocomplete-add';
+    addDiv.textContent = '➕ Agregar nuevo tipo de mensaje';
+    addDiv.onclick = () => {
+        msgList.style.display = 'none';
+        // Redirigir al Perfil y hacer foco en el nuevo custom msg
+        switchView('profile', document.getElementById('btnNavProf'));
+        // Pequeño scroll animado a la sección
+        setTimeout(() => {
+            const section = document.getElementById('seccionDiccionario');
+            if(section) section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById('newCustomMsg').focus();
+        }, 100);
+    };
+    msgList.appendChild(addDiv);
+
+    msgList.style.display = 'flex';
+}
+
+msgInput.addEventListener('focus', updateMsgAutocomplete);
+msgInput.addEventListener('input', updateMsgAutocomplete);
+
+// Cerrar dropdown si se clickea afuera
+document.addEventListener('click', (e) => {
+    if (!msgInput.parentNode.contains(e.target)) {
+        msgList.style.display = 'none';
+    }
+});
+
+
+// ==================== ACTUALIZACIÓN DE DASHBOARD ====================
+function syncMetadata(source) {
+    if (source === 'dash') {
+        document.getElementById('profileName').value = document.getElementById('dashProjName').value;
+        document.getElementById('profileHIS').value = document.getElementById('dashProjHIS').value;
+        document.getElementById('profileRIS').value = document.getElementById('dashProjRIS').value;
+    } else {
+        document.getElementById('dashProjName').value = document.getElementById('profileName').value;
+        document.getElementById('dashProjHIS').value = document.getElementById('profileHIS').value;
+        document.getElementById('dashProjRIS').value = document.getElementById('profileRIS').value;
+    }
+    isDirty = true;
+}
+
+function updateDashboardStats() {
+    document.getElementById('kpiRules').innerText = validationRules.length;
+    document.getElementById('kpiReqs').innerText = requiredFields.length;
+    document.getElementById('kpiActors').innerText = wfActors.length;
+    document.getElementById('kpiEvents').innerText = wfEvents.length;
+
+    const rulesTbody = document.getElementById('dashRulesPreview');
+    rulesTbody.innerHTML = '';
+    if (validationRules.length === 0) {
+        rulesTbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#bdc3c7;">Sin reglas configuradas</td></tr>';
+    } else {
+        validationRules.slice(0, 4).forEach(r => {
+            const levelIcon = r.level === 'error' ? '🔴' : '🟡';
+            rulesTbody.innerHTML += `<tr><td style="font-family:monospace; font-weight:bold;">${esc(r.field)}</td><td>${esc(r.expected) || '<em>(Presencia)</em>'}</td><td>${levelIcon}</td></tr>`;
+        });
+        if (validationRules.length > 4) {
+            rulesTbody.innerHTML += `<tr><td colspan="3" style="text-align:center; cursor:pointer; color:var(--primary); font-weight:bold;" onclick="switchView('profile', document.getElementById('btnNavProf'))">Ver ${validationRules.length - 4} más...</td></tr>`;
+        }
+    }
+
+    const eventsTbody = document.getElementById('dashEventsPreview');
+    eventsTbody.innerHTML = '';
+    if (wfEvents.length === 0) {
+        eventsTbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#bdc3c7;">Sin eventos configurados</td></tr>';
+    } else {
+        wfEvents.slice(0, 4).forEach((e, idx) => {
+            let dirVisual = '➔';
+            if(e.dir === '<<->>') dirVisual = '↔';
+            if(e.dir === '-->>') dirVisual = '⇢';
+            eventsTbody.innerHTML += `<tr><td><strong>${idx+1}</strong></td><td style="font-family:monospace; font-size:0.85em;">${esc(e.source)} <span style="color:var(--primary);">${dirVisual}</span> ${esc(e.target)}</td><td style="color:var(--purple); font-weight:bold; font-size:0.85em;">${esc(e.msg)}</td></tr>`;
+        });
+        if (wfEvents.length > 4) {
+            eventsTbody.innerHTML += `<tr><td colspan="3" style="text-align:center; cursor:pointer; color:var(--primary); font-weight:bold;" onclick="switchView('workflow', document.getElementById('btnNavWork'))">Ver ${wfEvents.length - 4} más...</td></tr>`;
+        }
+    }
+}
 
 // ==================== NAVEGACIÓN ====================
 function switchView(viewId, btn) {
@@ -911,16 +1138,13 @@ function switchView(viewId, btn) {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('view-' + viewId).classList.add('active');
     if (btn) btn.classList.add('active');
-    if (viewId === 'generator') {
-        document.getElementById('genAlert').style.display = parsedData.orc2 ? 'none' : 'flex';
-    }
+    
+    if (viewId === 'generator') document.getElementById('genAlert').style.display = parsedData.orc2 ? 'none' : 'flex';
+    if (viewId === 'dashboard') updateDashboardStats();
 }
 
 // ==================== UTILS ====================
-function getSegs(raw) {
-    return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-              .split('\n').map(l => l.trim()).filter(l => l.length > 0);
-}
+function getSegs(raw) { return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0); }
 function getCampo(segs, seg, idx) {
     const s = segs.find(l => l.startsWith(seg + '|'));
     if (!s) return null;
@@ -937,11 +1161,7 @@ function ts() {
     return [n.getFullYear(), p2(n.getMonth()+1), p2(n.getDate()), p2(n.getHours()), p2(n.getMinutes()), p2(n.getSeconds())].join('');
 }
 function p2(n) { return n.toString().padStart(2,'0'); }
-function uuid() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8); return v.toString(16);
-    });
-}
+function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8); return v.toString(16); }); }
 function esc(s) { return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // ==================== ANÁLISIS HL7 ====================
@@ -991,7 +1211,8 @@ function analizarHL7() {
                 return;
             }
             if (rule.expected && rule.expected.trim() !== '') {
-                const opts = rule.expected.split('|').map(v => v.trim());
+                // Acepta comas o barras verticales como separadores
+                const opts = rule.expected.split(/[,|]/).map(v => v.trim());
                 if (!opts.includes(val.trim())) {
                     log(rule.level || 'error', rule.field, `${esc(rule.desc || 'Valor incorrecto')} — Esperado: <span class="log-expected">${esc(rule.expected)}</span> — Recibido: <span class="log-received">${esc(val || '(vacío)')}</span>`);
                 } else {
@@ -1077,12 +1298,12 @@ function addTreeRow(parent, label, exportKey, val, nested) {
     parent.appendChild(d);
 }
 
-// ==================== PERFIL ====================
-function syncProfile() { document.getElementById('profileBadge').textContent = document.getElementById('profileName').value.trim() || 'Sin perfil'; }
+// ==================== PERFIL Y REGLAS ====================
 function agregarRegla(field='', expected='', desc='', level='error') {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><input type="text" class="r-field" value="${esc(field)}" oninput="syncRules()"></td><td><input type="text" class="r-expected" value="${esc(expected)}" oninput="syncRules()"></td><td><input type="text" class="r-desc" value="${esc(desc)}" oninput="syncRules()"></td><td><select class="r-level" onchange="syncRules()"><option value="error" ${level==='error'?'selected':''}>🔴 Error</option><option value="warning" ${level==='warning'?'selected':''}>🟡 Aviso</option></select></td><td><button class="btn-table-action btn-delete" style="background:var(--danger);" onclick="this.closest('tr').remove(); syncRules()">✕</button></td>`;
-    document.getElementById('rulesBody').appendChild(tr); syncRules();
+    document.getElementById('rulesBody').appendChild(tr); 
+    syncRules();
 }
 
 function agregarReglaUI(field, expected, desc, level) {
@@ -1095,17 +1316,50 @@ function syncRules() {
     validationRules = Array.from(document.querySelectorAll('#rulesBody tr')).map(tr => ({
         field: tr.querySelector('.r-field').value.trim().toUpperCase(), expected: tr.querySelector('.r-expected').value.trim(),
         desc: tr.querySelector('.r-desc').value.trim(), level: tr.querySelector('.r-level').value
-    }));
+    })).filter(r => r.field !== '');
+    updateDashboardStats();
+    isDirty = true;
 }
+
 function addReqField() {
     const v = document.getElementById('newReqField').value.trim().toUpperCase();
-    if (v && !requiredFields.includes(v)) { requiredFields.push(v); renderReqChips(); document.getElementById('newReqField').value=''; }
+    if (v && !requiredFields.includes(v)) { 
+        requiredFields.push(v); renderReqChips(); document.getElementById('newReqField').value=''; updateDashboardStats();
+        isDirty = true;
+    }
 }
-function removeReqField(f) { requiredFields = requiredFields.filter(x => x !== f); renderReqChips(); }
-function renderReqChips() {
-    document.getElementById('reqChips').innerHTML = requiredFields.map(f => `<span class="req-chip">${f} <span class="rm" onclick="removeReqField('${f}')">✕</span></span>`).join('');
+function removeReqField(f) { 
+    requiredFields = requiredFields.filter(x => x !== f); renderReqChips(); updateDashboardStats(); 
+    isDirty = true;
 }
-function limpiarPerfil() { document.getElementById('profileName').value=''; document.getElementById('profileHIS').value=''; document.getElementById('profileRIS').value=''; document.getElementById('rulesBody').innerHTML=''; requiredFields=[]; renderReqChips(); syncProfile(); syncRules(); }
+function renderReqChips() { document.getElementById('reqChips').innerHTML = requiredFields.map(f => `<span class="req-chip">${f} <span class="rm" onclick="removeReqField('${f}')">✕</span></span>`).join(''); }
+
+// Lógica de Mensajes Custom
+function addCustomMsg() {
+    const v = document.getElementById('newCustomMsg').value.trim();
+    if (v && !customMessages.includes(v) && !stdMessages.includes(v)) { 
+        customMessages.push(v); renderCustomMsgChips(); document.getElementById('newCustomMsg').value='';
+        isDirty = true;
+    }
+}
+function removeCustomMsg(f) { 
+    customMessages = customMessages.filter(x => x !== f); renderCustomMsgChips(); 
+    isDirty = true;
+}
+function renderCustomMsgChips() {
+    document.getElementById('customMsgChips').innerHTML = customMessages.map(f => `<span class="req-chip" style="background:#f9f5ff; border-color:#e9d8fd; color:var(--purple);">${f} <span class="rm" onclick="removeCustomMsg('${f}')">✕</span></span>`).join('');
+}
+
+function limpiarPerfil() { 
+    document.getElementById('dashProjName').value=''; 
+    document.getElementById('dashProjHIS').value=''; 
+    document.getElementById('dashProjRIS').value=''; 
+    syncMetadata('dash');
+    document.getElementById('rulesBody').innerHTML=''; 
+    requiredFields=[]; customMessages=[];
+    renderReqChips(); renderCustomMsgChips();
+    syncRules(); 
+}
 
 // ==================== SIMULADOR ====================
 function generarRespuesta(tipo) {
@@ -1159,10 +1413,16 @@ function addWfActor() {
     const n = document.getElementById('wfActorName'), a = document.getElementById('wfActorAlias');
     const name = n.value.trim(), alias = a.value.trim().replace(/\s+/g, '_').toUpperCase();
     if (!name || !alias) return showToast('⚠️ Complete Nombre y Alias');
-    wfActors.push({ name, alias }); n.value = ''; a.value = ''; renderWfActors();
+    wfActors.push({ name, alias }); n.value = ''; a.value = ''; 
+    renderWfActors(); updateDashboardStats();
+    isDirty = true;
 }
 
-function removeWfActor(idx) { wfActors.splice(idx, 1); renderWfActors(); }
+function removeWfActor(idx) { 
+    wfActors.splice(idx, 1); 
+    renderWfActors(); updateDashboardStats();
+    isDirty = true;
+}
 
 function renderWfEvents() {
     const tbody = document.getElementById('wfEventsBody');
@@ -1205,6 +1465,12 @@ function saveWfEvent() {
     if (!source || !target || !msg || !name) return showToast('⚠️ Complete todos los campos del evento');
     if (source === target && dir !== '<<->>') return showToast('⚠️ Origen y destino coinciden. Use bidireccional si es un bucle.');
     
+    // Auto-agregar el mensaje al diccionario custom si no existe
+    if (!stdMessages.includes(msg) && !customMessages.includes(msg)) {
+        customMessages.push(msg);
+        renderCustomMsgChips();
+    }
+
     if (editingEventIndex >= 0) {
         wfEvents[editingEventIndex] = { source, target, dir, msg, name };
         cancelEditEvent(); // Resetea UI
@@ -1218,6 +1484,8 @@ function saveWfEvent() {
     document.getElementById('wfEventName').value = '';
     document.getElementById('wfEventDirection').value = '->>';
     renderWfEvents();
+    updateDashboardStats();
+    isDirty = true;
 }
 
 function editWfEvent(idx) {
@@ -1253,12 +1521,15 @@ function moveWfEvent(idx, offset) {
     wfEvents[idx] = wfEvents[idx + offset];
     wfEvents[idx + offset] = temp;
     renderWfEvents();
+    isDirty = true;
 }
 
 function removeWfEvent(idx) {
     if(editingEventIndex === idx) cancelEditEvent();
     wfEvents.splice(idx, 1);
     renderWfEvents();
+    updateDashboardStats();
+    isDirty = true;
 }
 
 async function generateDiagram() {
@@ -1319,7 +1590,7 @@ function descargarDiagrama() {
         ctx.drawImage(img, 0, 0, bbox.width, bbox.height);
         
         const a = document.createElement('a');
-        a.download = `Flujo_Integracion_ARIS_${ts()}.png`;
+        a.download = `Flujo_Integracion_${ts()}.png`;
         a.href = canvas.toDataURL('image/png');
         a.click();
         
@@ -1332,18 +1603,31 @@ function descargarDiagrama() {
 
 // ==================== GESTIÓN DE PROYECTOS ====================
 
-function openNewProjectModal() {
-    document.getElementById('modalNewProject').style.display = 'flex';
+// Mostrar Vista IA
+function showAIView() {
+    document.getElementById('startupMain').style.display = 'none';
+    document.getElementById('startupAI').style.display = 'block';
 }
 
-function closeNewProjectModal() {
-    document.getElementById('modalNewProject').style.display = 'none';
+// Ocultar Vista IA
+function hideAIView() {
+    document.getElementById('startupAI').style.display = 'none';
+    document.getElementById('startupMain').style.display = 'block';
 }
 
-function applyNewProject() {
-    const pName = document.getElementById('modalProjName').value.trim();
-    const pHIS = document.getElementById('modalProjHIS').value.trim();
-    const pRIS = document.getElementById('modalProjRIS').value.trim();
+// Copiar Prompt IA
+function copyAIPrompt() {
+    const text = document.getElementById('aiPromptText').value;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('📋 Prompt copiado al portapapeles');
+    });
+}
+
+// Iniciar proyecto desde la pantalla principal obligatoria
+function startNewProject() {
+    const pName = document.getElementById('startProjName').value.trim();
+    const pHIS = document.getElementById('startProjHIS').value.trim();
+    const pRIS = document.getElementById('startProjRIS').value.trim();
     
     if (!pName) return showToast('⚠️ El nombre del proyecto es obligatorio');
 
@@ -1358,27 +1642,31 @@ function applyNewProject() {
     document.getElementById('btnDownloadDiag').style.display = 'none';
     document.getElementById('mermaidContainer').innerHTML = '<div style="color:#bdc3c7; font-style:italic; align-self: center;">Presione "Generar Diagrama" para visualizar el flujo.</div>';
 
-    // 2. Inyectar datos en el perfil
-    document.getElementById('profileName').value = pName;
-    document.getElementById('profileHIS').value = pHIS;
-    document.getElementById('profileRIS').value = pRIS || 'ESTENSARADIO';
-    syncProfile();
+    // 2. Inyectar datos en el Dashboard (ahora fuente de la verdad de metadata)
+    document.getElementById('dashProjName').value = pName;
+    document.getElementById('dashProjHIS').value = pHIS;
+    document.getElementById('dashProjRIS').value = pRIS || 'ESTENSARADIO';
+    syncMetadata('dash'); // Pasa datos a los inputs ocultos del perfil
+    updateDashboardStats();
 
-    // 3. Cerrar modal y avisar
-    closeNewProjectModal();
-    showToast('🚀 Proyecto creado: ' + pName);
+    // 3. Ocultar pantalla de inicio
+    document.getElementById('startupOverlay').style.display = 'none';
+    showToast('🚀 Proyecto iniciado: ' + pName);
 
-    // 4. Cambiar a la vista del perfil para que vea los datos cargados
-    switchView('profile', document.querySelectorAll('.nav-btn')[1]);
+    // 4. Cambiar a la vista del Dashboard
+    switchView('dashboard', document.getElementById('btnNavDash'));
+    
+    // Reiniciar centinela porque el proyecto está en blanco/recién creado
+    isDirty = false;
 }
 
 function exportProject() {
-    const projName = document.getElementById('profileName').value.trim() || 'Proyecto_ARIS';
+    const projName = document.getElementById('dashProjName').value.trim() || 'Proyecto_Integracion';
     const data = {
         metadata: {
             name: projName,
-            sourceHIS: document.getElementById('profileHIS').value.trim(),
-            targetRIS: document.getElementById('profileRIS').value.trim(),
+            sourceHIS: document.getElementById('dashProjHIS').value.trim(),
+            targetRIS: document.getElementById('dashProjRIS').value.trim(),
             exportDate: new Date().toISOString(),
             version: "1.0"
         },
@@ -1387,6 +1675,7 @@ function exportProject() {
             validationRules: validationRules
         },
         workflow: {
+            customMessages: customMessages,
             actors: wfActors,
             events: wfEvents
         }
@@ -1399,6 +1688,9 @@ function exportProject() {
     a.download = `${projName.replace(/\s+/g, '_')}_${ts()}.json`;
     a.click();
     showToast('💾 Proyecto exportado con éxito');
+    
+    // Al exportar, ya no hay cambios pendientes de guardado
+    isDirty = false; 
 }
 
 function importProject(e) {
@@ -1410,11 +1702,11 @@ function importProject(e) {
         try {
             const data = JSON.parse(evt.target.result);
             
-            // 1. Cargar Metadata (Perfil)
-            document.getElementById('profileName').value = data.metadata?.name || '';
-            document.getElementById('profileHIS').value = data.metadata?.sourceHIS || '';
-            document.getElementById('profileRIS').value = data.metadata?.targetRIS || '';
-            syncProfile();
+            // 1. Cargar Metadata en el Dashboard
+            document.getElementById('dashProjName').value = data.metadata?.name || '';
+            document.getElementById('dashProjHIS').value = data.metadata?.sourceHIS || '';
+            document.getElementById('dashProjRIS').value = data.metadata?.targetRIS || '';
+            syncMetadata('dash');
 
             // 2. Cargar Reglas HL7
             document.getElementById('rulesBody').innerHTML = '';
@@ -1424,7 +1716,10 @@ function importProject(e) {
             requiredFields = data.hl7Profile?.requiredFields || [];
             renderReqChips();
 
-            // 3. Cargar Workflow
+            // 3. Cargar Workflow y Custom Messages
+            customMessages = data.workflow?.customMessages || [];
+            renderCustomMsgChips();
+
             wfActors = data.workflow?.actors || [];
             wfEvents = data.workflow?.events || [];
             renderWfActors();
@@ -1433,8 +1728,20 @@ function importProject(e) {
             document.getElementById('btnDownloadDiag').style.display = 'none';
             document.getElementById('mermaidContainer').innerHTML = '<div style="color:#bdc3c7; font-style:italic; align-self: center;">Presione "Generar Diagrama" para visualizar el flujo.</div>';
 
+            // Actualizar vista Dashboard
+            updateDashboardStats();
+
+            // Ocultar pantalla de inicio si estaba visible
+            const startupOverlay = document.getElementById('startupOverlay');
+            if(startupOverlay) startupOverlay.style.display = 'none';
+
             showToast(`📂 Proyecto "${data.metadata?.name || 'Importado'}" cargado exitosamente`);
-            switchView('profile', document.querySelectorAll('.nav-btn')[1]);
+            
+            // Navegar al Dashboard principal
+            switchView('dashboard', document.getElementById('btnNavDash'));
+            
+            // Resetear estado de cambios
+            isDirty = false;
             
         } catch (err) {
             showToast('❌ Error al leer el archivo JSON: formato inválido');
@@ -1446,8 +1753,9 @@ function importProject(e) {
     reader.readAsText(file);
 }
 
-// Inicialización: Limpiamos todo al arrancar para tener un lienzo 100% en blanco.
+// Inicialización: Mostrar la pantalla de inicio obligatoria
 limpiarPerfil();
+document.getElementById('startupOverlay').style.display = 'flex';
 
 </script>
 </body>
