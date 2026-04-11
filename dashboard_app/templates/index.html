@@ -252,6 +252,43 @@
             <button class="chart-btn kpi-global-time-btn" style="flex: 1; padding: 8px 5px; font-weight: bold; font-size: 0.9em; min-width: 50px;" onclick="cambiarRangoGlobalKpi(43800, this)">5A</button>
         </div>
     </div>
+
+    <div style="width: 100%; margin-bottom: 20px;">
+        
+
+        <div class="chart-toggles" style="box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; width: 100%; flex-wrap: wrap;">
+            </div>
+    </div>
+    
+    <div id="kpi-top-cards" class="detail-top-grid" style="margin-bottom: 20px; display: none;">
+        
+        <div class="detail-card">
+            <div class="detail-card-header" style="background: #3498db;">
+                <span>Tasa de Asociación de Imágenes</span>
+                <span style="opacity:0.8; cursor:help;" title="Porcentaje de órdenes admitidas que ya cuentan con imágenes DICOM asociadas en el PACS.">ℹ️</span>
+            </div>
+            <div class="detail-card-body" style="text-align: center; padding: 25px 20px;">
+                <div id="kpi-card-tasa-val" style="font-size: 2.8em; font-weight: 800; color: #2c3e50; line-height: 1;">0%</div>
+                <div style="color: #7f8c8d; font-size: 0.85em; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span id="kpi-card-assoc-val" style="font-weight: 800; color: #3498db; font-size: 1.2em;">0</span> estudios asociados
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-card">
+            <div class="detail-card-header" style="background: #27ae60;">
+                <span>Tasa de Informes Definitivos</span>
+                <span style="opacity:0.8; cursor:help;" title="Porcentaje de estudios ejecutados en sala que ya cuentan con un informe médico firmado.">ℹ️</span>
+            </div>
+            <div class="detail-card-body" style="text-align: center; padding: 25px 20px;">
+                <div id="kpi-card-comp-val" style="font-size: 2.8em; font-weight: 800; color: #2c3e50; line-height: 1;">0%</div>
+                <div style="color: #7f8c8d; font-size: 0.85em; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span id="kpi-card-def-val" style="font-weight: 800; color: #27ae60; font-size: 1.2em;">0</span> informes definitivos
+                </div>
+            </div>
+        </div>
+
+    </div>
     
     <div class="card" style="padding:20px; margin-bottom: 20px;">
         <div class="chart-toolbar">

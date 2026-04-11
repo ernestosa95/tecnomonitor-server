@@ -205,8 +205,15 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
 
         nuevo_mensaje = f"[{nivel}] {mensaje}"
 
+        # 🛟 FIX SALVAVIDAS B2: Si la alerta está activa pero nunca se creó en Asana (falló en el pasado)
+        if not alerta.asana_task_gid and asana_conector:
+            print(f"⚠️ ALERTA ACTIVA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
+            nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id)
+            alerta.asana_task_gid = nuevo_gid
+            db.commit()
+            
         # 1. ¿Cambió la gravedad? Solo si es distinto avisamos a Asana
-        if nivel_db != nivel:
+        elif nivel_db != nivel:
             print(f"🛡️ CAMBIO DE GRAVEDAD CONFIRMADO: {hid} -> {tipo_unico} (De {nivel_db} a {nivel})")
             if alerta.asana_task_gid and asana_conector:
                 asana_conector.actualizar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, nivel, mensaje, reabrir=False)
@@ -220,8 +227,16 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         # B3: Estaba cerrada. Amnesia de 15 días
         if alerta.end_time and (ahora - alerta.end_time).days <= DIAS_CADUCIDAD:
             print(f"♻️ REINCIDENCIA (Reabriendo): {hid} -> {tipo_unico} ({nivel})")
+            
             if alerta.asana_task_gid and asana_conector:
+                # Flujo normal: Reabre la tarea existente
                 asana_conector.actualizar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, nivel, mensaje, reabrir=True)
+            elif asana_conector:
+                # 🛟 FIX SALVAVIDAS: Si no hay tarea previa válida, creamos una nueva
+                print(f"⚠️ REINCIDENCIA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
+                nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id)
+                alerta.asana_task_gid = nuevo_gid
+                
             alerta.is_active = 1
             alerta.end_time = None
             alerta.start_time = ahora

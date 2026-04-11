@@ -2072,6 +2072,7 @@ async function cargarHistorialKpiGlobal(horas, idSolicitado) {
         actualizarGraficoKpiTemporal();
         actualizarGraficoDonut();
         renderizarTablaUsuarios();
+        actualizarTarjetasKpiSuperiores();
         
         try { actualizarLeyendaKpis(); } catch (e) { console.warn("Fallo leyenda:", e); }
 
@@ -2958,3 +2959,48 @@ function cambiarRangoSoftware(minutos, btn) {
     cargarEstadoSoftware(currentHospitalId);
 }
 
+function actualizarTarjetasKpiSuperiores() {
+    const topCards = document.getElementById('kpi-top-cards');
+    if (!topCards) return;
+
+    // Si no hay datos, ocultamos las tarjetas
+    if (!Array.isArray(currentKpiHistoryData) || currentKpiHistoryData.length === 0) {
+        topCards.style.display = 'none';
+        return;
+    }
+
+    topCards.style.display = 'grid';
+
+    let sumAdmitidos = 0;
+    let sumConImagen = 0;
+    let sumEjecutados = 0;
+    let sumDefinitivos = 0;
+
+    // Sumarizamos todos los registros del periodo seleccionado
+    currentKpiHistoryData.forEach(d => {
+        const metrics = d.application_metrics;
+        if (!metrics || !Array.isArray(metrics.ris)) return;
+
+        metrics.ris.forEach(item => {
+            // Filtramos AETs o Modalidades excluidas globalmente
+            if (EXCLUDED_AETS.includes(item.aet || item.equipo) || EXCLUDED_MODS.includes(item.mod)) return;
+
+            sumAdmitidos += (item.admitidos || 0);
+            sumConImagen += (item.con_imagen || 0);
+            sumEjecutados += (item.ejecutados || 0);
+            sumDefinitivos += (item.definitivos || 0);
+        });
+    });
+
+    // 1. Cálculo Tarjeta Asociación (Imágenes vs Admitidos)
+    let tasaAsocRaw = sumAdmitidos > 0 ? (sumConImagen / sumAdmitidos) * 100 : 0;
+    const tasaAsoc = Math.min(100, tasaAsocRaw).toFixed(1); // El techo de 100%
+    document.getElementById('kpi-card-tasa-val').innerText = `${tasaAsoc}%`;
+    document.getElementById('kpi-card-assoc-val').innerText = sumConImagen.toLocaleString('es-AR');
+
+    // 2. Cálculo Tarjeta Completitud (Definitivos vs Ejecutados)
+    let tasaInfRaw = sumEjecutados > 0 ? (sumDefinitivos / sumEjecutados) * 100 : 0;
+    const tasaInf = Math.min(100, tasaInfRaw).toFixed(1); // El techo de 100%
+    document.getElementById('kpi-card-comp-val').innerText = `${tasaInf}%`;
+    document.getElementById('kpi-card-def-val').innerText = sumDefinitivos.toLocaleString('es-AR');
+}
