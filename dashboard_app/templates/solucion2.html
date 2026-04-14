@@ -342,6 +342,31 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--ligh
   <div class="modal-card">
     <div class="modal-title" id="export-title">Opciones de Exportación</div>
     <div class="modal-sub">Seleccioná qué información incluir en el reporte <strong id="export-type-label" style="color:var(--primary)">PDF</strong>:</div>
+    
+    <div id="pdf-meta-fields" style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e9ecef;">
+        <p style="margin-bottom: 10px; font-size: 13px; font-weight: bold; color: #2c3e50;">Datos de la Institución (Portada PDF)</p>
+        <div style="display: grid; gap: 10px;">
+            <div>
+                <label style="display:block; font-size:11px; color:#666; margin-bottom: 2px;">Nombre del Hospital / Institución</label>
+                <input type="text" id="pdf-hosp-name" placeholder="Ej: Hospital Regional Central" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; font-size: 12px;">
+            </div>
+            <div>
+                <label style="display:block; font-size:11px; color:#666; margin-bottom: 2px;">Código ID</label>
+                <input type="text" id="pdf-hosp-id" placeholder="Ej: HRC-01" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; font-size: 12px;">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label style="display:block; font-size:11px; color:#666; margin-bottom: 2px;">Desde (Periodo)</label>
+                    <input type="date" id="pdf-date-from" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; font-size: 12px;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:11px; color:#666; margin-bottom: 2px;">Hasta (Periodo)</label>
+                    <input type="date" id="pdf-date-to" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; font-size: 12px;">
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="chk-group" id="export-chk-group"></div>
     <div class="modal-actions">
       <button class="btn-action secondary" onclick="closeExportModal()">Cancelar</button>
@@ -1046,21 +1071,33 @@ function changePage(dir) { tablaPage+=dir; renderTabla(); }
 // ─── MODAL EXPORTACIÓN ───
 function openExportModal(type) {
   if (!filteredData.length) { showToast('⚠ No hay datos para exportar'); return; }
+  
   currentExportType = type;
   document.getElementById('export-title').textContent = type==='pdf' ? 'Exportar a PDF' : 'Exportar a Excel';
   document.getElementById('export-type-label').textContent = type.toUpperCase();
+  
   // Ocultar "Datos crudos" en PDF
   const rawRow = document.getElementById('row-chk-raw');
   if (rawRow) rawRow.style.display = type==='pdf' ? 'none' : '';
+  
+  // 💡 CORRECCIÓN AQUÍ: Usamos "type" en lugar de "tipo"
+  const pdfCampos = document.getElementById('pdf-meta-fields');
+  if (type === 'pdf') { 
+      pdfCampos.style.display = 'block';
+  } else {
+      pdfCampos.style.display = 'none';
+  }
+  
   document.getElementById('export-modal').classList.add('show');
 }
+
 function closeExportModal() { document.getElementById('export-modal').classList.remove('show'); }
 function confirmExport() {
   const getChk = id => document.getElementById('chk-'+id)?.checked ?? false;
   const opts = { raw:getChk('raw'), exec:getChk('exec'), sala:getChk('sala'), orig:getChk('orig'), demo:getChk('demo'), fecha:getChk('fecha'), cruz:getChk('cruz') };
   if (!Object.values(opts).some(v=>v)) { showToast('⚠ Seleccioná al menos una opción'); return; }
   closeExportModal();
-  if (currentExportType==='pdf') generatePDF(opts);
+  if (currentExportType==='pdf') generatePDF();
   else generateExcel(opts);
 }
 
@@ -1173,7 +1210,160 @@ function generateExcel(opts) {
 }
 
 // ─── EXPORTAR PDF ───
-function generatePDF(opts) {
+// ─── EXPORTAR PDF ───
+// ─── GENERACIÓN DE INFORME PDF CORPORATIVO ───
+// ─── GENERACIÓN DE INFORME PDF CORPORATIVO (RIS ANALYTICS) ───
+async function generatePDF() {
+    // 1. Feedback visual en el botón del modal para mejorar la experiencia de usuario
+    const btn = document.querySelector('#export-modal .btn-action.success');
+    let textoOriginal = "Confirmar y Exportar";
+    if (btn) {
+        textoOriginal = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
+        btn.disabled = true;
+    }
+
+    try {
+        // 2. Recolección de Metadatos desde el Modal de Exportación
+        const hospName = document.getElementById('pdf-hosp-name').value || "Institución No Especificada";
+        const hospId = document.getElementById('pdf-hosp-id').value || "S/D";
+        const dateFrom = document.getElementById('pdf-date-from').value || "";
+        const dateTo = document.getElementById('pdf-date-to').value || "";
+
+        // 3. Extracción de métricas consolidadas (KPIs) del Dashboard
+        // Limpiamos puntos de miles para asegurar que sean números válidos
+        const kpiPacientes = parseInt((document.getElementById('kpi-dni')?.innerText || "0").replace(/\./g, '')) || 0;
+        const kpiEdadPromedio = parseFloat(document.getElementById('kpi-age')?.innerText) || 0;
+        const kpiEquiposActivos = parseInt(document.getElementById('kpi-room')?.innerText) || 0;
+
+        // 4. Procesamiento Dinámico de Datos (Renderizado Defensivo)
+        
+        // A. Agrupaciones simples (Equipos, Origen y Tipo de Estudio)
+        const datosEquipos = hasField('room') ? countBy(filteredData.filter(r => r.room), 'room') : {};
+        const datosOrigen = hasField('origin') ? countBy(filteredData.filter(r => r.origin), 'origin') : {};
+        const datosTipo = hasField('studytype') ? countBy(filteredData.filter(r => r.studytype), 'studytype') : {};
+
+        // B. Distribución Etaria (Rangos de Edad)
+        const rangosEdad = { "0-18": 0, "19-30": 0, "31-50": 0, "51-70": 0, "71+": 0 };
+        if (hasField('age')) {
+            filteredData.forEach(r => {
+                const edad = parseFloat(r.age);
+                if (!isNaN(edad)) {
+                    if (edad <= 18) rangosEdad["0-18"]++;
+                    else if (edad <= 30) rangosEdad["19-30"]++;
+                    else if (edad <= 50) rangosEdad["31-50"]++;
+                    else if (edad <= 70) rangosEdad["51-70"]++;
+                    else rangosEdad["71+"]++;
+                }
+            });
+        }
+        // Eliminamos rangos sin datos para optimizar el gráfico
+        const datosEdadFinal = {};
+        for (const [r, v] of Object.entries(rangosEdad)) { if (v > 0) datosEdadFinal[r] = v; }
+
+        // C. Demografía Avanzada (Sexo y Pirámide)
+        let keySexo = hasField('sex') ? 'sex' : (hasField('gender') ? 'gender' : (hasField('sexo') ? 'sexo' : null));
+        const datosSexo = keySexo ? countBy(filteredData.filter(r => r[keySexo]), keySexo) : {};
+
+        const datosPiramide = {
+            labels: ["0-18", "19-30", "31-50", "51-70", "71+"],
+            M: [0, 0, 0, 0, 0],
+            F: [0, 0, 0, 0, 0]
+        };
+
+        // D. Cruces de Datos (Sexo por Tipo y Mapa de Calor)
+        const datosSexoTipo = {};
+        const datosMapaCalor = {};
+
+        filteredData.forEach(r => {
+            const edad = parseFloat(r.age);
+            const tipo = r.studytype || 'Desconocido';
+            const origen = r.origin || 'Sin Origen';
+            const rawS = keySexo ? (r[keySexo] || "").toString().toUpperCase().trim() : "";
+            let gen = rawS.startsWith('M') ? 'M' : (rawS.startsWith('F') ? 'F' : 'Otro');
+
+            // Lógica de Pirámide
+            if (!isNaN(edad) && (gen === 'M' || gen === 'F')) {
+                let idx = edad <= 18 ? 0 : (edad <= 30 ? 1 : (edad <= 50 ? 2 : (edad <= 70 ? 3 : 4)));
+                datosPiramide[gen][idx]++;
+            }
+
+            // Lógica Sexo vs Tipo
+            if (!datosSexoTipo[tipo]) datosSexoTipo[tipo] = { 'M': 0, 'F': 0, 'Otro': 0 };
+            datosSexoTipo[tipo][gen]++;
+
+            // Lógica Origen vs Tipo (Mapa de Calor)
+            if (!datosMapaCalor[origen]) datosMapaCalor[origen] = {};
+            if (!datosMapaCalor[origen][tipo]) datosMapaCalor[origen][tipo] = 0;
+            datosMapaCalor[origen][tipo]++;
+        });
+
+        // 5. Construcción del Payload para el Servidor
+        const payload = {
+            hospital_name: hospName,
+            hospital_id: hospId,
+            fecha_desde: dateFrom,
+            fecha_hasta: dateTo,
+            
+            // Métricas del Tablero de Desempeño
+            kpi_total_registros: filteredData.length,
+            kpi_total_estudios: filteredData.length,
+            kpi_origenes_distintos: Object.keys(datosOrigen).length,
+            
+            // KPIs consolidados
+            kpi_pacientes: kpiPacientes,
+            kpi_edad_promedio: kpiEdadPromedio,
+            kpi_equipos_activos: kpiEquiposActivos,
+            
+            // Estructuras de datos para gráficos
+            datos_equipos: datosEquipos,
+            datos_origen: datosOrigen,
+            datos_tipo: datosTipo,
+            datos_edad: datosEdadFinal,
+            datos_sexo: datosSexo,
+            datos_piramide: datosPiramide,
+            datos_sexo_tipo: datosSexoTipo,
+            datos_mapa_calor: datosMapaCalor
+        };
+
+        // 6. Envío de datos al Endpoint de FastAPI
+        const response = await fetch('/v1/generar-reporte-ris', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('Error al procesar el reporte en el servidor');
+
+        // 7. Gestión de la descarga del archivo binario (PDF)
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Reporte_RIS_${hospName.replace(/\s+/g, '_')}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        showToast("✓ Reporte PDF generado con éxito");
+        closeExportModal();
+
+    } catch (error) {
+        console.error("Error en generatePDF:", error);
+        showToast("⚠ No se pudo generar el informe. Revisa la consola.");
+    } finally {
+        // 8. Restauración del estado del botón
+        if (btn) {
+            btn.innerHTML = textoOriginal;
+            btn.disabled = false;
+        }
+    }
+}
+
+
+// ─── EXPORTAR PDF1 ───
+function generatePDF1(opts) {
   showToast('⏳ Generando informe PDF...');
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });

@@ -160,3 +160,23 @@ class AgentReportV4(BaseModel):
     virtual_layer: List[Dict[str, Any]]
     # Hacemos que este campo sea opcional para mantener compatibilidad
     application_metrics: Optional[ApplicationMetricsContent] = None
+
+class DatosRISAnalytics(BaseModel):
+    hospital_name: str
+    hospital_id: str = "S/D"
+    fecha_desde: str = ""
+    fecha_hasta: str = ""
+    kpi_total_registros: int = 0
+    kpi_total_estudios: int = 0
+    kpi_origenes_distintos: int = 0
+    kpi_pacientes: int
+    kpi_edad_promedio: float
+    kpi_equipos_activos: int
+    datos_equipos: Dict[str, int] = {}
+    datos_origen: Dict[str, int] = {}
+    datos_tipo: Dict[str, int] = {}
+    datos_edad: Dict[str, int] = {}
+    datos_sexo: Dict[str, int] = {}
+    datos_piramide: Dict[str, Any] = {}
+    datos_sexo_tipo: Dict[str, Any] = {}
+    datos_mapa_calor: Dict[str, Any] = {}

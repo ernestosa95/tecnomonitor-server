@@ -13,12 +13,25 @@ from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+import matplotlib.pyplot as plt
+import io
+import matplotlib.ticker as ticker
 
 import database
 from database import HospitalMetadata, HistorialReportes, AlertaModel
 import asana_conector
 import os
 from datetime import datetime
+
+import tempfile
+from fastapi import BackgroundTasks
+from fastapi.responses import FileResponse
+# Importamos el esquema (asegurate de haberlo agregado a schemas.py en la raiz)
+from schemas import DatosRISAnalytics
 
 # Paletas de colores oficiales extraídas del dashboard
 ESTADOS_COLORS = {
@@ -48,6 +61,10 @@ def crear_portada(c, ancho, alto, tipo, hospital_id, hospital_nombre, fecha_desd
         img_name = "imagen_informe_medica.png"
         titulo_principal = "REPORTE DE"
         titulo_secundario = "USO CLÍNICO"
+    elif tipo == 'estadisticas':
+        img_name = "imagen_informe_estadisticas.png"
+        titulo_principal = "INFORME DE"
+        titulo_secundario = "ESTADÍSTICAS"
     else:
         img_name = "imagen_informe_server.png"
         titulo_principal = "REPORTE DE"
@@ -967,4 +984,232 @@ def generar_pdf_infra(req, db: Session):
     db.add(nuevo_reg); db.commit()
 
     return {"pdf_bytes": pdf_bytes, "filename": filename, "asana_url": asana_url}
+
+
+# Agregado informe de RIS
+def generar_grafico_barras_memoria(datos_dict, titulo, color_barra='#2c3e50'):
+    """Genera un gráfico Matplotlib en buffer de memoria (para no guardar imagen en disco)"""
+    plt.figure(figsize=(6, 3))
+    nombres = list(datos_dict.keys())
+    valores = list(datos_dict.values())
+    
+    plt.bar(nombres, valores, color=color_barra)
+    plt.title(titulo)
+    plt.ylabel("Cantidad")
+    plt.xticks(rotation=15, ha='right')
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300)
+    buf.seek(0)
+    plt.close()
+    return buf
+
+def generar_grafico_torta_sexo(datos_dict):
+    """Genera un gráfico tipo dona/torta para el sexo"""
+    if not datos_dict: return None
+    plt.figure(figsize=(4, 3))
+    
+    labels = list(datos_dict.keys())
+    sizes = list(datos_dict.values())
+    
+    # Asignar colores (Azul para M, Rosa para F, Gris para Otros)
+    colores = []
+    for l in labels:
+        if str(l).upper().startswith('M'): colores.append('#3399ff')
+        elif str(l).upper().startswith('F'): colores.append('#ff66b2')
+        else: colores.append('#bdc3c7')
+
+    plt.pie(sizes, labels=labels, colors=colores, autopct='%1.1f%%', startangle=90, wedgeprops=dict(width=0.4, edgecolor='white'))
+    plt.title("Distribución por Sexo")
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300)
+    buf.seek(0)
+    plt.close()
+    return buf
+
+def generar_grafico_piramide_memoria(datos_piramide):
+    """Genera una pirámide poblacional enfrentando M y F"""
+    labels = datos_piramide.get('labels', [])
+    M = datos_piramide.get('M', [])
+    F = datos_piramide.get('F', [])
+
+    if not labels or (sum(M) == 0 and sum(F) == 0):
+        return None
+
+    y = np.arange(len(labels))
+    plt.figure(figsize=(6, 3.5))
+
+    # Hombres a la izquierda (negativo), Mujeres a la derecha (positivo)
+    plt.barh(y, [-m for m in M], color='#3399ff', label='Masculino', edgecolor='white')
+    plt.barh(y, F, color='#ff66b2', label='Femenino', edgecolor='white')
+
+    plt.yticks(y, labels)
+    plt.xlabel("Cantidad de Estudios/Pacientes")
+    plt.title("Pirámide Poblacional")
+    plt.legend(loc='upper right', frameon=False, fontsize=8)
+
+    # Formatear el eje X para que NO muestre números negativos en el lado izquierdo
+    formatter = ticker.FuncFormatter(lambda x, pos: f"{int(abs(x)):,}".replace(',', '.'))
+    plt.gca().xaxis.set_major_formatter(formatter)
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300)
+    buf.seek(0)
+    plt.close()
+    return buf
+
+def generar_grafico_apilado_sexo_tipo(datos_dict):
+    """Genera un gráfico de columnas apiladas cruzando Tipo de Estudio y Sexo"""
+    if not datos_dict: return None
+    
+    labels = list(datos_dict.keys())
+    # Extraemos las listas de valores
+    M = [datos_dict[l].get('M', 0) for l in labels]
+    F = [datos_dict[l].get('F', 0) for l in labels]
+
+    if sum(M) == 0 and sum(F) == 0: return None
+
+    x = np.arange(len(labels))
+    width = 0.6
+
+    plt.figure(figsize=(8, 4))
+    
+    # Dibujamos las barras apiladas (M abajo, F arriba sumado al bottom)
+    plt.bar(x, M, width, label='Masculino', color='#3399ff', edgecolor='white')
+    plt.bar(x, F, width, bottom=M, label='Femenino', color='#ff66b2', edgecolor='white')
+
+    plt.xticks(x, labels, rotation=45, ha="right", fontsize=8)
+    plt.ylabel("Cantidad de Pacientes")
+    plt.title("Distribución de Sexo por Modalidad")
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=2, frameon=False)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300)
+    buf.seek(0)
+    plt.close()
+    return buf
+
+def generar_mapa_calor(datos_dict):
+    """Genera un mapa de calor cruzando Origen (Y) vs Tipo de Estudio (X)"""
+    if not datos_dict: return None
+    
+    origenes = list(datos_dict.keys())
+    tipos = set()
+    for o in origenes:
+        tipos.update(datos_dict[o].keys())
+    tipos = sorted(list(tipos))
+
+    if not origenes or not tipos: return None
+
+    # Construimos la matriz 2D
+    matrix = np.zeros((len(origenes), len(tipos)))
+    for i, o in enumerate(origenes):
+        for j, t in enumerate(tipos):
+            matrix[i, j] = datos_dict[o].get(t, 0)
+
+    plt.figure(figsize=(8, 5))
+    ax = plt.gca()
+    
+    # Mapa de calor usando una paleta azul (Blues)
+    im = ax.imshow(matrix, cmap="Blues", aspect="auto")
+
+    # Configuramos los ejes
+    ax.set_xticks(np.arange(len(tipos)))
+    ax.set_yticks(np.arange(len(origenes)))
+    ax.set_xticklabels(tipos, rotation=45, ha="right", fontsize=8)
+    ax.set_yticklabels(origenes, fontsize=8)
+
+    # Imprimimos los números dentro de los cuadros del mapa
+    threshold = matrix.max() / 2.0
+    for i in range(len(origenes)):
+        for j in range(len(tipos)):
+            val = int(matrix[i, j])
+            if val > 0: # Solo mostramos donde hay datos
+                color_texto = "white" if val > threshold else "black"
+                ax.text(j, i, str(val), ha="center", va="center", color=color_texto, fontsize=8, fontweight='bold')
+
+    plt.title("Mapa de Calor: Origen vs Modalidad", pad=20)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300)
+    buf.seek(0)
+    plt.close()
+    return buf
+
+def generar_reporte_ris_corporativo(datos: dict, ruta_salida: str):
+    """Genera el informe PDF completo de RIS Analytics con diseño corporativo"""
+    c = canvas.Canvas(ruta_salida, pagesize=A4)
+    ancho, alto = A4
+
+    h_nombre = datos.get('hospital_name', 'Institución')
+    h_id = datos.get('hospital_id', 'S/D')
+    f_desde, f_hasta = datos.get('fecha_desde', ''), datos.get('fecha_hasta', '')
+
+    # PÁGINA 1: PORTADA
+    crear_portada(c, ancho, alto, 'estadisticas', h_id, h_nombre, f_desde, f_hasta)
+
+    # PÁGINA 2: COMIENZO DE ANÁLISIS
+    pagina_actual = 2
+    pos_y = crear_encabezado(c, ancho, alto, "ANÁLISIS DE DEMANDA RIS", h_id, h_nombre, pagina_actual)
+    
+    # Texto Auditoría
+    pos_y -= 25
+    c.setFont("Helvetica", 10); c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.drawString(40, pos_y, f"Informe generado en base a la auditoría de {datos.get('kpi_total_registros', 0):,} registros analizados.")
+
+    # TABLERO DE KPIs (4 Cajas)
+    pos_y -= 85
+    kpis = [("TOTAL ESTUDIOS", f"{datos.get('kpi_total_estudios', 0):,}"), 
+            ("PACIENTES ÚNICOS", f"{datos.get('kpi_pacientes', 0):,}"),
+            ("EDAD PROMEDIO", f"{datos.get('kpi_edad_promedio', 0):.1f}"),
+            ("ORÍGENES", str(datos.get('kpi_origenes_distintos', 0)))]
+
+    for i, (label, val) in enumerate(kpis):
+        x = 45 + i * 130
+        c.setFillColorRGB(0.9, 0.9, 0.9); c.roundRect(x+2, pos_y-2, 120, 65, 6, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor('#004c99')); c.roundRect(x, pos_y, 120, 65, 6, fill=1, stroke=0)
+        c.setFillColorRGB(1, 1, 1); c.setFont("Helvetica-Bold", 18); c.drawCentredString(x+60, pos_y+32, str(val).replace(',', '.'))
+        c.setFillColorRGB(0.8, 0.9, 1); c.setFont("Helvetica-Bold", 7); c.drawCentredString(x+60, pos_y+12, label)
+
+    pos_y -= 50
+
+    # Lógica de Paginación Dinámica
+    def check_p(py, pa):
+        if py < 250:
+            c.showPage()
+            pa += 1
+            return crear_encabezado(c, ancho, alto, "ANÁLISIS DE DEMANDA (CONT.)", h_id, h_nombre, pa) - 30, pa
+        return py, pa
+
+    # RENDERIZADO DE GRÁFICOS
+    secciones = [
+        ('datos_tipo', "ESTUDIOS POR TIPO (MODALIDAD)", "#1abc9c", generar_grafico_barras_memoria),
+        ('datos_sexo', "DISTRIBUCIÓN POR SEXO", None, generar_grafico_torta_sexo),
+        ('datos_piramide', "PIRÁMIDE POBLACIONAL (EDAD Y SEXO)", None, generar_grafico_piramide_memoria),
+        ('datos_sexo_tipo', "SEXO POR TIPO DE ESTUDIO", None, generar_grafico_apilado_sexo_tipo),
+        ('datos_mapa_calor', "MAPA DE CALOR: ORIGEN VS MODALIDAD", None, generar_mapa_calor),
+        ('datos_edad', "DISTRIBUCIÓN POR RANGO DE EDAD", "#d35400", generar_grafico_barras_memoria),
+        ('datos_equipos', "VOLUMEN DE ESTUDIOS POR EQUIPO", "#3399ff", generar_grafico_barras_memoria),
+        ('datos_origen', "DISTRIBUCIÓN POR ORIGEN", "#004c99", generar_grafico_barras_memoria)
+    ]
+
+    for key, title, color, func in secciones:
+        if datos.get(key):
+            pos_y, pagina_actual = check_p(pos_y, pagina_actual)
+            c.setFont("Helvetica-Bold", 12); c.setFillColorRGB(0.17, 0.24, 0.31)
+            c.drawString(40, pos_y, title); pos_y -= 10
+            img = func(datos[key], "", color) if color else func(datos[key])
+            if img:
+                h_img = 250 if key == 'datos_mapa_calor' else 200
+                c.drawImage(ImageReader(img), 40, pos_y - h_img, width=ancho-80, height=h_img, mask='auto', preserveAspectRatio=True)
+                pos_y -= (h_img + 40)
+
+    c.save()
 

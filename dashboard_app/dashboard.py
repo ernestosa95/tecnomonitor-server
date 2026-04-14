@@ -39,6 +39,11 @@ from fastapi import Response
 from fastapi.middleware.gzip import GZipMiddleware
 import generator_report
 
+import tempfile
+from fastapi import BackgroundTasks
+from fastapi.responses import FileResponse
+from schemas import DatosRISAnalytics
+
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
     'Admitidos': '#99ccff',
@@ -1318,3 +1323,42 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
         })
         
     return software_data
+
+@app.post("/v1/generar-reporte-ris")
+async def api_generar_reporte_ris(
+    datos: DatosRISAnalytics, 
+    background_tasks: BackgroundTasks,
+    # Puedes descomentar la siguiente linea si quieres que solo usuarios logueados lo usen:
+    # user: dict = Depends(auth.get_current_user) 
+):
+    """
+    Endpoint para recibir la estadística de solucion2.html (RIS Analytics)
+    y devolver un PDF con el formato core de TecnoMonitor.
+    """
+    try:
+        # 1. Crear nombre de archivo seguro
+        nombre_limpio = re.sub(r'[^\w\s-]', '', datos.hospital_name).strip().replace(' ', '_')
+        timestamp = int(time.time())
+        filename = f"Reporte_RIS_{nombre_limpio}_{timestamp}.pdf"
+        
+        # 2. Crear archivo temporal
+        temp_dir = tempfile.gettempdir()
+        ruta_pdf = os.path.join(temp_dir, filename)
+
+        # 3. Llamar a la nueva función del motor (debes agregarla a generator_report.py)
+        # Usamos model_dump() para Pydantic v2
+        generator_report.generar_reporte_ris_corporativo(datos.model_dump(), ruta_pdf)
+
+        # 4. Programar borrado del temporal tras el envío
+        background_tasks.add_task(os.remove, ruta_pdf)
+
+        # 5. Retornar archivo
+        return FileResponse(
+            path=ruta_pdf,
+            filename=filename,
+            media_type='application/pdf'
+        )
+
+    except Exception as e:
+        print(f"Error generando reporte RIS: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
