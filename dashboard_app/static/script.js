@@ -369,6 +369,21 @@ async function cargarConfigUI() {
         document.getElementById('check-fans').checked = data.enable_fans;
         document.getElementById('check-power').checked = data.enable_power;
         document.getElementById('check-raid').checked = data.enable_raid;
+
+        // --- CAMPOS KPI ---
+        const chkKpiRad = document.getElementById('kpi-rad-enabled');
+        if(chkKpiRad) chkKpiRad.checked = data.kpi_rad_alert_enabled;
+        
+        const inpHours = document.getElementById('kpi-rad-hours');
+        if(inpHours) inpHours.value = data.kpi_rad_threshold_hours;
+        
+        const modsGuardadas = data.kpi_rad_modalities || "DX,CR,MG";
+        kpiSelectedMods = modsGuardadas.split(',').map(m => m.trim()).filter(m => m);
+        renderKpiModsChips();
+        initKpiModsSelector();
+        
+        // Cargar los usuarios y setear el que viene de la DB
+        cargarUsuariosResponsables(data.kpi_rad_responsible_email);
         
         listarHospitalesConfig();
     } catch (e) { console.error(e); }
@@ -389,7 +404,12 @@ async function guardarConfig() {
         
         enable_fans: document.getElementById('check-fans').checked,
         enable_power: document.getElementById('check-power').checked,
-        enable_raid: document.getElementById('check-raid').checked
+        enable_raid: document.getElementById('check-raid').checked,
+
+        kpi_rad_alert_enabled: document.getElementById('kpi-rad-enabled').checked,
+        kpi_rad_threshold_hours: parseInt(document.getElementById('kpi-rad-hours').value) || 24,
+        kpi_rad_modalities: kpiSelectedMods.join(','),
+        kpi_rad_responsible_email: kpiSelectedUsers.join(',')
     };
     try {
         await authFetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -873,7 +893,7 @@ function renderizarDetalle(data, id) {
         
         if (tipoRaw === 'vm') {
             iconoTipo = '🖥️'; // Máquina Virtual
-        } else if (tipoRaw === 'eq' || idNombre.includes('RX') || idNombre.includes('CR') || idNombre.includes('MAMO')) {
+        } else if (tipoRaw === 'eq' || idNombre.includes('RX') || idNombre.includes('CR')) {
             iconoTipo = '🩻'; // Equipo Médico
         }
 
@@ -3026,3 +3046,202 @@ function actualizarTarjetasKpiSuperiores() {
     document.getElementById('kpi-card-comp-val').innerText = `${tasaInf}%`;
     document.getElementById('kpi-card-def-val').innerText = sumDefinitivos.toLocaleString('es-AR');
 }
+
+// --- LÓGICA DEL BUSCADOR MÚLTIPLE DE RESPONSABLES ---
+let kpiAllUsers = [];
+let kpiSelectedUsers = [];
+
+async function cargarUsuariosResponsables(emailsGuardados) {
+    try {
+        const res = await authFetch('/api/users/responsables');
+        kpiAllUsers = await res.json();
+        
+        // Convertimos el string de la DB en un Array
+        kpiSelectedUsers = emailsGuardados ? emailsGuardados.split(',').map(e => e.trim()).filter(e => e) : [];
+        
+        renderKpiRespChips();
+        
+        const input = document.getElementById('kpi-rad-resp-input');
+        const list = document.getElementById('kpi-rad-resp-list');
+        
+        if (input) {
+            // Limpiamos listeners viejos clonando el nodo para evitar duplicados
+            const newInp = input.cloneNode(true);
+            input.parentNode.replaceChild(newInp, input);
+            
+            newInp.addEventListener('focus', () => renderKpiRespList(newInp.value));
+            newInp.addEventListener('input', (e) => renderKpiRespList(e.target.value));
+            
+            // Cerrar lista al hacer clic afuera
+            document.addEventListener('click', (e) => {
+                const wrapper = document.getElementById('kpi-rad-resp-wrapper');
+                if (wrapper && !wrapper.contains(e.target)) {
+                    list.style.display = 'none';
+                }
+            });
+        }
+    } catch(e) {
+        console.error("Error cargando responsables:", e);
+    }
+}
+
+function renderKpiRespChips() {
+    const container = document.getElementById('kpi-rad-resp-chips');
+    if (!container) return;
+    
+    container.innerHTML = kpiSelectedUsers.map(email => {
+        const user = kpiAllUsers.find(u => u.email === email);
+        const nombre = user ? user.nombre : email;
+        const warn = user && !user.tiene_asana ? ' <span title="Sin Asana ID" style="color:#f39c12; margin-left:3px;">⚠️</span>' : '';
+        
+        return `
+            <div style="display:flex; align-items:center; background:#e8f4fd; border:1px solid #b8d9f5; color:#2980b9; padding:4px 10px; border-radius:15px; font-size:0.85em; font-weight:600;">
+                ${nombre}${warn}
+                <span style="margin-left:8px; cursor:pointer; color:#7f8c8d; transition:0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'" onclick="removeKpiResp('${email}')">✕</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function removeKpiResp(email) {
+    kpiSelectedUsers = kpiSelectedUsers.filter(e => e !== email);
+    renderKpiRespChips();
+    renderKpiRespList(document.getElementById('kpi-rad-resp-input').value);
+}
+
+function addKpiResp(email) {
+    if (!kpiSelectedUsers.includes(email)) {
+        kpiSelectedUsers.push(email);
+        renderKpiRespChips();
+        const input = document.getElementById('kpi-rad-resp-input');
+        input.value = '';
+        input.focus(); // Mantenemos el foco para seguir buscando
+        renderKpiRespList('');
+    }
+}
+
+function renderKpiRespList(filterText = "") {
+    const list = document.getElementById('kpi-rad-resp-list');
+    if (!list) return;
+    
+    const filterLower = filterText.toLowerCase();
+    
+    // Filtrar usuarios: que no estén seleccionados y que coincidan con la búsqueda
+    const availableUsers = kpiAllUsers.filter(u => {
+        if (kpiSelectedUsers.includes(u.email)) return false;
+        if (filterLower && !u.nombre.toLowerCase().includes(filterLower) && !u.email.toLowerCase().includes(filterLower)) return false;
+        return true;
+    });
+
+    if (availableUsers.length === 0) {
+        list.innerHTML = `<div style="padding:15px; color:#7f8c8d; font-size:0.9em; text-align:center;">No se encontraron más usuarios</div>`;
+    } else {
+        list.innerHTML = availableUsers.map(u => {
+            const warn = u.tiene_asana ? '' : '<span style="color:#f39c12; font-size:0.9em; margin-left:5px;" title="No tiene Asana ID cargado">⚠️ Sin Asana ID</span>';
+            return `
+                <div onclick="addKpiResp('${u.email}')" style="padding:10px 15px; border-bottom:1px solid #f1f5f8; cursor:pointer; font-size:0.9em; transition:0.2s;" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='transparent'">
+                    <div style="font-weight:600; color:#2c3e50;">${u.nombre}${warn}</div>
+                    <div style="font-size:0.85em; color:#7f8c8d;">${u.email}</div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    list.style.display = 'block';
+}
+
+// --- LÓGICA DEL BUSCADOR DE MODALIDADES DICOM ---
+// Lista estándar DICOM (con agregados comunes como MAMO)
+const DICOM_MODALITIES = [
+    "CR", "CT", "DX", "ECG", "EPS", "HD", "IO", "MG", "MR",
+    "NM", "OP", "PR", "PT", "PX", "REG", "RF", "SM", "SR", "US", "XA", "XC"
+];
+let kpiSelectedMods = [];
+
+function initKpiModsSelector() {
+    const input = document.getElementById('kpi-rad-mods-input');
+    const list = document.getElementById('kpi-rad-mods-list');
+    
+    if (input) {
+        const newInp = input.cloneNode(true);
+        input.parentNode.replaceChild(newInp, input);
+
+        newInp.addEventListener('focus', () => renderKpiModsList(newInp.value));
+        newInp.addEventListener('input', (e) => renderKpiModsList(e.target.value));
+
+        document.addEventListener('click', (e) => {
+            const wrapper = document.getElementById('kpi-rad-mods-wrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                if(list) list.style.display = 'none';
+            }
+        });
+    }
+}
+
+function renderKpiModsChips() {
+    const container = document.getElementById('kpi-rad-mods-chips');
+    if (!container) return;
+
+    container.innerHTML = kpiSelectedMods.map(mod => {
+        return `
+            <div style="display:flex; align-items:center; background:#fdfaea; border:1px solid #f39c12; color:#d35400; padding:4px 10px; border-radius:15px; font-size:0.85em; font-weight:600;">
+                ${mod}
+                <span style="margin-left:8px; cursor:pointer; color:#7f8c8d; transition:0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'" onclick="removeKpiMod('${mod}')">✕</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function removeKpiMod(mod) {
+    kpiSelectedMods = kpiSelectedMods.filter(m => m !== mod);
+    renderKpiModsChips();
+    renderKpiModsList(document.getElementById('kpi-rad-mods-input').value);
+}
+
+function addKpiMod(mod) {
+    mod = mod.toUpperCase().trim();
+    if (mod && !kpiSelectedMods.includes(mod)) {
+        kpiSelectedMods.push(mod);
+        renderKpiModsChips();
+        const input = document.getElementById('kpi-rad-mods-input');
+        input.value = '';
+        input.focus();
+        renderKpiModsList('');
+    }
+}
+
+function renderKpiModsList(filterText = "") {
+    const list = document.getElementById('kpi-rad-mods-list');
+    if (!list) return;
+
+    const filterUpper = filterText.toUpperCase();
+
+    // Filtrar modalidades: que no estén seleccionadas y coincidan con el texto
+    const availableMods = DICOM_MODALITIES.filter(m => {
+        if (kpiSelectedMods.includes(m)) return false;
+        if (filterUpper && !m.includes(filterUpper)) return false;
+        return true;
+    });
+
+    if (availableMods.length === 0) {
+        // Si el usuario escribe algo que no está en la lista DICOM, le permitimos añadirlo
+        if (filterUpper && !kpiSelectedMods.includes(filterUpper)) {
+            list.innerHTML = `
+                <div onclick="addKpiMod('${filterUpper}')" style="padding:10px 15px; border-bottom:1px solid #f1f5f8; cursor:pointer; font-size:0.9em; transition:0.2s;" onmouseover="this.style.background='#fdfaea'" onmouseout="this.style.background='transparent'">
+                    <span style="color:#d35400; font-weight:bold;">+ Añadir modalidad "${filterUpper}"</span>
+                </div>`;
+        } else {
+            list.innerHTML = `<div style="padding:15px; color:#7f8c8d; font-size:0.9em; text-align:center;">No hay más coincidencias</div>`;
+        }
+    } else {
+        list.innerHTML = availableMods.map(m => {
+            return `
+                <div onclick="addKpiMod('${m}')" style="padding:10px 15px; border-bottom:1px solid #f1f5f8; cursor:pointer; font-size:0.9em; font-weight:600; color:#2c3e50; transition:0.2s;" onmouseover="this.style.background='#fdfaea'" onmouseout="this.style.background='transparent'">
+                    ${m}
+                </div>
+            `;
+        }).join('');
+    }
+    list.style.display = 'block';
+}
+

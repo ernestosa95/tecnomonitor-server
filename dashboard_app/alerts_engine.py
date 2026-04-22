@@ -19,17 +19,39 @@ except ImportError as e:
 UMBRAL_LATENCIA_MS = 50.0  
 
 def cargar_config(db: Session):
+    """
+    Carga la configuración global desde la base de datos, 
+    manejando tipos booleanos, enteros y cadenas.
+    """
     def g(k, d, is_bool=False):
         r = db.query(database.ConfigModel).filter_by(clave=k).first()
-        if r: return (r.valor == '1') if is_bool else int(r.valor)
+        if r:
+            if is_bool:
+                return r.valor == '1'
+            # Si el valor por defecto es entero, intentamos convertir el valor de la DB
+            if isinstance(d, int):
+                try:
+                    return int(r.valor)
+                except (ValueError, TypeError):
+                    return d
+            # En cualquier otro caso (como strings), devolvemos el valor crudo
+            return r.valor
         return d
+
     return {
+        # --- Configuración de Infraestructura (Existente) ---
         "offline_minutes": g("offline_minutes", 15),
         "disk_threshold": g("disk_threshold", 90),
         "temp_cpu_max": g("temp_cpu_max", 70),
         "enable_fans": g("enable_fans", True, is_bool=True),
         "enable_power": g("enable_power", True, is_bool=True),
-        "enable_raid": g("enable_raid", True, is_bool=True)
+        "enable_raid": g("enable_raid", True, is_bool=True),
+        
+        # --- Configuración de KPIs de Negocio (Nuevos) ---
+        "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
+        "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
+        "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
+        "kpi_rad_responsible_email": g("kpi_rad_responsible_email", "")
     }
 
 def analizar_reporte(hospital_id, json_data_v3, db: Session):
@@ -286,5 +308,97 @@ def _verificar_conectividad(db, config):
             
         msg = f"Sin conexión hace {int((ahora - last_seen).total_seconds()/60)} min."
         actualizar_estado_alerta(db, meta.hospital_id, "OFFLINE", nivel, msg, meta.asana_project_id)
+
+def verificar_actividad_ris(db: Session):
+    config = cargar_config(db)
+    
+    # 1. ¿Está habilitada la alerta?
+    if not config.get('kpi_rad_alert_enabled'):
+        return
+
+    print("📊 Iniciando verificación de KPIs de Negocio (Inactividad RIS)...")
+    
+    umbral_horas = config.get('kpi_rad_threshold_hours', 24)
+    modalidades_target = [m.strip().upper() for m in config.get('kpi_rad_modalities', 'DX,CR').split(',')]
+    emails_responsables = [e.strip() for e in config.get('kpi_rad_responsible_email', '').split(',') if e.strip()]
+    
+    # 2. Buscar los IDs de Asana de los responsables seleccionados
+    asana_followers = []
+    if emails_responsables:
+        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_responsables)).all()
+        asana_followers = [u.asana_id for u in usuarios if u.asana_id]
+
+    fecha_limite = datetime.now() - timedelta(hours=umbral_horas)
+    
+    # 3. Obtener hospitales que tienen RIS activado
+    hospitales_ris = db.query(database.HospitalMetadata).filter(
+        database.HospitalMetadata.is_visible == True,
+        database.HospitalMetadata.alerts_enabled == True,
+        database.HospitalMetadata.has_ris == True
+    ).all()
+
+    for hosp in hospitales_ris:
+        # Buscar los reportes de uso en el periodo definido
+        reportes = db.query(database.ReporteUso).filter(
+            database.ReporteUso.hospital_id == hosp.hospital_id,
+            database.ReporteUso.timestamp >= fecha_limite
+        ).all()
+
+        total_admitidos = 0
+        
+        # Parsear los JSONs para contar los admitidos en las modalidades objetivo
+        for rep in reportes:
+            if not rep.kpi_json_data:
+                continue
+            try:
+                metrics = json.loads(rep.kpi_json_data)
+                for item in metrics.get('ris', []):
+                    if item.get('mod') in modalidades_target:
+                        total_admitidos += item.get('admitidos', 0)
+            except Exception as e:
+                continue
+
+        # 4. Disparar alerta si no hay actividad
+        if total_admitidos == 0:
+            mensaje = f"Cero (0) admisiones registradas en las modalidades {', '.join(modalidades_target)} durante las últimas {umbral_horas} horas."
+            
+            # Para las alertas de KPI, usamos actualizar_estado_alerta pero le inyectamos los followers
+            # Temporalmente seteamos los followers en la variable global o se los pasamos a la función
+            # Nota: Necesitaremos un pequeño ajuste en asana_conector para recibir followers específicos, 
+            # o directamente crear la tarea aquí si queremos aislar la lógica.
+            
+            print(f"⚠️ ALERTA KPI: Inactividad en {hosp.hospital_id}. Generando ticket...")
+            
+            # Verificamos si ya hay una alerta activa de este tipo para no duplicar
+            alerta_existente = db.query(database.AlertaModel).filter(
+                database.AlertaModel.hospital_id == hosp.hospital_id,
+                database.AlertaModel.tipo == "KPI_INACT_RAD",
+                database.AlertaModel.is_active == 1
+            ).first()
+            
+            if not alerta_existente:
+                # Disparamos a Asana (asumiendo que asana_conector tiene una función para esto)
+                gid = None
+                if asana_conector:
+                    gid = asana_conector.crear_tarea_alerta(
+                        hospital_id=hosp.hospital_id, 
+                        tipo="KPI_INACT_RAD", 
+                        nivel="WARNING", 
+                        mensaje_detalle=mensaje, 
+                        hospital_project_gid=hosp.asana_project_id,
+                        extra_followers=asana_followers # <-- Pasamos los IDs recuperados
+                    )
+                
+                # Guardamos en la BD local
+                nueva_alerta = database.AlertaModel(
+                    hospital_id=hosp.hospital_id, 
+                    tipo="KPI_INACT_RAD", 
+                    mensaje=f"[WARNING] {mensaje}", 
+                    start_time=datetime.now(), 
+                    is_active=1, 
+                    asana_task_gid=gid
+                )
+                db.add(nueva_alerta)
+                db.commit()
 
 

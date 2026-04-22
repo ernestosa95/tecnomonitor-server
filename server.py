@@ -33,6 +33,7 @@ except Exception as e:
 async def ciclo_vigilancia():
     print("🔄 Iniciando Hilo de Vigilancia (Background Service)...")
     ticks_mantenimiento = 0 
+    ticks_kpi = 0
     LIMIT_TICKS_DIA = 1440 
     
     while True:
@@ -40,6 +41,12 @@ async def ciclo_vigilancia():
             try:
                 with database.SessionLocal() as db:
                     alerts_engine.procesar_offline(db)
+                    # --- NUEVO BLOQUE KPI (Corre cada 60 minutos) ---
+                    ticks_kpi += 1
+                    if ticks_kpi >= 60: 
+                        alerts_engine.verificar_actividad_ris(db)
+                        ticks_kpi = 0
+                    # ------------------------------------------------
             except Exception as e:
                 print(f"⚠️ Error verificando alertas: {e}")
 

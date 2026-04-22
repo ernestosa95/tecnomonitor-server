@@ -34,9 +34,9 @@ def _obtener_icono(nivel):
     if nivel == "OK": return "🟢"
     return "🚨"
 
-def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_project_gid=None):
-    """Crea una tarea nueva con el nivel correspondiente."""
-    # 🛡️ Cortocircuito
+def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_project_gid=None, extra_followers=None):
+    """Crea una tarea nueva con el nivel correspondiente en Asana."""
+    # 🛡️ Cortocircuito si la integración está deshabilitada
     if not ASANA_ENABLED:
         return None
 
@@ -58,10 +58,21 @@ def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_proje
 
 Asignada automáticamente por TecnoMonitor."""
     
+    # Configurar proyectos de destino (Global + Específico del Hospital)
     proyectos_destino = [str(MAIN_PROJECT_GID)]
     if hospital_project_gid and len(str(hospital_project_gid)) > 5:
         if str(hospital_project_gid) != str(MAIN_PROJECT_GID):
             proyectos_destino.append(str(hospital_project_gid))
+
+    # Combinar followers globales con los extra (asegurando que sean únicos)
+    followers_finales = set(FOLLOWERS_GIDS)
+    if extra_followers:
+        for f in extra_followers:
+            if f:
+                followers_finales.add(str(f))
+            
+    # Filtrar valores vacíos para evitar errores de la API de Asana
+    followers_finales = list(filter(None, followers_finales))
 
     body = {
         'data': {
@@ -70,12 +81,13 @@ Asignada automáticamente por TecnoMonitor."""
             'notes': notas,
             'projects': proyectos_destino,
             'assignee': RESPONSABLE_GID,
-            'followers': FOLLOWERS_GIDS
+            'followers': followers_finales
         }
     }
     
     try:
         result = tasks_api_instance.create_task(body, {})
+        # Extracción segura del GID de la tarea según la respuesta de la librería
         task_gid = result.get('gid') if isinstance(result, dict) else (getattr(result, 'gid', None) or getattr(getattr(result, 'data', None), 'gid', None))
         
         if task_gid:
@@ -84,6 +96,7 @@ Asignada automáticamente por TecnoMonitor."""
     except Exception as e:
         logger.error(f"❌ Error al crear en Asana: {e}")
     return None
+    
 
 def actualizar_tarea_asana(task_gid, hospital_id, tipo, nivel, mensaje_detalle, reabrir=False):
     """Actualiza título, comenta y opcionalmente reabre una tarea existente."""

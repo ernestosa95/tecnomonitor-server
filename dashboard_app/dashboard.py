@@ -154,17 +154,23 @@ class ConfigRequest(BaseModel):
     # Host Físico
     temp_amb_max: int
     temp_cpu_max: int
-    cpu_host_max: int      # Nuevo
-    ram_host_max: int      # Nuevo
+    cpu_host_max: int      
+    ram_host_max: int      
     
     # VMs
-    cpu_vm_max: int        # Nuevo
-    ram_vm_max: int        # Nuevo
+    cpu_vm_max: int        
+    ram_vm_max: int        
     
     # Hardware Switches
-    enable_fans: bool      # Nuevo
-    enable_power: bool     # Nuevo
-    enable_raid: bool      # Nuevo
+    enable_fans: bool      
+    enable_power: bool     
+    enable_raid: bool      
+
+    # --- Parametros KPI ---
+    kpi_rad_alert_enabled: bool
+    kpi_rad_threshold_hours: int
+    kpi_rad_modalities: str
+    kpi_rad_responsible_email: str
 
 class LoginRequest(BaseModel):
     email: str
@@ -557,16 +563,24 @@ def obtener_alertas(db: Session = Depends(get_db),
 @app.get("/api/config")
 def obtener_configuracion(db: Session = Depends(get_db),
                           current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
-    def g(k, d, is_bool=False): 
+    
+    # NUEVA FUNCIÓN 'g' (Igual a la del alerts_engine)
+    def g(k, d, is_bool=False):
         r = db.query(database.ConfigModel).filter_by(clave=k).first()
         if r:
-            return (r.valor == '1') if is_bool else int(r.valor)
+            if is_bool:
+                return r.valor == '1'
+            if isinstance(d, int):
+                try:
+                    return int(r.valor)
+                except (ValueError, TypeError):
+                    return d
+            return r.valor
         return d
 
     return {
         "offline_minutes": g("offline_minutes", 10),
         "disk_threshold": g("disk_threshold", 90),
-        # Nuevos parámetros
         "temp_amb_max": g("temp_amb_max", 27),
         "temp_cpu_max": g("temp_cpu_max", 75),
         "cpu_host_max": g("cpu_host_max", 85),
@@ -575,8 +589,15 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "ram_vm_max": g("ram_vm_max", 90),
         "enable_fans": g("enable_fans", True, is_bool=True),
         "enable_power": g("enable_power", True, is_bool=True),
-        "enable_raid": g("enable_raid", True, is_bool=True)
+        "enable_raid": g("enable_raid", True, is_bool=True),
+        
+        # --- PARÁMETROS KPI ---
+        "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
+        "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
+        "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
+        "kpi_rad_responsible_email": g("kpi_rad_responsible_email", "")
     }
+
 
 @app.post("/api/config")
 def guardar_configuracion(cfg: ConfigRequest,
@@ -599,6 +620,10 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("enable_fans", cfg.enable_fans)
     s("enable_power", cfg.enable_power)
     s("enable_raid", cfg.enable_raid)
+    s("kpi_rad_alert_enabled", cfg.kpi_rad_alert_enabled)
+    s("kpi_rad_threshold_hours", cfg.kpi_rad_threshold_hours)
+    s("kpi_rad_modalities", cfg.kpi_rad_modalities)
+    s("kpi_rad_responsible_email", cfg.kpi_rad_responsible_email)
     
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}
@@ -1376,3 +1401,20 @@ async def api_generar_reporte_ris(
     except Exception as e:
         print(f"Error generando reporte RIS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/users/responsables")
+def listar_usuarios_responsables(db: Session = Depends(get_db),
+                                 current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    """Devuelve la lista de usuarios activos para el selector de responsables de alertas."""
+    usuarios = db.query(database.UserModel).filter(database.UserModel.is_active == True).all()
+    
+    resultados = []
+    for u in usuarios:
+        resultados.append({
+            "email": u.email,
+            "nombre": u.full_name or u.email,
+            "tiene_asana": bool(u.asana_id) # Para mostrar un aviso si elegimos a alguien sin Asana ID
+        })
+    return resultados
+
+

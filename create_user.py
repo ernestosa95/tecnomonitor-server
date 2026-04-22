@@ -75,11 +75,12 @@ def listar_usuarios(db, solo_activos=True):
         return
 
     fmt = "  {:<30} {:<14} {:<12} {}"
-    print(fmt.format("EMAIL", "ROL", "ESTADO", "NOMBRE"))
+    print(fmt.format("EMAIL", "ROL", "ESTADO", "ASANA ID", "NOMBRE"))
     separador("·")
     for u in usuarios:
         estado = "✅ Activo" if u.is_active else "🚫 Inactivo"
-        print(fmt.format(u.email, u.role, estado, u.full_name or "—"))
+        asana_tag = u.asana_id if u.asana_id else "Sin vincular"
+        print(fmt.format(u.email, u.role, estado, asana_tag, u.full_name or "—"))
     separador()
     print(f"  Total: {len(usuarios)} usuario(s)\n")
 
@@ -113,6 +114,11 @@ def crear_usuario(db):
     if not nombre:
         print("❌ Nombre vacío. Operación cancelada.")
         return
+
+    # — Asana ID —
+    asana_id = input("  ID de Asana del usuario (presiona Enter para omitir): ").strip()
+    if not asana_id:
+        asana_id = None
 
     # — Verificar duplicado —
     existente = db.query(UserModel).filter(UserModel.email == email_raw).first()
@@ -151,6 +157,7 @@ def crear_usuario(db):
             full_name=nombre,
             role=rol,
             is_active=True,
+            asana_id=asana_id
         )
         db.add(nuevo)
         db.commit()
