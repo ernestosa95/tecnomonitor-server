@@ -618,6 +618,12 @@
             <div class="input-group"><label>Latitud</label><input type="text" id="hosp-lat"></div>
             <div class="input-group"><label>Longitud</label><input type="text" id="hosp-lon"></div>
         </div>
+        <div class="input-group" style="margin-top: 15px;">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                <input type="checkbox" id="hosp-has-ris" style="width: auto; transform: scale(1.2);">
+                <span style="font-weight:600; color:#2c3e50; text-transform: none;">¿Integra RIS (Radiology Information System)?</span>
+            </label>
+        </div>
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
             <button class="btn-action" onclick="cerrarModalHospital()" style="background:#95a5a6; width:auto;">Cancelar</button>
             <button class="btn-action" onclick="guardarHospital()" style="width:auto;">Guardar</button>

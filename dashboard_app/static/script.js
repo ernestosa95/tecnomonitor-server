@@ -1287,6 +1287,11 @@ async function listarHospitalesConfig() {
                 : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
             const btnClassBell = alertsOn ? 'btn-view' : 'btn-hide';
 
+            // --- NUEVA LÓGICA: Botón RIS ---
+            const hasRis = h.has_ris === true;
+            const bgRis = hasRis ? '#9b59b6' : '#95a5a6'; // Morado (activo) o Gris (inactivo)
+
+            // Opacidad de la fila si el hospital está oculto
             const opacityStyle = isVis ? '' : 'opacity: 0.6; background: #f8f9fa;'; 
 
             tr.style = opacityStyle;
@@ -1296,15 +1301,29 @@ async function listarHospitalesConfig() {
                 <td>${h.provincia || '-'}</td>
                 <td style="font-family:monospace; font-size:0.9em;">${h.asana_project_id || '-'}</td>
                 <td style="text-align:right;">
+                    <button class="btn-small" onclick="toggleRis('${h.hospital_id}')" title="Integración RIS ON/OFF" style="margin-right:5px; background-color:${bgRis}; font-weight:bold;">RIS</button>
                     <button class="btn-small ${btnClassBell}" onclick="toggleAlertas('${h.hospital_id}')" title="Alertas ON/OFF" style="margin-right:5px; background-color:${alertsOn?'#e67e22':'#95a5a6'};">${bellIcon}</button>
                     <button class="btn-small ${btnClassVis}" onclick="toggleVisibilidad('${h.hospital_id}')" title="Mostrar/Ocultar Dashboard">${eyeIcon}</button>
-                    <button class="btn-small btn-edit" onclick='editarHospital(${JSON.stringify(h)})'>✏️</button>
+                    <button class="btn-small btn-edit" onclick='editarHospital(${JSON.stringify(h).replace(/'/g, "&apos;")})'>✏️</button>
                     <button class="btn-small btn-delete" onclick="eliminarHospital('${h.hospital_id}')">🗑️</button>
                 </td>
             `;
             tbody.appendChild(tr);
         });
-    } catch (e) { console.error("Error listando hospitales:", e); }
+    } catch (e) { 
+        console.error("Error listando hospitales:", e); 
+    }
+}
+
+async function toggleRis(id) {
+    try {
+        const res = await authFetch(`/api/hospitales-metadata/${id}/toggle-ris`, { method: 'PATCH' });
+        if (res.ok) {
+            listarHospitalesConfig(); 
+        } else {
+            alert("Error al cambiar estado del atributo RIS");
+        }
+    } catch (e) { console.error(e); }
 }
 
 async function toggleAlertas(id) {
@@ -1355,6 +1374,7 @@ function abrirModalHospital() {
     document.getElementById('hosp-asana').value = "";
     document.getElementById('hosp-lat').value = "";
     document.getElementById('hosp-lon').value = "";
+    document.getElementById('hosp-has-ris').checked = false;
     document.getElementById('modal-hospital').style.display = 'flex';
 }
 
@@ -1369,6 +1389,7 @@ function editarHospital(obj) {
     document.getElementById('hosp-asana').value = obj.asana_project_id || "";
     document.getElementById('hosp-lat').value = obj.latitud || "";
     document.getElementById('hosp-lon').value = obj.longitud || "";
+    document.getElementById('hosp-has-ris').checked = obj.has_ris === true;
     document.getElementById('modal-hospital').style.display = 'flex';
 }
 
@@ -1387,7 +1408,8 @@ async function guardarHospital() {
         asana_project_id: document.getElementById('hosp-asana').value,
         latitud: document.getElementById('hosp-lat').value,
         longitud: document.getElementById('hosp-lon').value,
-        is_visible: true 
+        is_visible: true,
+        has_ris: document.getElementById('hosp-has-ris').checked
     };
     
     if (isEditing && window.currentEditingVis !== undefined) {

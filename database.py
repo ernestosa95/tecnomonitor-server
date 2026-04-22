@@ -76,6 +76,7 @@ class HospitalMetadata(Base):
     asana_project_id = Column(String, nullable=True)
     is_visible = Column(Boolean, default=True)
     alerts_enabled = Column(Boolean, default=True)
+    has_ris = Column(Boolean, default=False)
 
 class ReporteUso(Base):
     __tablename__ = "reportes_uso"

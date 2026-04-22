@@ -178,7 +178,8 @@ class HospitalDTO(BaseModel):
     longitud: str = None
     asana_project_id: str = None
     is_visible: bool = True
-    alerts_enabled: bool = True # Nuevo
+    alerts_enabled: bool = True
+    has_ris: bool = False
 
 class ReportePDFRequest(BaseModel):
     hospital_id: str
@@ -632,7 +633,8 @@ def editar_hospital_metadata(hid: str, dto: HospitalDTO,
     h.longitud = dto.longitud
     h.asana_project_id = dto.asana_project_id
     h.is_visible = dto.is_visible
-    h.alerts_enabled = dto.alerts_enabled # Nuevo campo
+    h.alerts_enabled = dto.alerts_enabled
+    h.has_ris = dto.has_ris
     
     db.commit()
     return {"status": "ok", "msg": "Actualizado"}
@@ -657,6 +659,18 @@ def toggle_alertas(hid: str,
     h.alerts_enabled = not h.alerts_enabled
     db.commit()
     return {"status": "ok", "alerts_enabled": h.alerts_enabled}
+
+@app.patch("/api/hospitales-metadata/{hid}/toggle-ris")
+def toggle_ris(hid: str,
+               db: Session = Depends(get_db),
+               current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
+    if not h: raise HTTPException(status_code=404, detail="No encontrado")
+    
+    # Invertimos el valor actual (asume False si es None)
+    h.has_ris = not getattr(h, 'has_ris', False)
+    db.commit()
+    return {"status": "ok", "has_ris": h.has_ris}
 
 @app.delete("/api/hospitales-metadata/{hid}")
 def eliminar_hospital_metadata(hid: str,
