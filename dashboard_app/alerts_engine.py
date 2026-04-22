@@ -48,6 +48,7 @@ def cargar_config(db: Session):
         "enable_raid": g("enable_raid", True, is_bool=True),
         
         # --- Configuración de KPIs de Negocio (Nuevos) ---
+        "kpi_execution_time": g("kpi_execution_time", "08:00"),
         "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
         "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
         "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
@@ -400,5 +401,31 @@ def verificar_actividad_ris(db: Session):
                 )
                 db.add(nueva_alerta)
                 db.commit()
+
+# Variable global para registrar la última ejecución
+ultima_ejecucion_kpis = None
+
+def verificar_kpis_programados(db: Session):
+    global ultima_ejecucion_kpis
+    
+    config = cargar_config(db)
+    hora_configurada = config.get('kpi_execution_time', '08:00')
+    
+    ahora = datetime.now()
+    hora_actual_str = ahora.strftime("%H:%M")
+    
+    # ¿Es la hora de correr los KPIs?
+    if hora_actual_str == hora_configurada:
+        fecha_hoy = ahora.strftime("%Y-%m-%d")
+        
+        # Verificamos que no se haya ejecutado ya en el día de hoy
+        if ultima_ejecucion_kpis != fecha_hoy:
+            ultima_ejecucion_kpis = fecha_hoy
+            print(f"⏰ Hora programada ({hora_configurada}) alcanzada. Lanzando batería de KPIs...")
+            
+            # --- Aquí listamos todas las funciones KPI ---
+            verificar_actividad_ris(db)
+            # verificar_otra_alerta_kpi(db)  <-- Cuando agregues más, irán aquí
+
 
 

@@ -40,13 +40,12 @@ async def ciclo_vigilancia():
         try:
             try:
                 with database.SessionLocal() as db:
+                    # 1. Alertas de Hardware (Tiempo real)
                     alerts_engine.procesar_offline(db)
-                    # --- NUEVO BLOQUE KPI (Corre cada 60 minutos) ---
-                    ticks_kpi += 1
-                    if ticks_kpi >= 60: 
-                        alerts_engine.verificar_actividad_ris(db)
-                        ticks_kpi = 0
-                    # ------------------------------------------------
+                    
+                    # 2. Alertas de Negocio (Programadas)
+                    alerts_engine.verificar_kpis_programados(db)
+                    
             except Exception as e:
                 print(f"⚠️ Error verificando alertas: {e}")
 

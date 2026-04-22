@@ -167,6 +167,7 @@ class ConfigRequest(BaseModel):
     enable_raid: bool      
 
     # --- Parametros KPI ---
+    kpi_execution_time: str
     kpi_rad_alert_enabled: bool
     kpi_rad_threshold_hours: int
     kpi_rad_modalities: str
@@ -592,6 +593,7 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "enable_raid": g("enable_raid", True, is_bool=True),
         
         # --- PARÁMETROS KPI ---
+        "kpi_execution_time": g("kpi_execution_time", "08:00"),
         "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
         "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
         "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
@@ -620,6 +622,7 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("enable_fans", cfg.enable_fans)
     s("enable_power", cfg.enable_power)
     s("enable_raid", cfg.enable_raid)
+    s("kpi_execution_time", cfg.kpi_execution_time)
     s("kpi_rad_alert_enabled", cfg.kpi_rad_alert_enabled)
     s("kpi_rad_threshold_hours", cfg.kpi_rad_threshold_hours)
     s("kpi_rad_modalities", cfg.kpi_rad_modalities)

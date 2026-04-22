@@ -371,6 +371,9 @@ async function cargarConfigUI() {
         document.getElementById('check-raid').checked = data.enable_raid;
 
         // --- CAMPOS KPI ---
+        const elTime = document.getElementById('kpi-execution-time');
+        if(elTime) elTime.value = data.kpi_execution_time || "08:00";
+
         const chkKpiRad = document.getElementById('kpi-rad-enabled');
         if(chkKpiRad) chkKpiRad.checked = data.kpi_rad_alert_enabled;
         
@@ -406,6 +409,7 @@ async function guardarConfig() {
         enable_power: document.getElementById('check-power').checked,
         enable_raid: document.getElementById('check-raid').checked,
 
+        kpi_execution_time: document.getElementById('kpi-execution-time').value || "08:00",
         kpi_rad_alert_enabled: document.getElementById('kpi-rad-enabled').checked,
         kpi_rad_threshold_hours: parseInt(document.getElementById('kpi-rad-hours').value) || 24,
         kpi_rad_modalities: kpiSelectedMods.join(','),
