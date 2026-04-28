@@ -177,6 +177,11 @@ class ConfigRequest(BaseModel):
     kpi_mamo_alert_enabled: bool
     kpi_mamo_threshold_days: int
 
+    # --- Parametros Software ---
+    mirth_alert_enabled: bool
+    mirth_queued_threshold: int
+    mirth_responsible_email: str
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -604,7 +609,12 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
         "kpi_mamo_alert_enabled": g("kpi_mamo_alert_enabled", False, is_bool=True),
         "kpi_mamo_threshold_days": g("kpi_mamo_threshold_days", 7),
-        "kpi_rad_responsible_email": g("kpi_rad_responsible_email", "")
+        "kpi_rad_responsible_email": g("kpi_rad_responsible_email", ""),
+
+        # --- NUEVAS CONFIGURACIONES DE MIRTH ---
+        "mirth_alert_enabled": g("mirth_alert_enabled", False, is_bool=True),
+        "mirth_queued_threshold": g("mirth_queued_threshold", 100),
+        "mirth_responsible_email": g("mirth_responsible_email", "")
     }
 
 
@@ -637,6 +647,10 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("global_alert_responsible_email", cfg.global_alert_responsible_email)
     s("kpi_mamo_alert_enabled", cfg.kpi_mamo_alert_enabled)
     s("kpi_mamo_threshold_days", cfg.kpi_mamo_threshold_days)
+    # --- GUARDAR CONFIGURACIONES DE MIRTH ---
+    s("mirth_alert_enabled", cfg.mirth_alert_enabled)
+    s("mirth_queued_threshold", cfg.mirth_queued_threshold)
+    s("mirth_responsible_email", cfg.mirth_responsible_email)
     
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}

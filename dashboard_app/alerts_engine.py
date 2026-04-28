@@ -55,7 +55,12 @@ def cargar_config(db: Session):
         "kpi_rad_responsible_email": g("kpi_rad_responsible_email", ""),
         "kpi_mamo_alert_enabled": g("kpi_mamo_alert_enabled", False, is_bool=True),
         "kpi_mamo_threshold_days": g("kpi_mamo_threshold_days", 7),
-        "kpi_mamo_responsible_email": g("kpi_mamo_responsible_email", "")
+        "kpi_mamo_responsible_email": g("kpi_mamo_responsible_email", ""),
+
+        # --- CONFIGURACIONES DE MIRTH ---
+        "mirth_alert_enabled": g("mirth_alert_enabled", False, is_bool=True),
+        "mirth_queued_threshold": g("mirth_queued_threshold", 100),
+        "mirth_responsible_email": g("mirth_responsible_email", "")
     }
 
 def analizar_reporte(hospital_id, json_data_v3, db: Session):
@@ -494,4 +499,84 @@ def _crear_alerta_kpi_generica(db, hosp, tipo, mensaje, followers):
         nueva = database.AlertaModel(hospital_id=hosp.hospital_id, tipo=tipo, mensaje=f"[KPI] {mensaje}", start_time=datetime.now(), is_active=1, asana_task_gid=gid)
         db.add(nueva)
         db.commit()
+
+def verificar_estado_software(db: Session):
+    config = cargar_config(db)
+    
+    if not config.get('mirth_alert_enabled'):
+        return
+
+    umbral_encolados = config.get('mirth_queued_threshold', 100)
+    emails_resp = [e.strip() for e in config.get('mirth_responsible_email', '').split(',') if e.strip()]
+    
+    asana_followers = []
+    if emails_resp:
+        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_resp)).all()
+        asana_followers = [u.asana_id for u in usuarios if u.asana_id]
+
+    hospitales_activos = db.query(database.HospitalMetadata).filter(
+        database.HospitalMetadata.is_visible == True,
+        database.HospitalMetadata.alerts_enabled == True
+    ).all()
+
+    for hosp in hospitales_activos:
+        # Traemos los últimos 2 registros para evitar falsos positivos por micro-cortes
+        query = text("""
+            WITH RankedData AS (
+                SELECT component_id, status_value, metric_value, extra_data,
+                       ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
+                FROM software_monitoring
+                WHERE hospital_id = :hid AND app_name = 'mirth'
+            )
+            SELECT component_id, status_value, metric_value, extra_data, rn 
+            FROM RankedData 
+            WHERE rn <= 2
+        """)
+        registros = db.execute(query, {"hid": hosp.hospital_id}).fetchall()
+
+        historial_canales = {}
+        for reg in registros:
+            cid = reg.component_id
+            if cid not in historial_canales:
+                historial_canales[cid] = []
+            historial_canales[cid].append(reg)
+
+        for cid, historia in historial_canales.items():
+            actual = historia[0]
+            estado_canal = (actual.status_value or '').upper()
+            encolados = actual.metric_value or 0
+            
+            estado_anterior = (historia[1].status_value or '').upper() if len(historia) > 1 else estado_canal
+            
+            nivel = "OK"
+            mensaje = ""
+            
+            # --- EVALUACIÓN (AMBAS CRÍTICAS) ---
+            if estado_canal in ['STOPPED', 'ERROR', 'PAUSED']:
+                if estado_anterior in ['STOPPED', 'ERROR', 'PAUSED']:
+                    nivel = "CRITICAL"
+                    mensaje = f"[CRITICAL] Canal inoperativo de forma sostenida ({estado_canal})."
+                else:
+                    # Micro-corte: Lo ignoramos en este ciclo
+                    continue 
+                
+            elif encolados >= umbral_encolados:
+                # Ahora la acumulación también es CRÍTICA
+                nivel = "CRITICAL"
+                mensaje = f"[CRITICAL] Acumulación en canal: {encolados} mensajes encolados (Umbral: {umbral_encolados})."
+                
+            else:
+                mensaje = f"Operando normal. Encolados: {encolados}"
+            
+            tipo_alerta = f"MIRTH_{cid[:35]}"
+            
+            actualizar_estado_alerta(
+                db=db, 
+                hid=hosp.hospital_id, 
+                tipo_unico=tipo_alerta, 
+                nivel=nivel, 
+                mensaje=mensaje, 
+                asana_proj_id=hosp.asana_project_id, 
+                asana_followers=asana_followers
+            )
 

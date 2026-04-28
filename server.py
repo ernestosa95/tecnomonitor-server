@@ -45,6 +45,9 @@ async def ciclo_vigilancia():
                     
                     # 2. Alertas de Negocio (Programadas)
                     alerts_engine.verificar_kpis_programados(db)
+
+                    # 3. Alertas de Integración/Software (Tiempo real)
+                    alerts_engine.verificar_estado_software(db)
                     
             except Exception as e:
                 print(f"⚠️ Error verificando alertas: {e}")

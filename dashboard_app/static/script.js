@@ -382,6 +382,16 @@ async function cargarConfigUI() {
         
         const modsGuardadas = data.kpi_rad_modalities || "DX,CR,MG";
         kpiSelectedMods = modsGuardadas.split(',').map(m => m.trim()).filter(m => m);
+
+        // Agrega esto dentro de cargarConfigUI() (cerca de donde están los campos KPI)
+        const chkMirth = document.getElementById('mirth-alert-enabled');
+        if(chkMirth) chkMirth.checked = data.mirth_alert_enabled;
+
+        const inpMirthQueue = document.getElementById('mirth-queued-threshold');
+        if(inpMirthQueue) inpMirthQueue.value = data.mirth_queued_threshold || 100;
+
+        // MODIFICAR ESTA LÍNEA para que pase los responsables de mirth también
+        cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email);
         renderKpiModsChips();
         initKpiModsSelector();
         
@@ -418,6 +428,11 @@ async function guardarConfig() {
 
         kpi_mamo_alert_enabled: document.getElementById('kpi-mamo-enabled').checked,
         kpi_mamo_threshold_days: parseInt(document.getElementById('kpi-mamo-days').value) || 7,
+
+        // Dentro de la constante payload en guardarConfig()
+        mirth_alert_enabled: document.getElementById('mirth-alert-enabled').checked,
+        mirth_queued_threshold: parseInt(document.getElementById('mirth-queued-threshold').value) || 100,
+        mirth_responsible_email: mirthSelectedUsers.join(','),
     };
     try {
         await authFetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -3309,3 +3324,91 @@ function renderKpiModsList(filterText = "") {
     list.style.display = 'block';
 }
 
+// Variables globales
+let mirthSelectedUsers = [];
+
+// MODIFICA LA FIRMA de la función para recibir el tercer parámetro
+async function cargarUsuariosResponsables(emailsKpi, emailsGlobal, emailsMirth) {
+    try {
+        const res = await authFetch('/api/users/responsables');
+        kpiAllUsers = await res.json(); 
+        
+        kpiSelectedUsers = emailsKpi ? emailsKpi.split(',').map(e => e.trim()).filter(e => e) : [];
+        globalSelectedUsers = emailsGlobal ? emailsGlobal.split(',').map(e => e.trim()).filter(e => e) : [];
+        mirthSelectedUsers = emailsMirth ? emailsMirth.split(',').map(e => e.trim()).filter(e => e) : []; // NUEVO
+        
+        renderKpiRespChips();
+        renderGlobalRespChips(); 
+        renderMirthRespChips(); // NUEVO
+        
+        // ... (resto del código existente para inputKpi y inputGlb) ...
+
+        // --- Iniciar buscador MIRTH ---
+        const inputMirth = document.getElementById('mirth-resp-input');
+        if (inputMirth) {
+            const newInpM = inputMirth.cloneNode(true);
+            inputMirth.parentNode.replaceChild(newInpM, inputMirth);
+            newInpM.addEventListener('focus', () => renderMirthRespList(newInpM.value));
+            newInpM.addEventListener('input', (e) => renderMirthRespList(e.target.value));
+        }
+
+        // Listener global de clic afuera (Añadir a los existentes)
+        document.addEventListener('click', (e) => {
+            // ... (código existente)
+            const wrapperMirth = document.getElementById('mirth-resp-wrapper');
+            if (wrapperMirth && !wrapperMirth.contains(e.target)) document.getElementById('mirth-resp-list').style.display = 'none';
+        });
+
+    } catch(e) { console.error("Error cargando responsables:", e); }
+}
+
+// ==========================================
+// --- FUNCIONES EXCLUSIVAS PARA MIRTH ---
+// ==========================================
+function renderMirthRespChips() {
+    const container = document.getElementById('mirth-resp-chips');
+    if (!container) return;
+    container.innerHTML = mirthSelectedUsers.map(email => {
+        const user = kpiAllUsers.find(u => u.email === email);
+        const nombre = user ? user.nombre : email;
+        const warn = user && !user.tiene_asana ? ' <span title="Sin Asana ID" style="color:#f39c12; margin-left:3px;">⚠️</span>' : '';
+        return `<div style="display:flex; align-items:center; background:#fdf2e9; border:1px solid #fdebd0; color:#e67e22; padding:4px 10px; border-radius:15px; font-size:0.85em; font-weight:600;">${nombre}${warn}<span style="margin-left:8px; cursor:pointer; color:#7f8c8d; transition:0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'" onclick="removeMirthResp('${email}')">✕</span></div>`;
+    }).join('');
+}
+
+function removeMirthResp(email) {
+    mirthSelectedUsers = mirthSelectedUsers.filter(e => e !== email);
+    renderMirthRespChips();
+    renderMirthRespList(document.getElementById('mirth-resp-input').value);
+}
+
+function addMirthResp(email) {
+    if (!mirthSelectedUsers.includes(email)) {
+        mirthSelectedUsers.push(email);
+        renderMirthRespChips();
+        const input = document.getElementById('mirth-resp-input');
+        input.value = ''; input.focus();
+        renderMirthRespList('');
+    }
+}
+
+function renderMirthRespList(filterText = "") {
+    const list = document.getElementById('mirth-resp-list');
+    if (!list) return;
+    const filterLower = filterText.toLowerCase();
+    const availableUsers = kpiAllUsers.filter(u => {
+        if (mirthSelectedUsers.includes(u.email)) return false;
+        if (filterLower && !u.nombre.toLowerCase().includes(filterLower) && !u.email.toLowerCase().includes(filterLower)) return false;
+        return true;
+    });
+
+    if (availableUsers.length === 0) {
+        list.innerHTML = `<div style="padding:15px; color:#7f8c8d; font-size:0.9em; text-align:center;">No se encontraron más usuarios</div>`;
+    } else {
+        list.innerHTML = availableUsers.map(u => {
+            const warn = u.tiene_asana ? '' : '<span style="color:#f39c12; font-size:0.9em; margin-left:5px;" title="No tiene Asana ID cargado">⚠️ Sin Asana ID</span>';
+            return `<div onclick="addMirthResp('${u.email}')" style="padding:10px 15px; border-bottom:1px solid #f1f5f8; cursor:pointer; font-size:0.9em; transition:0.2s;" onmouseover="this.style.background='#fdf2e9'" onmouseout="this.style.background='transparent'"><div style="font-weight:600; color:#d35400;">${u.nombre}${warn}</div><div style="font-size:0.85em; color:#7f8c8d;">${u.email}</div></div>`;
+        }).join('');
+    }
+    list.style.display = 'block';
+}
