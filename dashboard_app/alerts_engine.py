@@ -52,7 +52,10 @@ def cargar_config(db: Session):
         "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
         "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
         "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
-        "kpi_rad_responsible_email": g("kpi_rad_responsible_email", "")
+        "kpi_rad_responsible_email": g("kpi_rad_responsible_email", ""),
+        "kpi_mamo_alert_enabled": g("kpi_mamo_alert_enabled", False, is_bool=True),
+        "kpi_mamo_threshold_days": g("kpi_mamo_threshold_days", 7),
+        "kpi_mamo_responsible_email": g("kpi_mamo_responsible_email", "")
     }
 
 def analizar_reporte(hospital_id, json_data_v3, db: Session):
@@ -434,8 +437,61 @@ def verificar_kpis_programados(db: Session):
             print(f"⏰ Hora programada ({hora_configurada}) alcanzada. Lanzando batería de KPIs...")
             
             # --- Aquí listamos todas las funciones KPI ---
-            verificar_actividad_ris(db)
+            verificar_actividad_ris(db) # Alerta 1
+            verificar_actividad_mamo(db) # Alerta 2
             # verificar_otra_alerta_kpi(db)  <-- Cuando agregues más, irán aquí
 
+def verificar_actividad_mamo(db: Session):
+    config = cargar_config(db)
+    if not config.get('kpi_mamo_alert_enabled'):
+        return
 
+    print("📊 Verificando KPI 2: Inactividad en Mamografía...")
+    dias_umbral = config.get('kpi_mamo_threshold_days', 7)
+    emails_resp = [e.strip() for e in config.get('kpi_rad_responsible_email', '').split(',') if e.strip()]
+    
+    # Recuperar seguidores
+    followers = []
+    if emails_resp:
+        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_resp)).all()
+        followers = [u.asana_id for u in usuarios if u.asana_id]
+
+    fecha_limite = datetime.now() - timedelta(days=dias_umbral)
+    
+    hospitales_ris = db.query(database.HospitalMetadata).filter(
+        database.HospitalMetadata.is_visible == True,
+        database.HospitalMetadata.has_ris == True
+    ).all()
+
+    for hosp in hospitales_ris:
+        reportes = db.query(database.ReporteUso).filter(
+            database.ReporteUso.hospital_id == hosp.hospital_id,
+            database.ReporteUso.timestamp >= fecha_limite
+        ).all()
+
+        total_mamo = 0
+        for rep in reportes:
+            if not rep.kpi_json_data: continue
+            try:
+                metrics = json.loads(rep.kpi_json_data)
+                for item in metrics.get('ris', []):
+                    # Filtramos por las modalidades de mamografía (MG es el estándar DICOM)
+                    if item.get('mod') in ['MG', 'MAMO']:
+                        total_mamo += item.get('admitidos', 0)
+            except: continue
+
+        if total_mamo == 0:
+            # Lógica de creación de alerta (igual que la anterior pero tipo KPI_INACT_MAMO)
+            _crear_alerta_kpi_generica(db, hosp, "KPI_INACT_MAMO", 
+                                     f"Sin admisiones de Mamografía (MG) en los últimos {dias_umbral} días.", 
+                                     followers)
+
+def _crear_alerta_kpi_generica(db, hosp, tipo, mensaje, followers):
+    # Verificamos si ya existe para no duplicar
+    existe = db.query(database.AlertaModel).filter_by(hospital_id=hosp.hospital_id, tipo=tipo, is_active=1).first()
+    if not existe:
+        gid = asana_conector.crear_tarea_alerta(hosp.hospital_id, tipo, "WARNING", mensaje, hosp.asana_project_id, extra_followers=followers)
+        nueva = database.AlertaModel(hospital_id=hosp.hospital_id, tipo=tipo, mensaje=f"[KPI] {mensaje}", start_time=datetime.now(), is_active=1, asana_task_gid=gid)
+        db.add(nueva)
+        db.commit()
 

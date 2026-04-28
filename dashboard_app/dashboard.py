@@ -174,6 +174,8 @@ class ConfigRequest(BaseModel):
     kpi_rad_threshold_hours: int
     kpi_rad_modalities: str
     kpi_rad_responsible_email: str
+    kpi_mamo_alert_enabled: bool
+    kpi_mamo_threshold_days: int
 
 class LoginRequest(BaseModel):
     email: str
@@ -600,6 +602,8 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
         "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
         "kpi_rad_modalities": g("kpi_rad_modalities", "DX,CR,MAMO"),
+        "kpi_mamo_alert_enabled": g("kpi_mamo_alert_enabled", False, is_bool=True),
+        "kpi_mamo_threshold_days": g("kpi_mamo_threshold_days", 7),
         "kpi_rad_responsible_email": g("kpi_rad_responsible_email", "")
     }
 
@@ -631,6 +635,8 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("kpi_rad_modalities", cfg.kpi_rad_modalities)
     s("kpi_rad_responsible_email", cfg.kpi_rad_responsible_email)
     s("global_alert_responsible_email", cfg.global_alert_responsible_email)
+    s("kpi_mamo_alert_enabled", cfg.kpi_mamo_alert_enabled)
+    s("kpi_mamo_threshold_days", cfg.kpi_mamo_threshold_days)
     
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}

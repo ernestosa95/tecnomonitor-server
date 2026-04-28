@@ -415,6 +415,9 @@ async function guardarConfig() {
         kpi_rad_modalities: kpiSelectedMods.join(','),
         kpi_rad_responsible_email: kpiSelectedUsers.join(','),
         global_alert_responsible_email: globalSelectedUsers.join(','),
+
+        kpi_mamo_alert_enabled: document.getElementById('kpi-mamo-enabled').checked,
+        kpi_mamo_threshold_days: parseInt(document.getElementById('kpi-mamo-days').value) || 7,
     };
     try {
         await authFetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
