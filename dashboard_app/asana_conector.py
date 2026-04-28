@@ -65,7 +65,7 @@ Asignada automáticamente por TecnoMonitor."""
             proyectos_destino.append(str(hospital_project_gid))
 
     # Combinar followers globales con los extra (asegurando que sean únicos)
-    followers_finales = set(FOLLOWERS_GIDS)
+    followers_finales = set()
     if extra_followers:
         for f in extra_followers:
             if f:

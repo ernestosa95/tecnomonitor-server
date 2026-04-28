@@ -164,7 +164,9 @@ class ConfigRequest(BaseModel):
     # Hardware Switches
     enable_fans: bool      
     enable_power: bool     
-    enable_raid: bool      
+    enable_raid: bool     
+
+    global_alert_responsible_email: str 
 
     # --- Parametros KPI ---
     kpi_execution_time: str
@@ -591,6 +593,7 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "enable_fans": g("enable_fans", True, is_bool=True),
         "enable_power": g("enable_power", True, is_bool=True),
         "enable_raid": g("enable_raid", True, is_bool=True),
+        "global_alert_responsible_email": g("global_alert_responsible_email", ""),
         
         # --- PARÁMETROS KPI ---
         "kpi_execution_time": g("kpi_execution_time", "08:00"),
@@ -627,6 +630,7 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("kpi_rad_threshold_hours", cfg.kpi_rad_threshold_hours)
     s("kpi_rad_modalities", cfg.kpi_rad_modalities)
     s("kpi_rad_responsible_email", cfg.kpi_rad_responsible_email)
+    s("global_alert_responsible_email", cfg.global_alert_responsible_email)
     
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}
@@ -1185,6 +1189,10 @@ async def get_ris_analytics(request: Request):
 @app.get("/hl7-analytics")
 async def get_hl7_analytics(request: Request):
     return templates.TemplateResponse("solucion1.html", {"request": request})
+
+@app.get("/tecno-solution")
+async def get_hl7_analytics(request: Request):
+    return templates.TemplateResponse("links.html", {"request": request})
 
 # --- DTO para cambio de clave ---
 class ChangePasswordRequest(BaseModel):

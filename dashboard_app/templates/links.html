@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tecnoimagen SA | LinkS 2026 NOA</title>
+    <script src="https://unpkg.com/scrollreveal"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-deep: #05070a;
+            --bg-card: rgba(15, 20, 26, 0.7);
+            --accent: #0070f3;
+            --accent-glow: rgba(0, 112, 243, 0.2);
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --border: rgba(45, 55, 72, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --font-main: 'Inter', -apple-system, system-ui, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(0, 112, 243, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(0, 112, 243, 0.05), transparent 25%);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        /* --- Navbar (Branding Tecnoimagen) --- */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 1.5rem 0;
+            background: rgba(5, 7, 10, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        /* --- Hero Section --- */
+        header {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding-top: 6rem;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .tagline {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+            background: rgba(0, 112, 243, 0.1);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            border: 1px solid var(--accent-glow);
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            font-weight: 800;
+        }
+
+        .hero-p {
+            font-size: clamp(1.1rem, 2vw, 1.25rem);
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            max-width: 600px;
+        }
+
+        .hero-image-wrapper {
+            position: relative;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+            border: 1px solid var(--glass-border);
+        }
+
+        .hero-image-wrapper::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to right, rgba(5,7,10,0.8), rgba(0,112,243,0.2));
+            pointer-events: none;
+        }
+
+        .hero-image-wrapper img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+            filter: grayscale(30%) contrast(1.2);
+        }
+
+        /* --- Secciones de Contenido --- */
+        section {
+            padding: 6rem 0;
+        }
+
+        .grid-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            padding: 2.5rem;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card-icon {
+            color: var(--accent);
+            margin-bottom: 1.5rem;
+            width: 48px;
+            height: 48px;
+        }
+
+        .card-val {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        /* --- Bloque: Imagen Intermedia (Human Touch) --- */
+        .human-touch-section {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 4rem;
+            align-items: center;
+            background: rgba(255,255,255,0.02);
+            border-radius: 30px;
+            padding: 4rem;
+            margin: 4rem 0;
+            border: 1px solid var(--border);
+        }
+
+        .human-img {
+            width: 100%;
+            border-radius: 20px;
+            opacity: 0.8;
+            transition: opacity 0.3s;
+        }
+
+        .human-img:hover {
+            opacity: 1;
+        }
+
+        /* --- Formulario Centrado y Ajustado --- */
+        .action-container {
+            background: linear-gradient(180deg, rgba(15,20,26,0.8) 0%, rgba(5,7,10,1) 100%);
+            border-radius: 40px;
+            padding: 5rem 2rem;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .action-container h2 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            margin: 0 auto 1.5rem auto;
+            line-height: 1.2;
+            width: 100%;
+        }
+
+        .form-wrapper {
+            max-width: 850px;
+            margin: 0 auto;
+            text-align: left;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Forzamos tabla de 2 columnas x 3 filas */
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 1.2rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .btn-submit {
+            background: var(--accent);
+            color: white;
+            padding: 1.2rem 3rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px var(--accent-glow);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .btn-submit:hover {
+            box-shadow: 0 6px 25px rgba(0, 112, 243, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .privacy-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 2rem;
+            display: block;
+            text-align: center;
+        }
+
+        /* --- Mobile Optimization --- */
+        @media (max-width: 968px) {
+            .hero-grid, .human-touch-section { grid-template-columns: 1fr; gap: 3rem; }
+            .human-touch-section { padding: 2rem; }
+            header { padding-top: 8rem; height: auto; }
+            .form-grid { grid-template-columns: 1fr; } /* Pasa a 1 columna en móviles */
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="container nav-content">
+            <div class="logo">
+                <i data-lucide="activity"></i> Tecnoimagen<span>SA</span>
+            </div>
+            <a href="#accion" class="btn-submit" style="padding: 0.6rem 1.2rem; font-size: 0.9rem; width: auto; text-decoration: none;">Agendar</a>
+        </div>
+    </nav>
+
+    <header class="container">
+        <div class="hero-grid">
+            <div class="hero-content">
+                <span class="tagline">LinkS 2026 | Edición NOA</span>
+                <h1>Lidere la evolución asistencial con Tecnoimagen SA.</h1>
+                <p class="hero-p">Sabemos que su desafío no es adquirir tecnología, sino lograr que su institución opere en sincronía. Pase de la incertidumbre a la tranquilidad operativa total.</p>
+                <div style="display: flex; gap: 1rem;">
+                    <a href="#accion" class="btn-submit" style="width: auto; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;">Iniciar Diagnóstico <i data-lucide="arrow-right"></i></a>
+                </div>
+            </div>
+            <div class="hero-image-wrapper">
+                <img src="/static/img/img-principal.jpg" alt="Profesional médico">
+            </div>
+        </div>
+    </header>
+
+    <section class="container">
+        <h2 style="text-align: center; margin: 0 auto 1.5rem auto;">La innovación sin respaldo es un riesgo; con Tecnoimagen, es una certeza.</h2>
+        <p class="hero-p" style="text-align: center; margin: 0 auto 3rem auto;">Evite las islas de información incompatibles y el desgaste de las migraciones de sistemas HIS que paralizan su red asistencial.</p>
+        
+        <div class="grid-info">
+            <div class="card">
+                <i data-lucide="history" class="card-icon"></i>
+                <span class="card-val">+25</span>
+                <p>Años de trayectoria ininterrumpida liderando el mercado nacional de salud.</p>
+            </div>
+            <div class="card">
+                <i data-lucide="building-2" class="card-icon"></i>
+                <span class="card-val">+85</span>
+                <p>Instituciones en todo el país que hoy operan con máxima fluidez nuestro software validado.</p>
+            </div>
+            <div class="card">
+                <i data-lucide="users" class="card-icon"></i>
+                <span class="card-val">170</span>
+                <p>Especialistas dedicados 24/7 a asegurar que la tecnología de su hospital, simplemente, funcione.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="container">
+        <div class="human-touch-section">
+            <div>
+                <img src="/static/img/img-secundaria.jpg" alt="Equipo de IT Médico" class="human-img">
+            </div>
+            <div>
+                <h2 style="font-size: 2rem;">"No imagine el futuro, visítelo".</h2>
+                <p class="hero-p">Detrás de cada flujo de trabajo ágil, hay un equipo humano comprometido. Ya estamos operando en plena producción en hospitales referentes de <strong>Salta y Jujuy</strong>.</p>
+                <p class="hero-p" style="font-size: 1rem;">Nuestra arquitectura híbrida le permite mantener la <strong>soberanía de sus datos On-Premise</strong> o escalar con <strong>agilidad Cloud (PaaS)</strong>, siempre respaldados por certificaciones ANMAT.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="accion" class="container">
+        <div class="action-container">
+            <h2>Dé el paso definitivo hacia un Hospital Líquido.</h2>
+            <p class="hero-p" style="margin: 0 auto 3rem auto; text-align: center;">Complete este formulario y nuestro equipo de Tecnoimagen SA se pondrá a su disposición para un diagnóstico sin compromiso.</p>
+            
+            <div class="form-wrapper">
+                <form id="lead-form">
+                    <div class="form-grid">
+                        <input type="text" class="form-input" placeholder="Nombre" required>
+                        <input type="text" class="form-input" placeholder="Apellido" required>
+                        <input type="tel" class="form-input" placeholder="Teléfono" required>
+                        <input type="email" class="form-input" placeholder="Email" required>
+                        <input type="text" class="form-input" placeholder="Cargo" required>
+                        <input type="text" class="form-input" placeholder="Provincia" required>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: center;">
+                        <button type="submit" class="btn-submit">Agendar mi Sesión Estratégica</button>
+                    </div>
+                    
+                    <span class="privacy-text">Sus datos están protegidos. Nos comunicaremos exclusivamente por el medio elegido y respetando sus tiempos.</span>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        lucide.createIcons();
+        ScrollReveal().reveal('.card, .human-touch-section, h2, .hero-content', {
+            delay: 150,
+            distance: '40px',
+            origin: 'bottom',
+            duration: 800,
+            interval: 100,
+            easing: 'ease-out'
+        });
+
+        document.getElementById('lead-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            alert('Gracias por confiar en Tecnoimagen SA. Su sesión estratégica ha sido solicitada.');
+        });
+    </script>
+</body>
+</html>

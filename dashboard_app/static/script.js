@@ -385,8 +385,8 @@ async function cargarConfigUI() {
         renderKpiModsChips();
         initKpiModsSelector();
         
-        // Cargar los usuarios y setear el que viene de la DB
-        cargarUsuariosResponsables(data.kpi_rad_responsible_email);
+        // Reemplaza la llamada vieja por la que recibe los dos parámetros
+        cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email);
         
         listarHospitalesConfig();
     } catch (e) { console.error(e); }
@@ -413,7 +413,8 @@ async function guardarConfig() {
         kpi_rad_alert_enabled: document.getElementById('kpi-rad-enabled').checked,
         kpi_rad_threshold_hours: parseInt(document.getElementById('kpi-rad-hours').value) || 24,
         kpi_rad_modalities: kpiSelectedMods.join(','),
-        kpi_rad_responsible_email: kpiSelectedUsers.join(',')
+        kpi_rad_responsible_email: kpiSelectedUsers.join(','),
+        global_alert_responsible_email: globalSelectedUsers.join(','),
     };
     try {
         await authFetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -3055,38 +3056,94 @@ function actualizarTarjetasKpiSuperiores() {
 let kpiAllUsers = [];
 let kpiSelectedUsers = [];
 
-async function cargarUsuariosResponsables(emailsGuardados) {
+async function cargarUsuariosResponsables(emailsKpi, emailsGlobal) {
     try {
         const res = await authFetch('/api/users/responsables');
-        kpiAllUsers = await res.json();
+        kpiAllUsers = await res.json(); // Usamos la misma lista maestra de usuarios
         
-        // Convertimos el string de la DB en un Array
-        kpiSelectedUsers = emailsGuardados ? emailsGuardados.split(',').map(e => e.trim()).filter(e => e) : [];
+        kpiSelectedUsers = emailsKpi ? emailsKpi.split(',').map(e => e.trim()).filter(e => e) : [];
+        globalSelectedUsers = emailsGlobal ? emailsGlobal.split(',').map(e => e.trim()).filter(e => e) : [];
         
         renderKpiRespChips();
+        renderGlobalRespChips(); // NUEVO
         
-        const input = document.getElementById('kpi-rad-resp-input');
-        const list = document.getElementById('kpi-rad-resp-list');
-        
-        if (input) {
-            // Limpiamos listeners viejos clonando el nodo para evitar duplicados
-            const newInp = input.cloneNode(true);
-            input.parentNode.replaceChild(newInp, input);
-            
+        // --- Iniciar buscador KPI ---
+        const inputKpi = document.getElementById('kpi-rad-resp-input');
+        if (inputKpi) {
+            const newInp = inputKpi.cloneNode(true);
+            inputKpi.parentNode.replaceChild(newInp, inputKpi);
             newInp.addEventListener('focus', () => renderKpiRespList(newInp.value));
             newInp.addEventListener('input', (e) => renderKpiRespList(e.target.value));
-            
-            // Cerrar lista al hacer clic afuera
-            document.addEventListener('click', (e) => {
-                const wrapper = document.getElementById('kpi-rad-resp-wrapper');
-                if (wrapper && !wrapper.contains(e.target)) {
-                    list.style.display = 'none';
-                }
-            });
         }
-    } catch(e) {
-        console.error("Error cargando responsables:", e);
+
+        // --- Iniciar buscador GLOBAL ---
+        const inputGlb = document.getElementById('global-resp-input');
+        if (inputGlb) {
+            const newInpG = inputGlb.cloneNode(true);
+            inputGlb.parentNode.replaceChild(newInpG, inputGlb);
+            newInpG.addEventListener('focus', () => renderGlobalRespList(newInpG.value));
+            newInpG.addEventListener('input', (e) => renderGlobalRespList(e.target.value));
+        }
+
+        // Listener global de clic afuera
+        document.addEventListener('click', (e) => {
+            const wrapperKpi = document.getElementById('kpi-rad-resp-wrapper');
+            if (wrapperKpi && !wrapperKpi.contains(e.target)) document.getElementById('kpi-rad-resp-list').style.display = 'none';
+            
+            const wrapperGlb = document.getElementById('global-resp-wrapper');
+            if (wrapperGlb && !wrapperGlb.contains(e.target)) document.getElementById('global-resp-list').style.display = 'none';
+        });
+
+    } catch(e) { console.error("Error cargando responsables:", e); }
+}
+
+// --- CLONES EXACTOS DE LA LÓGICA PARA GLOBAL ---
+function renderGlobalRespChips() {
+    const container = document.getElementById('global-resp-chips');
+    if (!container) return;
+    container.innerHTML = globalSelectedUsers.map(email => {
+        const user = kpiAllUsers.find(u => u.email === email);
+        const nombre = user ? user.nombre : email;
+        const warn = user && !user.tiene_asana ? ' <span title="Sin Asana ID" style="color:#f39c12; margin-left:3px;">⚠️</span>' : '';
+        return `<div style="display:flex; align-items:center; background:#e8f4fd; border:1px solid #b8d9f5; color:#2980b9; padding:4px 10px; border-radius:15px; font-size:0.85em; font-weight:600;">${nombre}${warn}<span style="margin-left:8px; cursor:pointer; color:#7f8c8d; transition:0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'" onclick="removeGlobalResp('${email}')">✕</span></div>`;
+    }).join('');
+}
+
+function removeGlobalResp(email) {
+    globalSelectedUsers = globalSelectedUsers.filter(e => e !== email);
+    renderGlobalRespChips();
+    renderGlobalRespList(document.getElementById('global-resp-input').value);
+}
+
+function addGlobalResp(email) {
+    if (!globalSelectedUsers.includes(email)) {
+        globalSelectedUsers.push(email);
+        renderGlobalRespChips();
+        const input = document.getElementById('global-resp-input');
+        input.value = ''; input.focus();
+        renderGlobalRespList('');
     }
+}
+
+function renderGlobalRespList(filterText = "") {
+    const list = document.getElementById('global-resp-list');
+    if (!list) return;
+    const filterLower = filterText.toLowerCase();
+    const availableUsers = kpiAllUsers.filter(u => {
+        if (globalSelectedUsers.includes(u.email)) return false;
+        if (filterLower && !u.nombre.toLowerCase().includes(filterLower) && !u.email.toLowerCase().includes(filterLower)) return false;
+        return true;
+    });
+
+    if (availableUsers.length === 0) {
+        list.innerHTML = `<div style="padding:15px; color:#7f8c8d; font-size:0.9em; text-align:center;">No se encontraron más usuarios</div>`;
+    } else {
+        list.innerHTML = availableUsers.map(u => {
+            const warn = u.tiene_asana ? '' : '<span style="color:#f39c12; font-size:0.9em; margin-left:5px;" title="No tiene Asana ID cargado">⚠️ Sin Asana ID</span>';
+            return `<div onclick="addGlobalResp('${u.email}')" style="padding:10px 15px; border-bottom:1px solid #f1f5f8; cursor:pointer; font-size:0.9em; transition:0.2s;" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='transparent'"><div style="font-weight:600; color:#2c3e50;">${u.nombre}${warn}</div><div style="font-size:0.85em; color:#7f8c8d;">${u.email}</div></div>`;
+        }).join('');
+    }
+    list.style.display = 'block';
 }
 
 function renderKpiRespChips() {

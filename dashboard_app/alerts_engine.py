@@ -63,7 +63,17 @@ def analizar_reporte(hospital_id, json_data_v3, db: Session):
 
 def procesar_offline(db: Session):
     config = cargar_config(db)
-    _verificar_conectividad(db, config)
+
+    # --- NUEVO: Buscar IDs de Asana Globales ---
+    emails_globales = [e.strip() for e in config.get('global_alert_responsible_email', '').split(',') if e.strip()]
+    global_asana_followers = []
+    if emails_globales:
+        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_globales)).all()
+        global_asana_followers = [u.asana_id for u in usuarios if u.asana_id]
+    # -------------------------------------------
+
+    _verificar_conectividad(db, config, global_asana_followers)
+
     try:
         # =========================================================
         # 🛡️ FIX BATCH: CARGA EN LOTE PARA EVITAR N+1 QUERIES
@@ -90,7 +100,7 @@ def procesar_offline(db: Session):
             
             if meta and meta.alerts_enabled and row.full_json_data:
                 data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
-                _evaluar_reglas_v3(row.hospital_id, data, db, config, meta.asana_project_id)
+                _evaluar_reglas_v3(row.hospital_id, data, db, config, meta.asana_project_id, global_asana_followers)
                 
     except Exception as e:
         print(f"❌ Error en ciclo de vigilancia: {e}")
@@ -115,7 +125,7 @@ def _nivel_disco(valor):
     return "OK"
 
 # --- MOTOR DE REGLAS V3 ---
-def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id):
+def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
     hallazgos = {} 
     phy = data.get('physical_layer') or {}
     tele_host = phy.get('telemetry') or {}
@@ -181,10 +191,10 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id):
 
     # 4. ENVIAR AL GESTOR INTELIGENTE
     for tipo_unico, (nivel, msg) in hallazgos.items():
-        actualizar_estado_alerta(db, hid, tipo_unico, nivel, msg, asana_proj_id)
+        actualizar_estado_alerta(db, hid, tipo_unico, nivel, msg, asana_proj_id, asana_followers)
 
 # --- GESTOR INTELIGENTE DE INCIDENTES V3 ---
-def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None):
+def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None, asana_followers=None):
     ahora = datetime.now()
     DIAS_CADUCIDAD = 15
 
@@ -215,7 +225,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
     if not alerta:
         # B1: Nunca existió
         print(f"⚠️ NUEVA ALERTA: {hid} -> {tipo_unico} ({nivel})")
-        gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id) if asana_conector else None
+        gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers) if asana_conector else None
         nueva = database.AlertaModel(hospital_id=hid, tipo=tipo_unico, mensaje=f"[{nivel}] {mensaje}", start_time=ahora, is_active=1, asana_task_gid=gid)
         db.add(nueva)
         db.commit()
@@ -231,7 +241,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         # 🛟 FIX SALVAVIDAS B2: Si la alerta está activa pero nunca se creó en Asana (falló en el pasado)
         if not alerta.asana_task_gid and asana_conector:
             print(f"⚠️ ALERTA ACTIVA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
-            nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id)
+            nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers)
             alerta.asana_task_gid = nuevo_gid
             db.commit()
             
@@ -257,7 +267,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             elif asana_conector:
                 # 🛟 FIX SALVAVIDAS: Si no hay tarea previa válida, creamos una nueva
                 print(f"⚠️ REINCIDENCIA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
-                nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id)
+                nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers)
                 alerta.asana_task_gid = nuevo_gid
                 
             alerta.is_active = 1
@@ -267,14 +277,14 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             db.commit()
         else:
             print(f"⚠️ NUEVA ALERTA (Caducidad superada): {hid} -> {tipo_unico}")
-            gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id) if asana_conector else None
+            gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers) if asana_conector else None
             nueva = database.AlertaModel(hospital_id=hid, tipo=tipo_unico, mensaje=f"[{nivel}] {mensaje}", start_time=ahora, is_active=1, asana_task_gid=gid)
             db.add(nueva)
             db.commit()
 
             
 # --- CHECK OFFLINE ---
-def _verificar_conectividad(db, config):
+def _verificar_conectividad(db, config, asana_followers):
     limit_min = config['offline_minutes']
     limit_delta = timedelta(minutes=limit_min)
     ahora = datetime.now()
@@ -308,7 +318,7 @@ def _verificar_conectividad(db, config):
             continue
             
         msg = f"Sin conexión hace {int((ahora - last_seen).total_seconds()/60)} min."
-        actualizar_estado_alerta(db, meta.hospital_id, "OFFLINE", nivel, msg, meta.asana_project_id)
+        actualizar_estado_alerta(db, meta.hospital_id, "OFFLINE", nivel, msg, meta.asana_project_id, asana_followers)
 
 def verificar_actividad_ris(db: Session):
     config = cargar_config(db)
