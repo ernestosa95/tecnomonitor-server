@@ -503,6 +503,7 @@ def _crear_alerta_kpi_generica(db, hosp, tipo, mensaje, followers):
 def verificar_estado_software(db: Session):
     config = cargar_config(db)
     
+    # 1. Chequeo de encendido
     if not config.get('mirth_alert_enabled'):
         return
 
@@ -520,17 +521,18 @@ def verificar_estado_software(db: Session):
     ).all()
 
     for hosp in hospitales_activos:
-        # Traemos los últimos 2 registros para evitar falsos positivos por micro-cortes
+        # CORRECCIÓN 1 y 2: LIKE insensible a mayúsculas y ORDER BY explícito
         query = text("""
             WITH RankedData AS (
                 SELECT component_id, status_value, metric_value, extra_data,
                        ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
                 FROM software_monitoring
-                WHERE hospital_id = :hid AND app_name = 'mirth'
+                WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%'
             )
             SELECT component_id, status_value, metric_value, extra_data, rn 
             FROM RankedData 
             WHERE rn <= 2
+            ORDER BY component_id, rn ASC
         """)
         registros = db.execute(query, {"hid": hosp.hospital_id}).fetchall()
 
@@ -542,28 +544,35 @@ def verificar_estado_software(db: Session):
             historial_canales[cid].append(reg)
 
         for cid, historia in historial_canales.items():
+            # CORRECCIÓN 3: Re-aseguramos en Python que [0] es siempre el último reporte (rn=1)
+            historia.sort(key=lambda x: x.rn)
+            
             actual = historia[0]
             estado_canal = (actual.status_value or '').upper()
-            encolados = actual.metric_value or 0
+            
+            # CORRECCIÓN 4: Parseo seguro a número entero para evitar el TypeError
+            try:
+                encolados = int(actual.metric_value or 0)
+            except (ValueError, TypeError):
+                encolados = 0
             
             estado_anterior = (historia[1].status_value or '').upper() if len(historia) > 1 else estado_canal
             
             nivel = "OK"
             mensaje = ""
             
-            # --- EVALUACIÓN (AMBAS CRÍTICAS) ---
             if estado_canal in ['STOPPED', 'ERROR', 'PAUSED']:
                 if estado_anterior in ['STOPPED', 'ERROR', 'PAUSED']:
                     nivel = "CRITICAL"
-                    mensaje = f"[CRITICAL] Canal inoperativo de forma sostenida ({estado_canal})."
+                    # Nota: Quitamos el "[CRITICAL]" redundante porque la función actualizar_estado_alerta se lo agrega sola
+                    mensaje = f"Canal inoperativo de forma sostenida ({estado_canal})."
                 else:
-                    # Micro-corte: Lo ignoramos en este ciclo
+                    # Micro-corte detectado: Esperamos al próximo ciclo
                     continue 
                 
             elif encolados >= umbral_encolados:
-                # Ahora la acumulación también es CRÍTICA
                 nivel = "CRITICAL"
-                mensaje = f"[CRITICAL] Acumulación en canal: {encolados} mensajes encolados (Umbral: {umbral_encolados})."
+                mensaje = f"Acumulación en canal: {encolados} mensajes encolados (Umbral: {umbral_encolados})."
                 
             else:
                 mensaje = f"Operando normal. Encolados: {encolados}"
@@ -579,4 +588,5 @@ def verificar_estado_software(db: Session):
                 asana_proj_id=hosp.asana_project_id, 
                 asana_followers=asana_followers
             )
+
 

@@ -383,20 +383,27 @@ async function cargarConfigUI() {
         const modsGuardadas = data.kpi_rad_modalities || "DX,CR,MG";
         kpiSelectedMods = modsGuardadas.split(',').map(m => m.trim()).filter(m => m);
 
-        // Agrega esto dentro de cargarConfigUI() (cerca de donde están los campos KPI)
+        // 🛠️ FIX 1: Faltaba cargar los campos de la Alerta 2 (Mamografía)
+        const chkMamo = document.getElementById('kpi-mamo-enabled');
+        if(chkMamo) chkMamo.checked = data.kpi_mamo_alert_enabled;
+
+        const inpMamoDays = document.getElementById('kpi-mamo-days');
+        if(inpMamoDays) inpMamoDays.value = data.kpi_mamo_threshold_days || 7;
+
+        // --- CAMPOS MIRTH ---
         const chkMirth = document.getElementById('mirth-alert-enabled');
         if(chkMirth) chkMirth.checked = data.mirth_alert_enabled;
 
         const inpMirthQueue = document.getElementById('mirth-queued-threshold');
         if(inpMirthQueue) inpMirthQueue.value = data.mirth_queued_threshold || 100;
 
-        // MODIFICAR ESTA LÍNEA para que pase los responsables de mirth también
+        // 🛠️ FIX 2: Llamar a esta función UNA SOLA VEZ con los 3 grupos de correos
         cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email);
+        
         renderKpiModsChips();
         initKpiModsSelector();
         
-        // Reemplaza la llamada vieja por la que recibe los dos parámetros
-        cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email);
+        // (SE ELIMINÓ LA LLAMADA REPETIDA A cargarUsuariosResponsables QUE BORRABA LA CONFIGURACIÓN DE MIRTH)
         
         listarHospitalesConfig();
     } catch (e) { console.error(e); }
