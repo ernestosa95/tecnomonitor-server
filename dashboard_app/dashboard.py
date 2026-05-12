@@ -44,6 +44,13 @@ from fastapi import BackgroundTasks
 from fastapi.responses import FileResponse
 from schemas import DatosRISAnalytics
 
+import csv
+import os
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
     'Admitidos': '#99ccff',
@@ -1211,8 +1218,46 @@ async def get_hl7_analytics(request: Request):
     return templates.TemplateResponse("solucion1.html", {"request": request})
 
 @app.get("/tecno-solution")
-async def get_hl7_analytics(request: Request):
+async def get_tecno_solutions(request: Request):
     return templates.TemplateResponse("links.html", {"request": request})
+
+@app.post("/submit-lead")
+async def handle_form(
+    nombre_apellido: str = Form(...),
+    institucion: str = Form(...),
+    cargo: str = Form(...),
+    provincia: str = Form(...),
+    volumen_estudios: str = Form(...),
+    desafio_principal: str = Form(...),
+    preferencia_contacto: str = Form(...),
+    interes_poc: str = Form(...)
+):
+    file_path = "leads_evento_links.csv"
+    file_exists = os.path.isfile(file_path)
+
+    # Definimos los encabezados según tus requerimientos 
+    headers = [
+        "Nombre y Apellido", "Institución", "Cargo", "Provincia", 
+        "Volumen Estudios", "Desafío Principal", "Preferencia Contacto", "Interés POC"
+    ]
+
+    try:
+        with open(file_path, mode="a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            # Si el archivo es nuevo, escribimos la cabecera
+            if not file_exists:
+                writer.writerow(headers)
+            
+            # Escribimos los datos del usuario
+            writer.writerow([
+                nombre_apellido, institucion, cargo, provincia, 
+                volumen_estudios, desafio_principal, preferencia_contacto, interes_poc
+            ])
+        
+        return JSONResponse(content={"status": "success", "message": "Datos guardados correctamente"})
+    
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 # --- DTO para cambio de clave ---
 class ChangePasswordRequest(BaseModel):

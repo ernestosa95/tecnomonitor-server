@@ -86,6 +86,14 @@ class SensorLayer(BaseModel):
     fans: List[SensorReading] = []
     power: Optional[PowerInfo] = None
 
+class NetworkHealth(BaseModel):
+    status: str = "Unknown"
+    upload_usage_mbps: float = 0.0
+    download_usage_mbps: float = 0.0
+    cloud_latency_ms: float = 0.0
+    cloud_status: str = "Unknown"
+    last_check: Optional[datetime] = None
+
 class PhysicalLayer(BaseModel):
     # Todos estos campos ahora son OPCIONALES con valor por defecto None
     host_info: Optional[HostInfo] = None
@@ -94,7 +102,8 @@ class PhysicalLayer(BaseModel):
     
     # Campo extra para RAID u otros datos futuros
     storage_layer: Optional[Dict[str, Any]] = None 
-    
+    network_health: Optional[NetworkHealth] = None
+
     class Config:
         extra = "allow" 
 
@@ -180,3 +189,4 @@ class DatosRISAnalytics(BaseModel):
     datos_piramide: Dict[str, Any] = {}
     datos_sexo_tipo: Dict[str, Any] = {}
     datos_mapa_calor: Dict[str, Any] = {}
+

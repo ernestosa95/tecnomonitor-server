@@ -4,8 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tecnoimagen SA | LinkS 2026 NOA</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600&family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+    
     <script src="https://unpkg.com/scrollreveal"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    
     <style>
         :root {
             --bg-deep: #05070a;
@@ -16,7 +22,10 @@
             --text-secondary: #a0aec0;
             --border: rgba(45, 55, 72, 0.5);
             --glass-border: rgba(255, 255, 255, 0.08);
-            --font-main: 'Inter', -apple-system, system-ui, sans-serif;
+            
+            /* Nuevas variables de tipografía */
+            --font-heading: 'Montserrat', sans-serif;
+            --font-body: 'Fira Sans', sans-serif;
         }
 
         * {
@@ -28,12 +37,17 @@
         body {
             background-color: var(--bg-deep);
             color: var(--text-primary);
-            font-family: var(--font-main);
+            font-family: var(--font-body); /* Fira Sans para el cuerpo de texto */
             line-height: 1.6;
             overflow-x: hidden;
             background-image: 
                 radial-gradient(circle at 15% 50%, rgba(0, 112, 243, 0.08), transparent 25%),
                 radial-gradient(circle at 85% 30%, rgba(0, 112, 243, 0.05), transparent 25%);
+        }
+
+        /* Aplicando Montserrat a los títulos */
+        h1, h2, h3, .tagline, .btn-submit, .card-val {
+            font-family: var(--font-heading);
         }
 
         .container {
@@ -47,7 +61,7 @@
             position: fixed;
             top: 0;
             width: 100%;
-            padding: 1.5rem 0;
+            padding: 1rem 0; /* Ajustado ligeramente el padding para el logo */
             background: rgba(5, 7, 10, 0.8);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
@@ -61,18 +75,11 @@
             align-items: center;
         }
 
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .logo span {
-            color: var(--accent);
+        /* Estilos específicos para el contenedor del Logo PNG */
+        .logo-img {
+            max-height: 45px; /* Ajusta este valor si tu logo es muy grande o muy chico */
+            width: auto;
+            display: block;
         }
 
         /* --- Hero Section --- */
@@ -229,7 +236,7 @@
 
         .form-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr; /* Forzamos tabla de 2 columnas x 3 filas */
+            grid-template-columns: 1fr 1fr; 
             gap: 1.5rem;
             margin-bottom: 2.5rem;
         }
@@ -242,7 +249,22 @@
             border-radius: 12px;
             color: white;
             font-size: 1rem;
+            font-family: var(--font-body); /* Forzamos Fira Sans en los inputs */
             transition: border-color 0.3s;
+            appearance: none;
+        }
+
+        select.form-input {
+            cursor: pointer;
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1.2rem top 50%;
+            background-size: 0.65rem auto;
+        }
+
+        select.form-input option {
+            background-color: var(--bg-deep); 
+            color: var(--text-primary);
         }
 
         .form-input:focus {
@@ -283,7 +305,7 @@
             .hero-grid, .human-touch-section { grid-template-columns: 1fr; gap: 3rem; }
             .human-touch-section { padding: 2rem; }
             header { padding-top: 8rem; height: auto; }
-            .form-grid { grid-template-columns: 1fr; } /* Pasa a 1 columna en móviles */
+            .form-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -291,9 +313,10 @@
 
     <nav>
         <div class="container nav-content">
-            <div class="logo">
-                <i data-lucide="activity"></i> Tecnoimagen<span>SA</span>
-            </div>
+            <a href="#" class="logo-link">
+                <img src="/static/img/logo-tecnoimagen.png" alt="Tecnoimagen SA Logo" class="logo-img">
+            </a>
+            
             <a href="#accion" class="btn-submit" style="padding: 0.6rem 1.2rem; font-size: 0.9rem; width: auto; text-decoration: none;">Agendar</a>
         </div>
     </nav>
@@ -309,7 +332,7 @@
                 </div>
             </div>
             <div class="hero-image-wrapper">
-                <img src="/static/img/img-principal.jpg" alt="Profesional médico">
+                <img src="/static/img/hero-medico.jpg" alt="Profesional médico visualizando estudios">
             </div>
         </div>
     </header>
@@ -340,7 +363,7 @@
     <section class="container">
         <div class="human-touch-section">
             <div>
-                <img src="/static/img/img-secundaria.jpg" alt="Equipo de IT Médico" class="human-img">
+                <img src="/static/img/equipo-it.jpg" alt="Equipo de IT Médico" class="human-img">
             </div>
             <div>
                 <h2 style="font-size: 2rem;">"No imagine el futuro, visítelo".</h2>
@@ -358,19 +381,45 @@
             <div class="form-wrapper">
                 <form id="lead-form">
                     <div class="form-grid">
-                        <input type="text" class="form-input" placeholder="Nombre" required>
-                        <input type="text" class="form-input" placeholder="Apellido" required>
-                        <input type="tel" class="form-input" placeholder="Teléfono" required>
-                        <input type="email" class="form-input" placeholder="Email" required>
-                        <input type="text" class="form-input" placeholder="Cargo" required>
-                        <input type="text" class="form-input" placeholder="Provincia" required>
+                        <input type="text" name="nombre_apellido" class="form-input" placeholder="Nombre y Apellido" required>
+                        <input type="text" name="institucion" class="form-input" placeholder="Institución / Organización" required>
+                        <input type="text" name="cargo" class="form-input" placeholder="Cargo / Función" required>
+                        <input type="text" name="provincia" class="form-input" placeholder="Provincia" required>
+                        
+                        <select name="volumen_estudios" class="form-input" required>
+                            <option value="" disabled selected>Volumen anual de estudios...</option>
+                            <option value="Corporativo">Corporativo (>100k estudios/año)</option>
+                            <option value="Empresarial">Empresarial (10k - 100k estudios/año)</option>
+                            <option value="SOHO">SOHO / Especializado (<30k estudios/año)</option>
+                        </select>
+                        
+                        <select name="desafio_principal" class="form-input" required>
+                            <option value="" disabled selected>Principal desafío u objetivo actual...</option>
+                            <option value="Interoperabilidad">Interoperabilidad (Sistemas que no se hablan)</option>
+                            <option value="Infraestructura">Infraestructura / Ciberseguridad</option>
+                            <option value="Gestión">Gestión y Eficiencia (HIS/EMR)</option>
+                            <option value="Costos">Optimización de Costos / ROI</option>
+                        </select>
+                        
+                        <select name="preferencia_contacto" class="form-input" required>
+                            <option value="" disabled selected>Preferencia de contacto...</option>
+                            <option value="WhatsApp">WhatsApp</option>
+                            <option value="Llamada">Llamada telefónica</option>
+                            <option value="Correo">Correo electrónico</option>
+                        </select>
+
+                        <select name="interes_poc" class="form-input" required>
+                            <option value="" disabled selected>¿Interés en Visita de Referencia (POC Real)?</option>
+                            <option value="Si">Sí, me interesa validar en terreno</option>
+                            <option value="No">No por el momento</option>
+                        </select>
                     </div>
                     
                     <div style="display: flex; justify-content: center;">
                         <button type="submit" class="btn-submit">Agendar mi Sesión Estratégica</button>
                     </div>
                     
-                    <span class="privacy-text">Sus datos están protegidos. Nos comunicaremos exclusivamente por el medio elegido y respetando sus tiempos.</span>
+                    <span class="privacy-text">Sus datos están protegidos. Nos comunicaremos exclusivamente por el medio que usted haya elegido y respetando sus tiempos de gestión.</span>
                 </form>
             </div>
         </div>
@@ -387,9 +436,28 @@
             easing: 'ease-out'
         });
 
-        document.getElementById('lead-form').addEventListener('submit', function(e) {
+        document.getElementById('lead-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            alert('Gracias por confiar en Tecnoimagen SA. Su sesión estratégica ha sido solicitada.');
+            
+            const formData = new FormData(this);
+
+            try {
+                const response = await fetch('/submit-lead', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    alert('¡Gracias! Tus datos han sido guardados y pronto nos comunicaremos.');
+                    this.reset();
+                } else {
+                    alert('Hubo un error al guardar los datos: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error de conexión con el servidor.');
+            }
         });
     </script>
 </body>

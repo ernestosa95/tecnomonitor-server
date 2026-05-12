@@ -900,6 +900,43 @@ function renderizarDetalle(data, id) {
 
     document.getElementById('top-cards-container').innerHTML = cardHost + cardEnv + cardRaid;
 
+    // --- INICIO LÓGICA DE TARJETA DE RED ---
+    const networkHealth = phy.network_health;
+    const cardNetwork = document.getElementById('card-network');
+
+    if (cardNetwork) {
+        if (networkHealth) {
+            // Mostrar la tarjeta si existen datos de red
+            cardNetwork.style.display = 'block';
+
+            // Formato de Estado Cloud
+            const cloudStatusEl = document.getElementById('net_cloud_status');
+            const statusTexto = networkHealth.cloud_status || 'Desconocido';
+            const isConnected = statusTexto.toLowerCase() === 'conectado';
+            
+            cloudStatusEl.textContent = statusTexto.toUpperCase();
+            // Usamos los colores estándar de tu dashboard (Verde/Rojo)
+            cloudStatusEl.style.color = isConnected ? '#27ae60' : '#e74c3c';
+
+            // Rellenar métricas numéricas
+            document.getElementById('net_latency').textContent = networkHealth.cloud_latency_ms ? networkHealth.cloud_latency_ms.toFixed(2) : '0.00';
+            document.getElementById('net_upload').textContent = networkHealth.upload_usage_mbps ? networkHealth.upload_usage_mbps.toFixed(2) : '0.00';
+            document.getElementById('net_download').textContent = networkHealth.download_usage_mbps ? networkHealth.download_usage_mbps.toFixed(2) : '0.00';
+
+            // Formatear fecha del último chequeo
+            if (networkHealth.last_check) {
+                const checkDate = new Date(networkHealth.last_check);
+                document.getElementById('net_last_check').textContent = isNaN(checkDate) ? 'N/A' : checkDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } else {
+                document.getElementById('net_last_check').textContent = 'N/A';
+            }
+        } else {
+            // Ocultar si el agente legacy no envió la llave 'network_health'
+            cardNetwork.style.display = 'none';
+        }
+    }
+    // --- FIN LÓGICA DE TARJETA DE RED ---
+
     // 4. RENDERIZADO DE VMs (Y EQUIPOS) - VERSIÓN BLINDADA CONTRA "OFFLINE"
     const vCont = document.getElementById('vms-container');
     if(vCont) vCont.innerHTML = '';
@@ -2985,7 +3022,7 @@ function renderizarSoftware(data) {
                                 <th style="padding: 12px 20px; text-align: right;">Recibidos</th>
                                 <th style="padding: 12px 20px; text-align: right;">Enviados</th>
                                 <th style="padding: 12px 20px; text-align: right;">Encolados</th>
-                                <th style="padding: 12px 20px;">Último Error</th>
+                                
                             </tr>
                         </thead>
                         <tbody>
@@ -3014,7 +3051,7 @@ function renderizarSoftware(data) {
                     <td style="padding: 12px 20px; text-align: right;">
                         <span style="${queuedStyle}">${c.queued.toLocaleString('es-AR')}</span>
                     </td>
-                    <td style="padding: 12px 20px; color: #e74c3c; font-size: 0.85em;">${c.last_error || '-'}</td>
+                    
                 </tr>
             `;
         });

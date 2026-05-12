@@ -95,9 +95,9 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         # =========================================================
         if isinstance(raw_body, dict):
             h_id = raw_body.get("envelope", {}).get("hospital_id")
-            if h_id == "P10":
+            if h_id == "P03":
                 logger.info("🔔 [DEBUG P10] Capturado reporte entrante:")
-                #print(json.dumps(raw_body, indent=2))
+                print(json.dumps(raw_body, indent=2))
         # =========================================================
     except ClientDisconnect:
         logger.warning("⚠️ [Ingesta] Cliente desconectado a mitad del envío.")
@@ -122,7 +122,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         schema_version = raw_body.get("envelope", {}).get("schema_version")
 
         # 1. DETECCIÓN DE VERSIÓN (Acepta 3.0 y 4.0)
-        if schema_version in ["3.0", "4.0", "4.1"]:
+        if schema_version in ["3.0", "4.0", "4.1", "4.2"]:
             # Es V3 o V4 Nativo -> Pasa directo sin transformar
             final_payload = raw_body
         else:
