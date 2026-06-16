@@ -742,24 +742,36 @@ body.dark-theme div[style*="background: #fdedec"] {
 /* --- RESUMEN EJECUTIVO (NUEVO LAYOUT) --- */
 .summary-map-wrapper {
     display: flex;
-    gap: 25px;
+    gap: 20px;
     align-items: stretch;
     height: calc(100vh - 120px); /* Altura dinámica para ocupar la pantalla */
     min-height: 550px;
 }
 
 .summary-cards-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    width: 320px; /* Ancho fijo para las tarjetas */
-    flex-shrink: 0;
-    overflow-y: auto; /* Por si la pantalla es muy baja */
-    padding-right: 5px;
+    flex: 1; /* Ocupa el 50% de la pantalla */
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 2 columnas exactas */
+    gap: 15px; /* Espaciado entre tarjetas */
+    align-content: start; /* Alinea las tarjetas hacia arriba */
+    overflow-y: visible; /* Quitamos el scroll */
+}
+
+/* Ajustes internos para que las tarjetas se vean perfectas en 2 columnas */
+.summary-cards-vertical .card {
+    padding: 15px 20px !important;
+}
+
+.summary-cards-vertical .card > div > div:nth-child(2) {
+    font-size: 2em !important; /* Ajusta el tamaño del número */
+}
+
+.summary-cards-vertical .card > div:last-child {
+    font-size: 2.2em !important; /* Ajusta el icono de fondo */
 }
 
 .card-map-large {
-    flex-grow: 1;
+    flex: 1; /* Ocupa el otro 50% de la pantalla */
     display: flex;
     flex-direction: column;
     margin-bottom: 0 !important; /* Quita el margen base de .card */
@@ -773,13 +785,7 @@ body.dark-theme div[style*="background: #fdedec"] {
     }
     .summary-cards-vertical {
         width: 100%;
-        flex-direction: row;
-        flex-wrap: wrap;
-        overflow-y: visible;
-    }
-    .summary-cards-vertical > div {
-        flex: 1;
-        min-width: 200px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     }
     .card-map-large {
         min-height: 500px;

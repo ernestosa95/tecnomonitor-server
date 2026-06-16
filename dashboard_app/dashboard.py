@@ -343,17 +343,10 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
     global _cache_resumen
     ahora = time.time()
 
-    # 🛡️ 1. Verificar si la caché es válida (tiene menos de 30 segundos)
-    if _cache_resumen["data"] is not None and (ahora - _cache_resumen["ts"] < CACHE_TTL_SEGUNDOS):
-        # Retornamos desde la RAM instantáneamente
+    # 1. Verificación del caché local
+    if _cache_resumen["data"] is not None and (ahora - _cache_resumen.get("ts", 0)) < 30:
         return _cache_resumen["data"]
-
-    # =========================================================
-    # 2. LÓGICA DE BASE DE DATOS (Se ejecuta solo si la caché expiró)
-    # =========================================================
     
-    # Obtenemos los metadatos de los hospitales (solo los que están visibles en la UI)
-    # Obtenemos los metadatos de los hospitales (solo los que están visibles en la UI)
     hospitales_meta = db.query(database.HospitalMetadata).filter(
         database.HospitalMetadata.is_visible == True
     ).all()
@@ -361,63 +354,85 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
     resultado_final = []
     
     for hosp in hospitales_meta:
-        # Buscamos el ÚLTIMO reporte recibido de este hospital
+        # --- SECCIÓN A: INFRAESTRUCTURA (Último reporte de estado) ---
         ultimo_reporte = db.query(database.ReporteModel).filter(
             database.ReporteModel.hospital_id == hosp.hospital_id
         ).order_by(database.ReporteModel.timestamp.desc()).first()
         
-        # Valores por defecto si el hospital está recién creado y nunca reportó
-        estado_texto = "Offline"
         fecha_reporte = "Sin datos"
+        estado_texto = "Offline"
         elementos = []
         
         if ultimo_reporte:
-            # Formateamos la fecha para el frontend
             fecha_reporte = str(ultimo_reporte.timestamp)[:19] 
             estado_texto = ultimo_reporte.host_status or "Offline"
             
-            # Parseamos el JSON para armar las "pastillitas" de las VMs o Servicios
+            # 🛠️ FIX 1: Restaurada la lógica original para extraer los Nodos (VMs)
             try:
                 if isinstance(ultimo_reporte.full_json_data, str):
                     data_json = json.loads(ultimo_reporte.full_json_data)
                 else:
                     data_json = ultimo_reporte.full_json_data or {}
                     
-                # Extraemos la capa virtual para mostrarla en la tabla
                 virtual_layer = data_json.get("virtual_layer", [])
                 
                 if isinstance(virtual_layer, list):
                     for vm in virtual_layer:
                         estado_vm = vm.get("state", "unknown").lower()
-                        # Lógica de colores para los tags del frontend
                         color_state = "success" if estado_vm in ["running", "online"] else ("warning" if estado_vm == "warning" else "error")
                         
                         elementos.append({
                             "label": vm.get("id", "VM"), 
                             "state": color_state
                         })
-                        
-            except Exception as e:
-                # Si el JSON viene corrupto, simplemente no mostramos las pastillitas
+            except Exception:
                 pass 
+
+        # --- SECCIÓN B: MÉTRICAS HISTÓRICAS (PACS KPIs) ---
+        todos_los_usos = db.query(database.ReporteUso).filter(
+            database.ReporteUso.hospital_id == hosp.hospital_id
+        ).all()
         
-        # Armamos el diccionario exacto que necesita script.js para dibujar la tabla
+        estudios_pacs = 0
+        estudios_ia = 0
+        equipos_pacs = set()
+        
+        for uso in todos_los_usos:
+            if uso.kpi_json_data:
+                try:
+                    kpis = json.loads(uso.kpi_json_data) if isinstance(uso.kpi_json_data, str) else uso.kpi_json_data
+                    for item in kpis.get("pacs", []):
+                        aet = item.get("aet", "").upper().strip()
+                        
+                        if aet and aet not in ['CLIENT', 'WADO', 'PACS']:
+                            if aet.startswith("ENT_"):
+                                estudios_ia += item.get("almacenados", 0)
+                            else:
+                                # Si no, es un estudio de equipo médico estándar
+                                estudios_pacs += item.get("almacenados", 0)
+                                equipos_pacs.add(aet)
+                except Exception:
+                    pass
+
+        # --- SECCIÓN C: CONSTRUCCIÓN DEL OBJETO FINAL ---
         resultado_final.append({
             "raw_id": hosp.hospital_id,
             "id": hosp.hospital_id,
             "name": hosp.nombre,
             "timestamp": fecha_reporte,
             "status": estado_texto,
-            "elements": elementos
+            "elements": elementos,
+            "kpi_estudios": estudios_pacs,
+            "kpi_equipos": list(equipos_pacs),
+            "kpi_estudios_ia": estudios_ia
         })
         
-    # =========================================================
-    # 🛡️ 3. Guardar el resultado fresco en la caché
-    # =========================================================
+    # Guardar en la caché global (Nota: usamos "ts" como espera script.js)
     _cache_resumen["data"] = resultado_final
     _cache_resumen["ts"] = ahora
-
+    
     return resultado_final
+
 
 @app.get("/api/hospital/{hospital_id}")
 def obtener_detalle_hospital(hospital_id: str,

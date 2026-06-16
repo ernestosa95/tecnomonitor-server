@@ -50,13 +50,13 @@ def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_proje
     
     notas = f"""INCIDENTE DETECTADO - TECNOMONITOR V3
     
-🏥 Hospital: {hospital_id}
-⚠️ Tipo: {tipo}
-🕒 Hora Detección: {ahora}
-📊 Nivel: {nivel}
-📝 Detalle: {mensaje_detalle}
+        🏥 Hospital: {hospital_id}
+        ⚠️ Tipo: {tipo}
+        🕒 Hora Detección: {ahora}
+        📊 Nivel: {nivel}
+        📝 Detalle: {mensaje_detalle}
 
-Asignada automáticamente por TecnoMonitor."""
+        Asignada automáticamente por TecnoMonitor."""
     
     # Configurar proyectos de destino (Global + Específico del Hospital)
     proyectos_destino = [str(MAIN_PROJECT_GID)]
@@ -64,13 +64,16 @@ Asignada automáticamente por TecnoMonitor."""
         if str(hospital_project_gid) != str(MAIN_PROJECT_GID):
             proyectos_destino.append(str(hospital_project_gid))
 
-    # Combinar followers globales con los extra (asegurando que sean únicos)
+    # ========================================================
+    # SEGUIDORES: Usar únicamente los configurados en la interfaz
+    # ========================================================
     followers_finales = set()
+    
     if extra_followers:
         for f in extra_followers:
             if f:
-                followers_finales.add(str(f))
-            
+                followers_finales.add(str(f).strip())
+                
     # Filtrar valores vacíos para evitar errores de la API de Asana
     followers_finales = list(filter(None, followers_finales))
 

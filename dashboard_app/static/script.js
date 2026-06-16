@@ -9,6 +9,8 @@ let mapDashMarkers = null;
 let currentDashMapFilter = 'all';
 let currentSoftwareMinutes = 0;
 
+let currentHasPhysicalHost = true;
+
 // --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
 async function authFetch(url, options = {}) {
     // 1. Preparamos las opciones de la petición
@@ -666,7 +668,7 @@ async function verDetalle(hospitalId) {
     if(inputDonutAgrup) inputDonutAgrup.value = 'equipo'; // <--- FIX: Memoria reseteada
 
     const selSource = document.getElementById('chart-source');
-    if(selSource) { selSource.innerHTML = '<option value="global">Host Físico (Global)</option>'; selSource.value = 'global'; }
+    if(selSource) { selSource.innerHTML = '<option value="">Cargando...</option>'; }
     actualizarOpcionesMetricas();
 
     navegar('view-detalle');
@@ -676,6 +678,21 @@ async function verDetalle(hospitalId) {
         if (currentHospitalId !== hospitalId) return; 
         const data = await response.json();
         if (data.error) { alert(data.error); return; }
+
+        // =====================================================================
+        // ---> NUEVO: EVALUACIÓN DE HOST FÍSICO BASADO EN COLLECTION_META <---
+        // =====================================================================
+        currentHasPhysicalHost = true; // Asumimos true por defecto
+        if (data.collection_meta) {
+            const proxmoxEnabled = data.collection_meta.proxmox?.enabled === true;
+            const idracEnabled = data.collection_meta.idrac?.enabled === true;
+            
+            // Si ninguno de los dos está activo, marcamos como false
+            if (!proxmoxEnabled && !idracEnabled) {
+                currentHasPhysicalHost = false;
+            }
+        }
+        // =====================================================================
 
         let nombreReal = "Hospital Desconocido";
         try {
@@ -692,7 +709,7 @@ async function verDetalle(hospitalId) {
         await Promise.all([
             cargarHistorial(24, hospitalId),
             cargarHistorialKpiGlobal(168, hospitalId),
-            cargarEstadoSoftware(hospitalId) // <--- ESTA ES LA LÍNEA NUEVA
+            cargarEstadoSoftware(hospitalId) 
         ]);
     } catch (e) { console.error("Error detalle:", e); }
 }
@@ -898,7 +915,17 @@ function renderizarDetalle(data, id) {
         </div>`;
     }
 
-    document.getElementById('top-cards-container').innerHTML = cardHost + cardEnv + cardRaid;
+    let htmlTopCards = "";
+    
+    // Si tenemos hipervisor, sumamos las tarjetas físicas
+    if (currentHasPhysicalHost) {
+        htmlTopCards += cardHost + cardEnv;
+    }
+    
+    // Sumamos RAID (por si a futuro un agente de Windows reporta discos físicos directos)
+    htmlTopCards += cardRaid; 
+    
+    document.getElementById('top-cards-container').innerHTML = htmlTopCards;
 
     // --- INICIO LÓGICA DE TARJETA DE RED ---
     const networkHealth = phy.network_health;
@@ -1028,7 +1055,12 @@ function llenarSelectores() {
     if(!sourceSelect) return;
     
     const prevVal = sourceSelect.value;
-    sourceSelect.innerHTML = '<option value="global">Host Físico (Global)</option>';
+    sourceSelect.innerHTML = '';
+    
+    // --- NUEVO: Agregar la opción global SOLO si monitoreamos host físico ---
+    if (currentHasPhysicalHost) {
+        sourceSelect.innerHTML = '<option value="global">Host Físico (Global)</option>';
+    }
     
     if (currentHistoryData.length > 0) {
         const lastRecord = currentHistoryData[currentHistoryData.length - 1];
@@ -1037,10 +1069,11 @@ function llenarSelectores() {
         });
     }
     
+    // Restaurar selección previa si existe, si no, seleccionar el primero disponible (ej. WMI/VM)
     if ([...sourceSelect.options].some(o => o.value === prevVal)) {
         sourceSelect.value = prevVal;
     } else {
-        sourceSelect.value = 'global';
+        sourceSelect.value = sourceSelect.options.length > 0 ? sourceSelect.options[0].value : '';
     }
 }
 
@@ -2779,36 +2812,59 @@ function actualizarResumenDashboard(data) {
     let online = 0;
     let offline = 0;
     let nodos = 0;
+    
+    let totalEstudios = 0;
+    let totalEquipos = new Set();
+    let totalIA = 0; // <--- NUEVA VARIABLE GLOBAL
+
     const ahora = new Date();
 
     data.forEach(h => {
-        // Calculamos el tiempo para cada hospital igual que en la tabla
         const diffMinutos = Math.floor((ahora - new Date(h.timestamp)) / 60000); 
 
-        // Lógica Binaria: Solo cuenta como Online si está dentro del tiempo límite
         if (!isNaN(diffMinutos) && diffMinutos <= limitOfflineMinutes) {
             online++;
         } else {
             offline++;
         }
         
-        // Sumamos los elementos (VMs + Server)
         if (h.elements && Array.isArray(h.elements)) {
             nodos += h.elements.filter(e => !e.label.startsWith('+')).length;
         }
+
+        if (h.kpi_estudios) {
+            totalEstudios += h.kpi_estudios;
+        }
+        
+        // --- SUMATORIA NUEVA DE IA ---
+        if (h.kpi_estudios_ia) {
+            totalIA += h.kpi_estudios_ia;
+        }
+        
+        if (h.kpi_equipos && Array.isArray(h.kpi_equipos)) {
+            h.kpi_equipos.forEach(eq => totalEquipos.add(`${h.id}_${eq}`));
+        }
     });
 
-    // Actualizamos el HTML de las tarjetas
     const elTotal = document.getElementById('sum-total');
     const elOnline = document.getElementById('sum-online');
     const elOffline = document.getElementById('sum-offline');
     const elNodos = document.getElementById('sum-elementos');
+    const elEstudios = document.getElementById('sum-estudios');
+    const elEquipos = document.getElementById('sum-equipos');
+    const elIA = document.getElementById('sum-ia'); // <--- REFERENCIA HTML
 
     if(elTotal) elTotal.innerText = total;
     if(elOnline) elOnline.innerText = online;
     if(elOffline) elOffline.innerText = offline;
     if(elNodos) elNodos.innerText = nodos;
+    if(elEstudios) elEstudios.innerText = totalEstudios.toLocaleString('es-AR');
+    if(elEquipos) elEquipos.innerText = totalEquipos.size.toLocaleString('es-AR');
+    
+    // --- ACTUALIZACIÓN DE LA TARJETA EN PANTALLA ---
+    if(elIA) elIA.innerText = totalIA.toLocaleString('es-AR');
 }
+
 
 // ==========================================
 // --- MÓDULO MAPA (RESUMEN EJECUTIVO) ---
