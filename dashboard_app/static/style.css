@@ -791,3 +791,57 @@ body.dark-theme div[style*="background: #fdedec"] {
         min-height: 500px;
     }
 }
+
+/* --- MIRTH PILLS COMPACTAS --- */
+.mirth-pills-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 20px;
+    background: #f8f9fa;
+}
+
+.mirth-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    padding: 12px 15px;
+    width: calc(33.333% - 10px);
+    min-width: 260px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    transition: transform 0.2s, box-shadow 0.2s;
+    flex-grow: 1;
+}
+
+.mirth-pill:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.05);
+}
+
+.mirth-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.mirth-pill-name {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: #2c3e50;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.dark-theme .mirth-pill {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-theme .mirth-pill-name {
+    color: #f8fafc;
+}

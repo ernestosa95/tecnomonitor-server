@@ -1419,7 +1419,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
         "ssl_certificates": []
     }
     
-    # 3. Procesamos los datos de MIRTH
+    # 3. Procesamos los datos de MIRTH (Lógica con histórico para el gráfico)
     for cid, history in canales_mirth.items():
         if not history: continue
         actual = history[-1]
@@ -1430,6 +1430,8 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             software_data["mirth"][instancia] = []
             
         canal_nombre = cid.replace(f"[{instancia}] ", "") if cid.startswith(f"[{instancia}] ") else cid
+        
+        historial_canal = []
         
         if minutos == 0:
             total_recibidos = extra_actual.get("recibidos", 0)
@@ -1442,9 +1444,30 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
                     extra = json.loads(row.extra_data) if row.extra_data else {}
                     r = extra.get("recibidos", 0)
                     s = extra.get("enviados", 0)
+                    
+                    # Calcular el Delta (Tráfico en ese momento específico)
+                    delta_r = (r - prev_r) if prev_r is not None and r >= prev_r else 0
+                    delta_s = (s - prev_s) if prev_s is not None and s >= prev_s else 0
+                    
                     if prev_r is not None:
-                        total_recibidos += (r - prev_r) if r >= prev_r else r
-                        total_enviados += (s - prev_s) if s >= prev_s else s
+                        total_recibidos += delta_r
+                        total_enviados += delta_s
+                        
+                        # --- FIX: Validación de tipo (String vs Datetime) ---
+                        if row.timestamp:
+                            if isinstance(row.timestamp, str):
+                                ts_str = row.timestamp[:19] 
+                            else:
+                                ts_str = row.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            ts_str = ""
+                            
+                        historial_canal.append({
+                            "ts": ts_str,
+                            "q": row.metric_value, # Encolados
+                            "traffic": delta_r + delta_s # Tráfico (Recibidos + Enviados)
+                        })
+                        
                     prev_r, prev_s = r, s
 
         software_data["mirth"][instancia].append({
@@ -1453,7 +1476,8 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             "queued": actual.metric_value,
             "received": total_recibidos,
             "sent": total_enviados,
-            "last_error": extra_actual.get("last_error", "")
+            "last_error": extra_actual.get("last_error", ""),
+            "history": historial_canal # Agregamos el array histórico para el gráfico
         })
         
     # 4. Procesamos los datos de CERTIFICADOS SSL (NUEVO)

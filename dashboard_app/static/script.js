@@ -10,6 +10,9 @@ let currentDashMapFilter = 'all';
 let currentSoftwareMinutes = 0;
 
 let currentHasPhysicalHost = true;
+// Variable global para el gráfico de Mirth
+let mirthChartInstance = null;
+let currentMirthDataCache = null;
 
 // --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
 async function authFetch(url, options = {}) {
@@ -612,14 +615,9 @@ async function verDetalle(hospitalId) {
     currentRangeHours = 24; 
     currentKpiRangeHours = 24; // Reset del rango global de software a 24H
 
-    // Resetear Software a Total (0) al entrar a un nuevo hospital
-    currentSoftwareMinutes = 0;
+    // Resetear Software a 30 Minutos al entrar a un nuevo hospital
+    currentSoftwareMinutes = 30;
     document.querySelectorAll('.sw-time-btn').forEach(b => b.classList.remove('active'));
-    
-    // Seleccionamos el último botón (Total)
-    const botones = document.querySelectorAll('.sw-time-btn');
-    const btnTotal = botones[botones.length - 1]; 
-    if(btnTotal) btnTotal.classList.add('active');
     
     // Auto-colapsar barra lateral al ver detalles (si estás en PC)
     if (window.innerWidth > 768) { 
@@ -3022,11 +3020,15 @@ async function cargarEstadoSoftware(idSolicitado) {
 }
 
 function renderizarSoftware(data) {
+    currentMirthDataCache = data;
     const container = document.getElementById('logs-container');
     const legend = document.getElementById('software-legend');
     if (!container) return;
     
-    // 1. LEYENDA DINÁMICA
+    // Ocultamos la botonera vieja si existe suelta en el HTML
+    const viejaBotonera = document.querySelector('#tab-logs > .chart-toggles');
+    if (viejaBotonera) viejaBotonera.style.display = 'none';
+
     if (legend && data.metadata) {
         let textoTiempo = '';
         if (data.metadata.minutos === 0) textoTiempo = 'Total Histórico';
@@ -3047,7 +3049,6 @@ function renderizarSoftware(data) {
     container.innerHTML = '';
     let html = '';
     
-    // VALIDACIÓN DE VACÍO GLOBAL (Ni Mirth Ni SSL)
     const hasMirth = data.mirth && Object.keys(data.mirth).length > 0;
     const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
 
@@ -3064,7 +3065,9 @@ function renderizarSoftware(data) {
     const isDark = document.body.classList.contains('dark-theme');
     const theadBg = isDark ? 'transparent' : '#fdfdfd';
 
-    // --- 2A. RENDER DE CERTIFICADOS SSL (NUEVO) ---
+    // ==========================================
+    // --- 1. RENDER DE CERTIFICADOS SSL ---
+    // ==========================================
     if (hasSSL) {
         let sslHtml = `
             <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #3498db;">
@@ -3127,64 +3130,207 @@ function renderizarSoftware(data) {
         html += sslHtml;
     }
 
-    // --- 2B. RENDER DE MIRTH CONNECT (CÓDIGO ORIGINAL) ---
+    // ==========================================
+    // --- 2. RENDER DE MIRTH CONNECT ---
+    // ==========================================
     if (hasMirth) {
         Object.keys(data.mirth).forEach(instancia => {
             const canales = data.mirth[instancia];
-            let tablaHtml = `
+            
+            // 1. Tarjeta, Cabecera y Botones Integrados (Métrica + Tiempo)
+            html += `
                 <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #f39c12;">
-                    <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
-                        <span style="font-size: 1.5em;">🔄</span>
-                        <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Mirth Connect: <span style="color: #f39c12;">${instancia}</span></h3>
+                    <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;" class="detail-card-header">
+                        <div style="display:flex; align-items:center; gap: 10px;">
+                            <span style="font-size: 1.5em;">🔄</span>
+                            <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Mirth Connect: <span style="color: #f39c12;">${instancia}</span></h3>
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                            
+                            <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
+                                <button class="chart-btn mirth-metric-btn_${instancia} active" onclick="seleccionarMetricaMirth('traffic', '${instancia}', this)">Tráfico</button>
+                                <button class="chart-btn mirth-metric-btn_${instancia}" onclick="seleccionarMetricaMirth('queued', '${instancia}', this)">Encolados</button>
+                            </div>
+                            <input type="hidden" id="mirth-metric_${instancia}" value="traffic">
+
+                            <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
+                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
+                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
+                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
+                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
-                        <table class="table-clean" style="margin:0; width:100%;">
-                            <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
-                                <tr>
-                                    <th style="padding: 12px 20px;">Canal</th>
-                                    <th style="padding: 12px 20px; text-align: center;">Estado</th>
-                                    <th style="padding: 12px 20px; text-align: right;">Recibidos</th>
-                                    <th style="padding: 12px 20px; text-align: right;">Enviados</th>
-                                    <th style="padding: 12px 20px; text-align: right;">Encolados</th>
-                                    
-                                </tr>
-                            </thead>
-                            <tbody>
+                    
+                    <div style="padding: 20px; border-bottom: 1px solid #eee;">
+                        <div style="height: 250px; width: 100%; position: relative;">
+                            ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(255,255,255,0.8); z-index:10; color:#7f8c8d; font-weight:bold;">Seleccione un rango de tiempo para ver la evolución gráfica.</div>' : ''}
+                            <canvas id="mirthChart_${instancia}"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="mirth-pills-grid">
             `;
             
+            // 2. Grilla de Estado Actual (Pills)
             canales.forEach(c => {
                 const status = (c.status || '').toUpperCase();
-                let statusColor = '#95a5a6'; let statusBg = 'rgba(149, 165, 166, 0.15)';
-                if (status === 'STARTED') { statusColor = '#27ae60'; statusBg = 'rgba(39, 174, 96, 0.15)'; }
-                else if (status === 'STOPPED') { statusColor = '#e74c3c'; statusBg = 'rgba(231, 76, 60, 0.15)'; }
-                else if (status === 'PAUSED') { statusColor = '#f39c12'; statusBg = 'rgba(243, 156, 18, 0.15)'; }
-                else if (status === 'ERROR') { statusColor = '#c0392b'; statusBg = 'rgba(192, 57, 43, 0.15)'; }
+                let dotColor = '#95a5a6';
+                if (status === 'STARTED') dotColor = '#27ae60';
+                else if (status === 'STOPPED') dotColor = '#e74c3c';
+                else if (status === 'PAUSED') dotColor = '#f39c12';
+                else if (status === 'ERROR') dotColor = '#c0392b';
                 
-                const queuedStyle = c.queued > 0 ? 'color: #e74c3c; font-weight: bold; background: rgba(231, 76, 60, 0.15); padding: 2px 8px; border-radius: 10px;' : 'color: #7f8c8d;';
-                const valRecibidos = c.received !== undefined ? c.received.toLocaleString('es-AR') : '-';
-                const valEnviados = c.sent !== undefined ? c.sent.toLocaleString('es-AR') : '-';
+                // Si hay encolados, el fondo pasa a rojo para alertar
+                const qBg = c.queued > 0 ? '#e74c3c' : '#ecf0f1';
+                const qColor = c.queued > 0 ? 'white' : '#7f8c8d';
 
-                tablaHtml += `
-                    <tr style="border-bottom: 1px solid #f1f5f8;">
-                        <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50;">${c.channel}</td>
-                        <td style="padding: 12px 20px; text-align: center;">
-                            <span style="color: ${statusColor}; background: ${statusBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${statusColor}40;">${status}</span>
-                        </td>
-                        <td style="padding: 12px 20px; text-align: right; color: #3498db; font-weight: 500;">${valRecibidos}</td>
-                        <td style="padding: 12px 20px; text-align: right; color: #2ecc71; font-weight: 500;">${valEnviados}</td>
-                        <td style="padding: 12px 20px; text-align: right;">
-                            <span style="${queuedStyle}">${c.queued.toLocaleString('es-AR')}</span>
-                        </td>
-                        
-                    </tr>
+                // Texto base de Tráfico
+                let badgeText = `Rec.: ${c.received.toLocaleString('es-AR')} | Env.: ${c.sent.toLocaleString('es-AR')}`;
+                
+                // Si hay encolados sumamos la alerta
+                if (c.queued > 0) {
+                    badgeText += ` 🚨 (Encolados: ${c.queued.toLocaleString('es-AR')})`;
+                }
+
+                html += `
+                    <div class="mirth-pill" title="Encolados: ${c.queued}">
+                        <div style="display:flex; align-items: center; gap: 10px; overflow:hidden;">
+                            <div class="mirth-dot" style="background: ${dotColor};" title="Estado: ${status}"></div>
+                            <span class="mirth-pill-name">${c.channel}</span>
+                        </div>
+                        <div style="background: ${qBg}; color: ${qColor}; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; margin-left:10px; white-space: nowrap;">
+                            ${badgeText}
+                        </div>
+                    </div>
                 `;
             });
-            tablaHtml += `</tbody></table></div></div>`;
-            html += tablaHtml;
+            html += `</div></div>`; // Cierre grid y card
         });
     }
     
-    container.innerHTML = html;
+    container.innerHTML += html;
+
+    // Disparamos el dibujo del gráfico una vez que el canvas existe en el DOM
+    if (hasMirth) {
+        Object.keys(data.mirth).forEach(instancia => {
+            dibujarGraficoMirth(instancia);
+        });
+    }
+}
+
+// --- NUEVA FUNCIÓN PARA CONTROLAR LOS BOTONES DE MÉTRICA MIRTH ---
+function seleccionarMetricaMirth(metrica, instancia, btn) {
+    // 1. Buscamos el contenedor padre directo del botón clickeado
+    const contenedor = btn.parentElement;
+    
+    // 2. Le quitamos la clase 'active' a todos los botones dentro de ese grupito
+    contenedor.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+    
+    // 3. Activamos exclusivamente el botón que el usuario clickeó
+    btn.classList.add('active');
+    
+    // 4. Guardamos el valor en el input oculto
+    const input = document.getElementById(`mirth-metric_${instancia}`);
+    if (input) input.value = metrica;
+    
+    // 5. Redibujamos el gráfico
+    dibujarGraficoMirth(instancia);
+}
+
+function dibujarGraficoMirth(instancia) {
+    if (!currentMirthDataCache || !currentMirthDataCache.mirth[instancia]) return;
+    
+    const canvas = document.getElementById(`mirthChart_${instancia}`);
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const metric = document.getElementById(`mirth-metric_${instancia}`).value; // 'queued' o 'traffic'
+    const canales = currentMirthDataCache.mirth[instancia];
+    
+    // Obtenemos todos los timestamps únicos para armar el eje X
+    const tsSet = new Set();
+    canales.forEach(c => c.history.forEach(h => tsSet.add(h.ts)));
+    const labels = Array.from(tsSet).sort();
+
+    // Filtramos para formatear las etiquetas del eje X visualmente
+    const displayLabels = labels.map(ts => {
+        const d = new Date(ts);
+        return currentSoftwareMinutes > 1440 ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:00` : d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    });
+
+    const datasets = [];
+    const palette = ['#3498db', '#e67e22', '#2ecc71', '#9b59b6', '#e74c3c', '#1abc9c', '#34495e', '#f1c40f'];
+
+    canales.forEach((c, index) => {
+        // Mapeamos los datos de este canal contra el Eje X unificado
+        const dataPoints = labels.map(ts => {
+            const point = c.history.find(h => h.ts === ts);
+            if (!point) return null;
+            return metric === 'queued' ? point.q : point.traffic;
+        });
+
+        // Solo agregamos la línea al gráfico si tiene algún valor mayor a 0 
+        // (Esto evita el "espagueti" con líneas muertas pegadas al 0)
+        if (dataPoints.some(val => val > 0)) {
+            datasets.push({
+                label: c.channel,
+                data: dataPoints,
+                borderColor: palette[index % palette.length],
+                backgroundColor: palette[index % palette.length] + '20', // Transparencia para rellenar
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 0, // Ocultar puntos para que la línea se vea limpia
+                fill: metric === 'traffic' // El tráfico queda mejor como "montaña" (relleno)
+            });
+        }
+    });
+
+    if (mirthChartInstance) {
+        mirthChartInstance.destroy();
+    }
+
+    mirthChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: displayLabels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: { grid: { display: false } },
+                y: { 
+                    beginAtZero: true,
+                    // Quitamos el suggestedMax de 50 para que Chart.js escale automáticamente.
+                    // Solo dejamos un margen muy pequeño (5) para que el gráfico no se rompa si todos los canales están en 0.
+                    suggestedMax: 5 
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { usePointStyle: true, boxWidth: 8, font: {size: 10} }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) { label += ': '; }
+                            if (context.parsed.y !== null) { label += context.parsed.y.toLocaleString('es-AR'); }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function cambiarRangoSoftware(minutos, btn) {
