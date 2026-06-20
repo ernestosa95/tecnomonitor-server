@@ -372,7 +372,11 @@ def verificar_actividad_ris(db: Session):
             try:
                 metrics = json.loads(rep.kpi_json_data)
                 for item in metrics.get('ris', []):
-                    if item.get('mod') in modalidades_target:
+                    # Extraemos la modalidad de forma segura
+                    mod_reportada = str(item.get('mod', '')).upper()
+                    
+                    # CORRECCIÓN: Verificamos si alguna modalidad target está en la reportada
+                    if any(mod_target in mod_reportada for mod_target in modalidades_target):
                         total_admitidos += item.get('admitidos', 0)
             except Exception as e:
                 continue
@@ -480,8 +484,11 @@ def verificar_actividad_mamo(db: Session):
             try:
                 metrics = json.loads(rep.kpi_json_data)
                 for item in metrics.get('ris', []):
-                    # Filtramos por las modalidades de mamografía (MG es el estándar DICOM)
-                    if item.get('mod') in ['MG', 'MAMO']:
+                    # Extraemos la modalidad de forma segura y la pasamos a mayúsculas
+                    mod_reportada = str(item.get('mod', '')).upper()
+                    
+                    # CORRECCIÓN: Verificamos si 'MG' o 'MAMO' es parte del texto (Soporta 'MG/SR', 'MG/OT', etc.)
+                    if any(m in mod_reportada for m in ['MG', 'MAMO']):
                         total_mamo += item.get('admitidos', 0)
             except: continue
 

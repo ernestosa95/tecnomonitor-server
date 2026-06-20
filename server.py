@@ -5,6 +5,13 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from contextlib import asynccontextmanager 
 import maintenance
+
+# --- IMPORTACIÓN DEL SCRIPT DE LIMPIEZA ---
+try:
+    import limpiar_alertas
+    print("✅ Script de limpieza de alertas cargado correctamente.")
+except ImportError:
+    from dashboard_app import limpiar_alertas
  
 # --- 1. PREPARACIÓN DE RUTAS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,38 +40,48 @@ except Exception as e:
 async def ciclo_vigilancia():
     print("🔄 Iniciando Hilo de Vigilancia (Background Service)...")
     ticks_mantenimiento = 0 
-    ticks_kpi = 0
+    ticks_limpieza = 0             # <--- NUEVO: Contador para la limpieza
     LIMIT_TICKS_DIA = 1440 
+    LIMIT_TICKS_DOCE_HORAS = 720   # <--- NUEVO: Límite para ejecutar 2 veces al día (12 horas)
     
     while True:
         try:
-            try:
-                with database.SessionLocal() as db:
-                    # 1. Alertas de Hardware (Tiempo real)
-                    alerts_engine.procesar_offline(db)
-                    
-                    # 2. Alertas de Negocio (Programadas)
-                    alerts_engine.verificar_kpis_programados(db)
+            with database.SessionLocal() as db:
+                # 1. Alertas de Hardware (Tiempo real)
+                alerts_engine.procesar_offline(db)
+                
+                # 2. Alertas de Negocio (Programadas)
+                alerts_engine.verificar_kpis_programados(db)
 
-                    # 3. Alertas de Integración/Software (Tiempo real)
-                    alerts_engine.verificar_estado_software(db)
-                    
-            except Exception as e:
-                print(f"⚠️ Error verificando alertas: {e}")
-
-            ticks_mantenimiento += 1
-            if ticks_mantenimiento >= LIMIT_TICKS_DIA:
-                print("🧹 Ejecutando mantenimiento programado de DB...")
-                try:
-                    await asyncio.to_thread(maintenance.ejecutar_mantenimiento)
-                except Exception as e:
-                    print(f"❌ Error en tarea de mantenimiento: {e}")
-                ticks_mantenimiento = 0
-
+                # 3. Alertas de Integración/Software (Tiempo real)
+                alerts_engine.verificar_estado_software(db)
+                
         except Exception as e:
-            print(f"⚠️ Error crítico en ciclo de vigilancia: {e}")
-        
+            print(f"⚠️ Error verificando alertas: {e}")
+
+        # --- TAREA A: MANTENIMIENTO PROGRAMADO DE DB (Cada 24 horas) ---
+        ticks_mantenimiento += 1
+        if ticks_mantenimiento >= LIMIT_TICKS_DIA:
+            print("🧹 Ejecutando mantenimiento programado de DB...")
+            try:
+                await asyncio.to_thread(maintenance.ejecutar_mantenimiento)
+            except Exception as e:
+                print(f"❌ Error en tarea de mantenimiento: {e}")
+            ticks_mantenimiento = 0
+
+        # --- TAREA B: LIMPIEZA DE ALERTAS HUÉRFANAS (Cada 12 horas) ---
+        ticks_limpieza += 1
+        if ticks_limpieza >= LIMIT_TICKS_DOCE_HORAS:
+            print("🔄 [Automatización] Iniciando limpieza semestral/diaria de alertas huérfanas...")
+            try:
+                # Se ejecuta en un hilo separado para no bloquear las solicitudes web ni los WebSockets
+                await asyncio.to_thread(limpiar_alertas.limpiar_alertas_huerfanas)
+            except Exception as e:
+                print(f"❌ Error en la limpieza automática de alertas: {e}")
+            ticks_limpieza = 0
+
         await asyncio.sleep(60)
+
 
 # --- LIFESPAN MANAGER ---
 @asynccontextmanager

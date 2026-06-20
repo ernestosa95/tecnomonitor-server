@@ -96,7 +96,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         if isinstance(raw_body, dict):
             h_id = raw_body.get("envelope", {}).get("hospital_id")
             if h_id == "P03":
-                logger.info("🔔 [DEBUG P10] Capturado reporte entrante:")
+                logger.info("🔔 [DEBUG P03] Capturado reporte entrante:")
                 print(json.dumps(raw_body, indent=2))
         # =========================================================
     except ClientDisconnect:
