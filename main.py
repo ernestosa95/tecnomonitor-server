@@ -182,9 +182,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         # =========================================================
         # --- EXTRAER Y GUARDAR MONITOREO DE SOFTWARE ---
         # =========================================================
-        # =========================================================
-        # --- EXTRAER Y GUARDAR MONITOREO DE SOFTWARE ---
-        # =========================================================
+        
         # 1. Definimos la variable (Evita el NameError)
         soft_monitoring = data_dict.get('software_monitoring')
         
@@ -242,6 +240,22 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     metric_value=ev.get("c", 0),
                     extra_data={"subsystems": ev.get("s", [])},
                     timestamp=ev_time
+                ))
+
+            # --- 3. NUEVO: PROCESAR CERTIFICADOS SSL ---
+            ssl_data = soft_monitoring.get("ssl_certificates", [])
+            for cert in ssl_data:
+                db.add(database.SoftwareMonitoring(
+                    hospital_id=h_id,
+                    app_name="ssl_certificate",
+                    component_id=cert.get("url", "unknown_url"),
+                    status_value=cert.get("status", "Unknown"),
+                    metric_value=cert.get("days_remaining", 0), # Usamos metric_value para los días
+                    extra_data={
+                        "expiration_date": cert.get("expiration_date", ""),
+                        "issuer": cert.get("issuer", "")
+                    },
+                    timestamp=ts
                 ))
                 
             # Limpiamos el JSON antes de guardar la infraestructura

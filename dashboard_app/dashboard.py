@@ -1356,16 +1356,17 @@ def solicitar_acceso(req: UserAccessRequest):
 @app.get("/api/hospital/{hospital_id}/software")
 def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = Depends(get_db), current_user: dict = Depends(auth.get_current_user)):
     
-    # 1. Si minutos es 0, queremos el HISTÓRICO TOTAL (Sin calcular deltas)
+    # 1. Si minutos es 0, queremos el HISTÓRICO TOTAL
     if minutos == 0:
         query = text("""
             WITH RankedData AS (
-                SELECT component_id, status_value, metric_value, extra_data,
-                       ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
+                SELECT app_name, component_id, status_value, metric_value, extra_data,
+                       ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                 FROM software_monitoring
-                WHERE hospital_id = :hid AND app_name = 'mirth'
+                WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate')
             )
-            SELECT component_id, status_value, metric_value, extra_data, NULL as timestamp FROM RankedData WHERE rn = 1
+            SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp 
+            FROM RankedData WHERE rn = 1
         """)
         resultados = db.execute(query, {"hid": hospital_id}).fetchall()
         is_historical = False
@@ -1373,47 +1374,54 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
         # Lógica de intervalos de tiempo (Deltas)
         time_limit = datetime.now() - timedelta(minutes=minutos)
         query = text("""
-            SELECT component_id, status_value, metric_value, extra_data, timestamp
+            SELECT app_name, component_id, status_value, metric_value, extra_data, timestamp
             FROM software_monitoring
-            WHERE hospital_id = :hid AND app_name = 'mirth'
+            WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate')
               AND timestamp >= :time_limit
             ORDER BY timestamp ASC
         """)
         resultados = db.execute(query, {"hid": hospital_id, "time_limit": time_limit}).fetchall()
         
-        # Fallback si es un hospital nuevo sin historial
+        # Fallback si es un hospital nuevo sin historial reciente
         if not resultados:
             query_last = text("""
                 WITH RankedData AS (
-                    SELECT component_id, status_value, metric_value, extra_data,
-                           ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
+                    SELECT app_name, component_id, status_value, metric_value, extra_data,
+                           ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                     FROM software_monitoring
-                    WHERE hospital_id = :hid AND app_name = 'mirth'
+                    WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate')
                 )
-                SELECT component_id, status_value, metric_value, extra_data, NULL as timestamp FROM RankedData WHERE rn = 1
+                SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp 
+                FROM RankedData WHERE rn = 1
             """)
             resultados = db.execute(query_last, {"hid": hospital_id}).fetchall()
             is_historical = False
         else:
             is_historical = True
 
-    # 2. Agrupamos por canal
-    canales_historia = {}
+    # 2. Agrupamos por aplicación y luego por canal/id
+    canales_mirth = {}
+    certificados_ssl = {}
+    
     for row in resultados:
-        cid = row.component_id
-        if cid not in canales_historia:
-            canales_historia[cid] = []
-        canales_historia[cid].append(row)
+        if row.app_name == 'mirth':
+            if row.component_id not in canales_mirth:
+                canales_mirth[row.component_id] = []
+            canales_mirth[row.component_id].append(row)
+        elif row.app_name == 'ssl_certificate':
+            if row.component_id not in certificados_ssl:
+                certificados_ssl[row.component_id] = []
+            certificados_ssl[row.component_id].append(row)
 
     software_data = {
         "metadata": {"minutos": minutos, "is_historical": is_historical},
-        "mirth": {}
+        "mirth": {},
+        "ssl_certificates": []
     }
     
-    # 3. Procesamos los datos
-    for cid, history in canales_historia.items():
+    # 3. Procesamos los datos de MIRTH
+    for cid, history in canales_mirth.items():
         if not history: continue
-        
         actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
         instancia = extra_actual.get("instancia", "Default")
@@ -1423,16 +1431,13 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             
         canal_nombre = cid.replace(f"[{instancia}] ", "") if cid.startswith(f"[{instancia}] ") else cid
         
-        # --- LÓGICA CLAVE: TOTALES vs DELTAS ---
         if minutos == 0:
             total_recibidos = extra_actual.get("recibidos", 0)
             total_enviados = extra_actual.get("enviados", 0)
         else:
-            total_recibidos = 0
-            total_enviados = 0
+            total_recibidos, total_enviados = 0, 0
             if is_historical and len(history) > 1:
-                prev_r = None
-                prev_s = None
+                prev_r, prev_s = None, None
                 for row in history:
                     extra = json.loads(row.extra_data) if row.extra_data else {}
                     r = extra.get("recibidos", 0)
@@ -1440,8 +1445,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
                     if prev_r is not None:
                         total_recibidos += (r - prev_r) if r >= prev_r else r
                         total_enviados += (s - prev_s) if s >= prev_s else s
-                    prev_r = r
-                    prev_s = s
+                    prev_r, prev_s = r, s
 
         software_data["mirth"][instancia].append({
             "channel": canal_nombre,
@@ -1450,6 +1454,20 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             "received": total_recibidos,
             "sent": total_enviados,
             "last_error": extra_actual.get("last_error", "")
+        })
+        
+    # 4. Procesamos los datos de CERTIFICADOS SSL (NUEVO)
+    for url, history in certificados_ssl.items():
+        if not history: continue
+        actual = history[-1] # Tomamos siempre la última medición de días
+        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        
+        software_data["ssl_certificates"].append({
+            "url": url,
+            "status": actual.status_value,
+            "days_remaining": actual.metric_value, # Guardamos los días en metric_value
+            "expiration_date": extra_actual.get("expiration_date", ""),
+            "issuer": extra_actual.get("issuer", "")
         })
         
     return software_data

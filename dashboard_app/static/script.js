@@ -3044,15 +3044,18 @@ function renderizarSoftware(data) {
         }
     }
 
-    // 2. RENDER DE TARJETAS (Sin cambios importantes respecto a la versión anterior)
     container.innerHTML = '';
     let html = '';
     
-    if (!data || !data.mirth || Object.keys(data.mirth).length === 0) {
+    // VALIDACIÓN DE VACÍO GLOBAL (Ni Mirth Ni SSL)
+    const hasMirth = data.mirth && Object.keys(data.mirth).length > 0;
+    const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
+
+    if (!hasMirth && !hasSSL) {
         container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; color: #7f8c8d;">
                 <h3 style="margin-top: 20px;">Sin Integraciones Reportadas</h3>
-                <p style="font-style: italic;">Este hospital no tiene canales de Mirth monitoreados actualmente.</p>
+                <p style="font-style: italic;">Este hospital no tiene canales de Mirth ni Certificados SSL monitoreados actualmente.</p>
             </div>
         `;
         return;
@@ -3061,59 +3064,126 @@ function renderizarSoftware(data) {
     const isDark = document.body.classList.contains('dark-theme');
     const theadBg = isDark ? 'transparent' : '#fdfdfd';
 
-    Object.keys(data.mirth).forEach(instancia => {
-        const canales = data.mirth[instancia];
-        let tablaHtml = `
-            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #f39c12;">
+    // --- 2A. RENDER DE CERTIFICADOS SSL (NUEVO) ---
+    if (hasSSL) {
+        let sslHtml = `
+            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #3498db;">
                 <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
-                    <span style="font-size: 1.5em;">🔄</span>
-                    <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Mirth Connect: <span style="color: #f39c12;">${instancia}</span></h3>
+                    <span style="font-size: 1.5em;">🔒</span>
+                    <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Certificados de Seguridad (SSL)</h3>
                 </div>
                 <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
                     <table class="table-clean" style="margin:0; width:100%;">
                         <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
                             <tr>
-                                <th style="padding: 12px 20px;">Canal</th>
+                                <th style="padding: 12px 20px;">URL / Dominio</th>
                                 <th style="padding: 12px 20px; text-align: center;">Estado</th>
-                                <th style="padding: 12px 20px; text-align: right;">Recibidos</th>
-                                <th style="padding: 12px 20px; text-align: right;">Enviados</th>
-                                <th style="padding: 12px 20px; text-align: right;">Encolados</th>
-                                
+                                <th style="padding: 12px 20px;">Emisor</th>
+                                <th style="padding: 12px 20px;">Expiración</th>
+                                <th style="padding: 12px 20px; text-align: right;">Días Restantes</th>
                             </tr>
                         </thead>
                         <tbody>
         `;
         
-        canales.forEach(c => {
-            const status = (c.status || '').toUpperCase();
-            let statusColor = '#95a5a6'; let statusBg = 'rgba(149, 165, 166, 0.15)';
-            if (status === 'STARTED') { statusColor = '#27ae60'; statusBg = 'rgba(39, 174, 96, 0.15)'; }
-            else if (status === 'STOPPED') { statusColor = '#e74c3c'; statusBg = 'rgba(231, 76, 60, 0.15)'; }
-            else if (status === 'PAUSED') { statusColor = '#f39c12'; statusBg = 'rgba(243, 156, 18, 0.15)'; }
-            else if (status === 'ERROR') { statusColor = '#c0392b'; statusBg = 'rgba(192, 57, 43, 0.15)'; }
+        data.ssl_certificates.forEach(cert => {
+            const days = cert.days_remaining;
+            let daysColor = '#27ae60'; let daysBg = 'rgba(39, 174, 96, 0.15)';
+            let statusText = cert.status || 'OK';
             
-            const queuedStyle = c.queued > 0 ? 'color: #e74c3c; font-weight: bold; background: rgba(231, 76, 60, 0.15); padding: 2px 8px; border-radius: 10px;' : 'color: #7f8c8d;';
-            const valRecibidos = c.received !== undefined ? c.received.toLocaleString('es-AR') : '-';
-            const valEnviados = c.sent !== undefined ? c.sent.toLocaleString('es-AR') : '-';
+            // Lógica de Semáforo de días restantes
+            if (days < 15 || statusText.toUpperCase() !== 'OK') {
+                daysColor = '#e74c3c'; daysBg = 'rgba(231, 76, 60, 0.15)';
+                if(statusText.toUpperCase() === 'OK') statusText = 'CRITICAL';
+            } else if (days <= 30) {
+                daysColor = '#f39c12'; daysBg = 'rgba(243, 156, 18, 0.15)';
+                if(statusText.toUpperCase() === 'OK') statusText = 'WARNING';
+            }
 
-            tablaHtml += `
+            // Formateo visual de fecha
+            let expDateVisual = cert.expiration_date;
+            if (expDateVisual) {
+                try {
+                    const d = new Date(expDateVisual);
+                    expDateVisual = d.toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+                } catch(e){}
+            }
+
+            sslHtml += `
                 <tr style="border-bottom: 1px solid #f1f5f8;">
-                    <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50;">${c.channel}</td>
+                    <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50;">${cert.url}</td>
                     <td style="padding: 12px 20px; text-align: center;">
-                        <span style="color: ${statusColor}; background: ${statusBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${statusColor}40;">${status}</span>
+                        <span style="color: ${daysColor}; background: ${daysBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${daysColor}40;">${statusText}</span>
                     </td>
-                    <td style="padding: 12px 20px; text-align: right; color: #3498db; font-weight: 500;">${valRecibidos}</td>
-                    <td style="padding: 12px 20px; text-align: right; color: #2ecc71; font-weight: 500;">${valEnviados}</td>
+                    <td style="padding: 12px 20px; color: #7f8c8d;">${cert.issuer || '-'}</td>
+                    <td style="padding: 12px 20px; color: #34495e; font-family: monospace;">${expDateVisual || '-'}</td>
                     <td style="padding: 12px 20px; text-align: right;">
-                        <span style="${queuedStyle}">${c.queued.toLocaleString('es-AR')}</span>
+                        <span style="color: ${daysColor}; font-weight: 900; font-size: 1.1em;">${days}</span>
                     </td>
-                    
                 </tr>
             `;
         });
-        tablaHtml += `</tbody></table></div></div>`;
-        html += tablaHtml;
-    });
+        sslHtml += `</tbody></table></div></div>`;
+        html += sslHtml;
+    }
+
+    // --- 2B. RENDER DE MIRTH CONNECT (CÓDIGO ORIGINAL) ---
+    if (hasMirth) {
+        Object.keys(data.mirth).forEach(instancia => {
+            const canales = data.mirth[instancia];
+            let tablaHtml = `
+                <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #f39c12;">
+                    <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
+                        <span style="font-size: 1.5em;">🔄</span>
+                        <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Mirth Connect: <span style="color: #f39c12;">${instancia}</span></h3>
+                    </div>
+                    <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
+                        <table class="table-clean" style="margin:0; width:100%;">
+                            <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
+                                <tr>
+                                    <th style="padding: 12px 20px;">Canal</th>
+                                    <th style="padding: 12px 20px; text-align: center;">Estado</th>
+                                    <th style="padding: 12px 20px; text-align: right;">Recibidos</th>
+                                    <th style="padding: 12px 20px; text-align: right;">Enviados</th>
+                                    <th style="padding: 12px 20px; text-align: right;">Encolados</th>
+                                    
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+            
+            canales.forEach(c => {
+                const status = (c.status || '').toUpperCase();
+                let statusColor = '#95a5a6'; let statusBg = 'rgba(149, 165, 166, 0.15)';
+                if (status === 'STARTED') { statusColor = '#27ae60'; statusBg = 'rgba(39, 174, 96, 0.15)'; }
+                else if (status === 'STOPPED') { statusColor = '#e74c3c'; statusBg = 'rgba(231, 76, 60, 0.15)'; }
+                else if (status === 'PAUSED') { statusColor = '#f39c12'; statusBg = 'rgba(243, 156, 18, 0.15)'; }
+                else if (status === 'ERROR') { statusColor = '#c0392b'; statusBg = 'rgba(192, 57, 43, 0.15)'; }
+                
+                const queuedStyle = c.queued > 0 ? 'color: #e74c3c; font-weight: bold; background: rgba(231, 76, 60, 0.15); padding: 2px 8px; border-radius: 10px;' : 'color: #7f8c8d;';
+                const valRecibidos = c.received !== undefined ? c.received.toLocaleString('es-AR') : '-';
+                const valEnviados = c.sent !== undefined ? c.sent.toLocaleString('es-AR') : '-';
+
+                tablaHtml += `
+                    <tr style="border-bottom: 1px solid #f1f5f8;">
+                        <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50;">${c.channel}</td>
+                        <td style="padding: 12px 20px; text-align: center;">
+                            <span style="color: ${statusColor}; background: ${statusBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${statusColor}40;">${status}</span>
+                        </td>
+                        <td style="padding: 12px 20px; text-align: right; color: #3498db; font-weight: 500;">${valRecibidos}</td>
+                        <td style="padding: 12px 20px; text-align: right; color: #2ecc71; font-weight: 500;">${valEnviados}</td>
+                        <td style="padding: 12px 20px; text-align: right;">
+                            <span style="${queuedStyle}">${c.queued.toLocaleString('es-AR')}</span>
+                        </td>
+                        
+                    </tr>
+                `;
+            });
+            tablaHtml += `</tbody></table></div></div>`;
+            html += tablaHtml;
+        });
+    }
+    
     container.innerHTML = html;
 }
 
