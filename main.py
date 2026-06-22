@@ -122,7 +122,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         schema_version = raw_body.get("envelope", {}).get("schema_version")
 
         # 1. DETECCIÓN DE VERSIÓN (Acepta 3.0 y 4.0)
-        if schema_version in ["3.0", "4.0", "4.1", "4.2"]:
+        if schema_version in ["3.0", "4.0", "4.1", "4.2", "4.3"]:
             # Es V3 o V4 Nativo -> Pasa directo sin transformar
             final_payload = raw_body
         else:
@@ -221,26 +221,35 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                         timestamp=ts
                     ))
 
-            # --- PROCESAR SUITESTENSA (Logs) ---
-            suite_data = soft_monitoring.get("suitestensa", {})
-            suite_scan_ts = suite_data.get("scan_ts")
-            
-            for ev in suite_data.get("evs", []):
-                ev_time = ts # Default
-                raw_ts = ev.get("ts") or suite_scan_ts
-                if raw_ts:
-                    try: ev_time = datetime.fromisoformat(raw_ts.replace('Z', '')[:26])
-                    except: pass
+            # --- PROCESAR ELASTICSEARCH / SUITESTENSA LOGS ---
+            suite_logs_data = soft_monitoring.get("suitestensa_logs", {})
+            if suite_logs_data:
+                scan_ts_str = suite_logs_data.get("scan_time", "")
+                try:
+                    scan_ts = datetime.fromisoformat(scan_ts_str.replace('Z', '')[:26]) if scan_ts_str else ts
+                except:
+                    scan_ts = ts
+                    
+                for ev in suite_logs_data.get("events", []):
+                    try:
+                        ev_time_str = ev.get("last_seen") or scan_ts_str
+                        ev_time = datetime.fromisoformat(ev_time_str.replace('Z', '')[:26]) if ev_time_str else scan_ts
+                    except:
+                        ev_time = scan_ts
                         
-                db.add(database.SoftwareMonitoring(
-                    hospital_id=h_id,
-                    app_name="suitestensa",
-                    component_id=ev.get("id", "unknown"),
-                    status_value=None,
-                    metric_value=ev.get("c", 0),
-                    extra_data={"subsystems": ev.get("s", [])},
-                    timestamp=ev_time
-                ))
+                    db.add(database.SoftwareMonitoring(
+                        hospital_id=h_id,
+                        app_name="elasticsearch", # Lo guardamos como elasticsearch
+                        component_id=ev.get("rule_id", "UNKNOWN_RULE"),
+                        status_value=ev.get("severity", "INFO"),
+                        metric_value=ev.get("count", 0),
+                        extra_data={
+                            "services": ev.get("services_affected", []),
+                            "evidence": ev.get("sample_evidence", ""),
+                            "first_seen": ev.get("first_seen", "")
+                        },
+                        timestamp=ev_time
+                    ))
 
             # --- 3. NUEVO: PROCESAR CERTIFICADOS SSL ---
             ssl_data = soft_monitoring.get("ssl_certificates", [])

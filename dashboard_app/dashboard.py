@@ -1363,7 +1363,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
                 SELECT app_name, component_id, status_value, metric_value, extra_data,
                        ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                 FROM software_monitoring
-                WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate')
+                WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch')
             )
             SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp 
             FROM RankedData WHERE rn = 1
@@ -1376,7 +1376,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
         query = text("""
             SELECT app_name, component_id, status_value, metric_value, extra_data, timestamp
             FROM software_monitoring
-            WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate')
+            WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch')
               AND timestamp >= :time_limit
             ORDER BY timestamp ASC
         """)
@@ -1389,7 +1389,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
                     SELECT app_name, component_id, status_value, metric_value, extra_data,
                            ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                     FROM software_monitoring
-                    WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate')
+                    WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch')
                 )
                 SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp 
                 FROM RankedData WHERE rn = 1
@@ -1402,6 +1402,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
     # 2. Agrupamos por aplicación y luego por canal/id
     canales_mirth = {}
     certificados_ssl = {}
+    elastic_logs = {}
     
     for row in resultados:
         if row.app_name == 'mirth':
@@ -1412,11 +1413,16 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             if row.component_id not in certificados_ssl:
                 certificados_ssl[row.component_id] = []
             certificados_ssl[row.component_id].append(row)
+        elif row.app_name == 'elasticsearch':
+            if row.component_id not in elastic_logs:
+                elastic_logs[row.component_id] = []
+            elastic_logs[row.component_id].append(row)
 
     software_data = {
         "metadata": {"minutos": minutos, "is_historical": is_historical},
         "mirth": {},
-        "ssl_certificates": []
+        "ssl_certificates": [],
+        "elasticsearch": []
     }
     
     # 3. Procesamos los datos de MIRTH (Lógica con histórico para el gráfico)
@@ -1492,6 +1498,29 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             "days_remaining": actual.metric_value, # Guardamos los días en metric_value
             "expiration_date": extra_actual.get("expiration_date", ""),
             "issuer": extra_actual.get("issuer", "")
+        })
+        
+    # --- 5. NUEVO: PROCESAMOS LOS DATOS DE ELASTICSEARCH ---
+    for rule_id, history in elastic_logs.items():
+        if not history: continue
+        actual = history[-1]
+        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        
+        # --- FIX: Validación segura del tipo de dato del timestamp ---
+        last_seen_str = ""
+        if actual.timestamp:
+            if isinstance(actual.timestamp, str):
+                last_seen_str = actual.timestamp[:19] # Cortamos milisegundos si es string
+            else:
+                last_seen_str = actual.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        
+        software_data["elasticsearch"].append({
+            "rule_id": rule_id,
+            "severity": actual.status_value,
+            "count": actual.metric_value,
+            "services": extra_actual.get("services", []),
+            "evidence": extra_actual.get("evidence", ""),
+            "last_seen": last_seen_str # <- Usamos la variable segura
         })
         
     return software_data

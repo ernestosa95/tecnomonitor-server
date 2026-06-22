@@ -3023,6 +3023,8 @@ function renderizarSoftware(data) {
     currentMirthDataCache = data;
     const container = document.getElementById('logs-container');
     const legend = document.getElementById('software-legend');
+    const hasElastic = data.elasticsearch && data.elasticsearch.length > 0;
+
     if (!container) return;
     
     // Ocultamos la botonera vieja si existe suelta en el HTML
@@ -3042,7 +3044,7 @@ function renderizarSoftware(data) {
         } else if (!data.metadata.is_historical) {
             legend.innerHTML = `⚠️ Sin historial suficiente en este período. Mostrando solo valores actuales.`;
         } else {
-            legend.innerHTML = `Tráfico de mensajes cursados en <b style="color:var(--primary)">${textoTiempo}</b>`;
+            legend.innerHTML = `Visualización en tiempo real de infraestructura, certificados y alertas.">${textoTiempo}</b>`;
         }
     }
 
@@ -3052,7 +3054,7 @@ function renderizarSoftware(data) {
     const hasMirth = data.mirth && Object.keys(data.mirth).length > 0;
     const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
 
-    if (!hasMirth && !hasSSL) {
+    if (!hasMirth && !hasSSL && !hasElastic) {
         container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; color: #7f8c8d;">
                 <h3 style="margin-top: 20px;">Sin Integraciones Reportadas</h3>
@@ -3208,6 +3210,57 @@ function renderizarSoftware(data) {
             });
             html += `</div></div>`; // Cierre grid y card
         });
+    }
+
+    // ==========================================
+    // --- 3. RENDER DE ELASTICSEARCH (LOGS) ---
+    // ==========================================
+    if (hasElastic) {
+        let esHtml = `
+            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #8e44ad;">
+                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
+                    <span style="font-size: 1.5em;">🔎</span>
+                    <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Logs de Suitestensa (ElasticSearch)</h3>
+                </div>
+                <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
+                    <table class="table-clean" style="margin:0; width:100%;">
+                        <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
+                            <tr>
+                                <th style="padding: 12px 20px;">Regla (Rule ID)</th>
+                                <th style="padding: 12px 20px; text-align: center;">Severidad</th>
+                                <th style="padding: 12px 20px; text-align: center;">Ocurrencias</th>
+                                <th style="padding: 12px 20px;">Servicios Afectados</th>
+                                <th style="padding: 12px 20px;">Última Evidencia</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        data.elasticsearch.forEach(log => {
+            let sevColor = '#3498db'; let sevBg = 'rgba(52, 152, 219, 0.15)';
+            const sev = (log.severity || '').toUpperCase();
+            
+            // Lógica de semáforo de colores según criticidad
+            if (sev === 'HIGH' || sev === 'CRITICAL') { sevColor = '#e74c3c'; sevBg = 'rgba(231, 76, 60, 0.15)'; }
+            else if (sev === 'MEDIUM' || sev === 'WARNING') { sevColor = '#f39c12'; sevBg = 'rgba(243, 156, 18, 0.15)'; }
+            else if (sev === 'LOW' || sev === 'INFO') { sevColor = '#27ae60'; sevBg = 'rgba(39, 174, 96, 0.15)'; }
+            
+            const servicesHtml = log.services.map(s => `<span style="background:#ecf0f1; padding:2px 6px; border-radius:4px; font-size:0.85em; color:#2c3e50; margin-right:4px;">${s}</span>`).join('');
+
+            esHtml += `
+                <tr style="border-bottom: 1px solid #f1f5f8;">
+                    <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50; font-family: monospace;">${log.rule_id}</td>
+                    <td style="padding: 12px 20px; text-align: center;">
+                        <span style="color: ${sevColor}; background: ${sevBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${sevColor}40;">${sev}</span>
+                    </td>
+                    <td style="padding: 12px 20px; text-align: center; font-weight: 900; color: #2c3e50; font-size: 1.1em;">${log.count}</td>
+                    <td style="padding: 12px 20px;">${servicesHtml}</td>
+                    <td style="padding: 12px 20px; color: #7f8c8d; font-size: 0.85em; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${log.evidence.replace(/"/g, '&quot;')}">${log.evidence || '-'}</td>
+                </tr>
+            `;
+        });
+        esHtml += `</tbody></table></div></div>`;
+        html += esHtml;
     }
     
     container.innerHTML += html;
