@@ -13,6 +13,7 @@ let currentHasPhysicalHost = true;
 // Variable global para el gráfico de Mirth
 let mirthChartInstance = null;
 let currentMirthDataCache = null;
+let elasticChartInstance = null;
 
 // --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
 async function authFetch(url, options = {}) {
@@ -3218,59 +3219,154 @@ function renderizarSoftware(data) {
     if (hasElastic) {
         let esHtml = `
             <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #8e44ad;">
-                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
-                    <span style="font-size: 1.5em;">🔎</span>
-                    <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Logs de Suitestensa (ElasticSearch)</h3>
+                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;" class="detail-card-header">
+                    <div style="display:flex; align-items:center; gap: 10px;">
+                        <span style="font-size: 1.5em;">🔎</span>
+                        <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Logs de Suitestensa (ElasticSearch)</h3>
+                    </div>
+                    
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                        <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
-                    <table class="table-clean" style="margin:0; width:100%;">
-                        <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
-                            <tr>
-                                <th style="padding: 12px 20px;">Regla (Rule ID)</th>
-                                <th style="padding: 12px 20px; text-align: center;">Severidad</th>
-                                <th style="padding: 12px 20px; text-align: center;">Ocurrencias</th>
-                                <th style="padding: 12px 20px;">Servicios Afectados</th>
-                                <th style="padding: 12px 20px;">Última Evidencia</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                
+                <div style="padding: 20px; border-bottom: 1px solid #eee;">
+                    <div style="height: 250px; width: 100%; position: relative;">
+                        ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(255,255,255,0.8); z-index:10; color:#7f8c8d; font-weight:bold;">Seleccione un rango de tiempo para ver la evolución gráfica.</div>' : ''}
+                        <canvas id="elasticChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="mirth-pills-grid">
         `;
         
         data.elasticsearch.forEach(log => {
-            let sevColor = '#3498db'; let sevBg = 'rgba(52, 152, 219, 0.15)';
+            let sevColor = '#3498db'; let sevBg = '#ecf0f1';
             const sev = (log.severity || '').toUpperCase();
             
             // Lógica de semáforo de colores según criticidad
-            if (sev === 'HIGH' || sev === 'CRITICAL') { sevColor = '#e74c3c'; sevBg = 'rgba(231, 76, 60, 0.15)'; }
-            else if (sev === 'MEDIUM' || sev === 'WARNING') { sevColor = '#f39c12'; sevBg = 'rgba(243, 156, 18, 0.15)'; }
-            else if (sev === 'LOW' || sev === 'INFO') { sevColor = '#27ae60'; sevBg = 'rgba(39, 174, 96, 0.15)'; }
-            
-            const servicesHtml = log.services.map(s => `<span style="background:#ecf0f1; padding:2px 6px; border-radius:4px; font-size:0.85em; color:#2c3e50; margin-right:4px;">${s}</span>`).join('');
+            if (sev === 'HIGH' || sev === 'CRITICAL') { sevColor = '#e74c3c'; sevBg = '#fdedec'; }
+            else if (sev === 'MEDIUM' || sev === 'WARNING') { sevColor = '#f39c12'; sevBg = '#fef5e7'; }
+            else if (sev === 'LOW' || sev === 'INFO') { sevColor = '#27ae60'; sevBg = '#eafaf1'; }
 
+            // Generar pastilla (pill) para cada error con flexbox interno y botón integrado
             esHtml += `
-                <tr style="border-bottom: 1px solid #f1f5f8;">
-                    <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50; font-family: monospace;">${log.rule_id}</td>
-                    <td style="padding: 12px 20px; text-align: center;">
-                        <span style="color: ${sevColor}; background: ${sevBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${sevColor}40;">${sev}</span>
-                    </td>
-                    <td style="padding: 12px 20px; text-align: center; font-weight: 900; color: #2c3e50; font-size: 1.1em;">${log.count}</td>
-                    <td style="padding: 12px 20px;">${servicesHtml}</td>
-                    <td style="padding: 12px 20px; color: #7f8c8d; font-size: 0.85em; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${log.evidence.replace(/"/g, '&quot;')}">${log.evidence || '-'}</td>
-                </tr>
+                <div class="mirth-pill" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px;">
+                    <div style="display:flex; align-items: center; gap: 10px; overflow:hidden; flex-grow: 1;">
+                        <div class="mirth-dot" style="background: ${sevColor}; flex-shrink: 0;" title="Severidad: ${sev}"></div>
+                        <span class="mirth-pill-name" style="font-family: monospace; font-weight: bold; color: #2c3e50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${log.rule_id}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                        <div style="background: ${sevBg}; color: ${sevColor}; padding: 3px 8px; border-radius: 12px; font-size: 0.75em; font-weight: bold; white-space: nowrap;">
+                            Eventos: ${log.count}
+                        </div>
+                        <button onclick="abrirModalDetalleLog('${log.rule_id}')" class="chart-btn" style="padding: 3px 8px; font-size: 0.75em; margin: 0; background: #34495e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: 0.2s;" onmouseover="this.style.background='#2c3e50'" onmouseout="this.style.background='#34495e'">
+                            Ver detalles
+                        </button>
+                    </div>
+                </div>
             `;
         });
-        esHtml += `</tbody></table></div></div>`;
+        
+        esHtml += `</div></div>`; // Cierra grid y card
         html += esHtml;
     }
     
-    container.innerHTML += html;
-
+    container.innerHTML += html; // Añade el HTML al DOM
+    
     // Disparamos el dibujo del gráfico una vez que el canvas existe en el DOM
     if (hasMirth) {
         Object.keys(data.mirth).forEach(instancia => {
             dibujarGraficoMirth(instancia);
         });
     }
+    
+    // --- AGREGAR LLAMADA AL GRÁFICO ELASTIC ---
+    if (hasElastic) {
+        dibujarGraficoElastic(data);
+    }
+}
+
+// --- FUNCIONES PARA EL MODAL DE EXPLICACIÓN DE ERRERES (SUITESTENSA) ---
+
+function asegurarModalDetalleLog() {
+    // Si ya existe el contenedor en el DOM, no hacemos nada
+    if (document.getElementById('modal-log-detalle')) return;
+    
+    // Si no existe, lo creamos dinámicamente con los estilos nativos de TecnoMonitor
+    const modal = document.createElement('div');
+    modal.id = 'modal-log-detalle';
+    modal.className = 'modal-overlay';
+    modal.style.display = 'none';
+    modal.style.zIndex = '6000'; // Asegurar que quede por encima de todo
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 550px; border-top: 5px solid #8e44ad; display: flex; flex-direction: column; gap: 15px;">
+            <h3 id="modal-log-titulo-regla" style="margin-top:0; color:#2c3e50; font-family: monospace; font-size: 1.2em; border-bottom: 1px solid #eee; padding-bottom: 10px;">🔎 Código de Regla: -</h3>
+            
+            <div style="background: #ebf5fb; padding: 12px 15px; border-radius: 6px; border-left: 4px solid #3498db;">
+                <strong style="color: #2980b9; font-size: 1em; display: block; margin-bottom: 2px;">Título / Evento</strong>
+                <span id="modal-log-nombre" style="color: #2c3e50; font-weight: 600; font-size: 0.95em;">Cargando...</span>
+            </div>
+            
+            <div class="input-group" style="margin-bottom: 0;">
+                <label style="font-weight: 600; color: #7f8c8d; font-size: 0.85em; text-transform: uppercase;">Descripción del Incidente</label>
+                <div id="modal-log-descripcion" style="padding: 12px; background: #fff; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9em; color: #34495e; max-height: 120px; overflow-y: auto; white-space: pre-line; line-height: 1.4;">-</div>
+            </div>
+            
+            <div class="input-group" style="margin-bottom: 5px;">
+                <label style="font-weight: 600; color: #27ae60; font-size: 0.85em; text-transform: uppercase;">Acción Correctiva Sugerida</label>
+                <div id="modal-log-accion" style="padding: 12px; background: #f4fbf7; border: 1px solid #a3e4d7; border-radius: 6px; font-size: 0.9em; color: #196f3d; font-weight: 600; white-space: pre-line; line-height: 1.4;">-</div>
+            </div>
+            
+            <div style="display:flex; justify-content:flex-end; margin-top: 5px;">
+                <button class="btn-action" onclick="cerrarModalDetalleLog()" style="background:#95a5a6; width:auto; padding: 8px 25px; border-radius: 4px;">Cerrar</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+async function abrirModalDetalleLog(ruleId) {
+    // 1. Aseguramos estructura HTML
+    asegurarModalDetalleLog();
+    
+    const modal = document.getElementById('modal-log-detalle');
+    
+    // 2. Estado de carga inicial
+    document.getElementById('modal-log-titulo-regla').innerText = `🔎 Código de Regla: ${ruleId}`;
+    document.getElementById('modal-log-nombre').innerText = "Buscando en el diccionario...";
+    document.getElementById('modal-log-descripcion').innerText = "Cargando especificaciones...";
+    document.getElementById('modal-log-accion').innerText = "Cargando guía técnica...";
+    
+    modal.style.display = 'flex';
+    
+    // 3. Consulta asíncrona al backend
+    try {
+        const res = await authFetch(`/api/logs-dictionary/${ruleId}`);
+        const data = await res.json();
+        
+        // 4. Poblar campos con los datos del log_dictionary de la DB
+        document.getElementById('modal-log-nombre').innerText = data.title;
+        document.getElementById('modal-log-descripcion').innerText = data.description;
+        document.getElementById('modal-log-accion').innerText = data.action;
+    } catch (error) {
+        console.error("Error cargando metadatos del log:", error);
+        document.getElementById('modal-log-nombre').innerText = "⚠️ Error de comunicación";
+        document.getElementById('modal-log-descripcion').innerText = "No se pudieron recuperar los datos descriptivos desde el servidor de monitoreo.";
+        document.getElementById('modal-log-accion').innerText = "Revise la conectividad o verifique si el registro existe en el diccionario.";
+    }
+}
+
+function cerrarModalDetalleLog() {
+    const modal = document.getElementById('modal-log-detalle');
+    if (modal) modal.style.display = 'none';
 }
 
 // --- NUEVA FUNCIÓN PARA CONTROLAR LOS BOTONES DE MÉTRICA MIRTH ---
@@ -3780,4 +3876,94 @@ function renderMirthRespList(filterText = "") {
         }).join('');
     }
     list.style.display = 'block';
+}
+
+// --- NUEVA FUNCIÓN PARA EL GRÁFICO DE LÍNEAS DE ELASTICSEARCH ---
+function dibujarGraficoElastic(data) {
+    if (!data.elasticsearch || data.elasticsearch.length === 0) return;
+    
+    const canvas = document.getElementById('elasticChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // 1. Obtenemos todos los timestamps únicos para armar el eje X
+    const tsSet = new Set();
+    data.elasticsearch.forEach(log => log.history.forEach(h => tsSet.add(h.ts)));
+    const labels = Array.from(tsSet).sort();
+
+    // 2. Formateamos las etiquetas del eje X visualmente
+    const displayLabels = labels.map(ts => {
+        const d = new Date(ts);
+        return currentSoftwareMinutes > 1440 ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:00` : d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    });
+
+    const datasets = [];
+    const palette = ['#e74c3c', '#f39c12', '#3498db', '#9b59b6', '#2ecc71', '#1abc9c', '#34495e', '#f1c40f'];
+
+    // 3. Mapeamos los datos por cada Regla (Rule ID)
+    data.elasticsearch.forEach((log, index) => {
+        const dataPoints = labels.map(ts => {
+            const point = log.history.find(h => h.ts === ts);
+            return point ? point.count : 0;
+        });
+
+        // Solo agregamos la línea si hubo algún error en el periodo
+        if (dataPoints.some(val => val > 0)) {
+            datasets.push({
+                label: log.rule_id,
+                data: dataPoints,
+                borderColor: palette[index % palette.length],
+                backgroundColor: palette[index % palette.length] + '20', // Fondo semi-transparente
+                borderWidth: 2,
+                tension: 0.3, // Curvatura suave de la línea
+                pointRadius: 0, // Ocultar puntos, solo se ven al hacer hover
+                fill: true // Relleno de la montaña (área debajo de la línea)
+            });
+        }
+    });
+
+    if (elasticChartInstance) {
+        elasticChartInstance.destroy();
+    }
+
+    // 4. Inicializar gráfico de Líneas (Line chart)
+    elasticChartInstance = new Chart(ctx, {
+        type: 'line', // <--- GRÁFICO DE LÍNEAS
+        data: {
+            labels: displayLabels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: { grid: { display: false } },
+                y: { 
+                    beginAtZero: true,
+                    suggestedMax: 5 
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { usePointStyle: true, boxWidth: 8, font: {size: 10} }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) { label += ': '; }
+                            if (context.parsed.y !== null) { label += context.parsed.y.toLocaleString('es-AR'); }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }

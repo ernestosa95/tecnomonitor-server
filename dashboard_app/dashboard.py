@@ -1503,16 +1503,41 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
     # --- 5. NUEVO: PROCESAMOS LOS DATOS DE ELASTICSEARCH ---
     for rule_id, history in elastic_logs.items():
         if not history: continue
+        
+        # Ordenamos cronológicamente si es necesario
+        history.sort(key=lambda x: x.timestamp if x.timestamp else datetime.min)
+        
         actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
         
-        # --- FIX: Validación segura del tipo de dato del timestamp ---
+        # Validación segura del tipo de dato del timestamp (última vez visto)
         last_seen_str = ""
         if actual.timestamp:
             if isinstance(actual.timestamp, str):
-                last_seen_str = actual.timestamp[:19] # Cortamos milisegundos si es string
+                last_seen_str = actual.timestamp[:19]
             else:
                 last_seen_str = actual.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Construir el historial para el gráfico en el frontend
+        historial_regla = []
+        for row in history:
+            ts_str = ""
+            if row.timestamp:
+                if isinstance(row.timestamp, str):
+                    ts_str = row.timestamp[:19]
+                else:
+                    ts_str = row.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Aseguramos que el valor sea numérico
+            try:
+                conteo = int(row.metric_value or 0)
+            except (ValueError, TypeError):
+                conteo = 0
+                
+            historial_regla.append({
+                "ts": ts_str,
+                "count": conteo
+            })
         
         software_data["elasticsearch"].append({
             "rule_id": rule_id,
@@ -1520,9 +1545,10 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = De
             "count": actual.metric_value,
             "services": extra_actual.get("services", []),
             "evidence": extra_actual.get("evidence", ""),
-            "last_seen": last_seen_str # <- Usamos la variable segura
+            "last_seen": last_seen_str,
+            "history": historial_regla # <-- Agregamos el array histórico aquí
         })
-        
+
     return software_data
 
 @app.post("/v1/generar-reporte-ris")
@@ -1579,4 +1605,32 @@ def listar_usuarios_responsables(db: Session = Depends(get_db),
         })
     return resultados
 
-
+@app.get("/api/logs-dictionary/{event_id}")
+def obtener_detalle_diccionario_log(event_id: str, 
+                                     db: Session = Depends(get_db), 
+                                     current_user: dict = Depends(auth.get_current_user)):
+    """
+    Busca la información explicativa de una regla en el diccionario de la base de datos.
+    """
+    log_dic = db.query(database.LogDictionary).filter(
+        database.LogDictionary.app_name == "suitestensa",
+        database.LogDictionary.event_id == event_id
+    ).first()
+    
+    if not log_dic:
+        # Fallback por si la regla no está documentada en la DB aún
+        return {
+            "event_id": event_id,
+            "title": "Regla No Documentada",
+            "description": "No se encuentra una descripción cargada para este ID de regla en el diccionario local de la base de datos.",
+            "action": "Proceder con el análisis directo en la consola de ElasticSearch / Kibana.",
+            "severity": "UNKNOWN"
+        }
+        
+    return {
+        "event_id": log_dic.event_id,
+        "title": log_dic.title,
+        "description": log_dic.description,
+        "action": log_dic.action,
+        "severity": log_dic.severity
+    }
