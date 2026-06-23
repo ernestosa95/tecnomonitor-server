@@ -231,24 +231,35 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     scan_ts = ts
                     
                 for ev in suite_logs_data.get("events", []):
-                    try:
-                        ev_time_str = ev.get("last_seen") or scan_ts_str
-                        ev_time = datetime.fromisoformat(ev_time_str.replace('Z', '')[:26]) if ev_time_str else scan_ts
-                    except:
-                        ev_time = scan_ts
-                        
+                    rule_id = ev.get("rule_id", "UNKNOWN_RULE")
+                    event_count = ev.get("count", 0)
+
+                    # 1. Buscar la información enriquecida en el Diccionario de Logs
+                    # Usamos first() porque el event_id debería ser único
+                    dict_info = db.query(database.LogDictionary).filter(
+                        database.LogDictionary.event_id == rule_id
+                    ).first()
+
+                    # 2. Asignar valores (si no existe en el dic, ponemos defaults)
+                    severidad = dict_info.severity if dict_info and dict_info.severity else "INFO"
+                    titulo = dict_info.title if dict_info else "Regla desconocida (No en diccionario)"
+                    descripcion = dict_info.description if dict_info else "Sin descripción"
+                    accion = dict_info.action if dict_info else "Avisar a soporte N2"
+
+                    # 3. Guardar en SoftwareMonitoring
                     db.add(database.SoftwareMonitoring(
                         hospital_id=h_id,
-                        app_name="elasticsearch", # Lo guardamos como elasticsearch
-                        component_id=ev.get("rule_id", "UNKNOWN_RULE"),
-                        status_value=ev.get("severity", "INFO"),
-                        metric_value=ev.get("count", 0),
+                        app_name="elasticsearch", # Lo mantenemos como elasticsearch según la lógica original
+                        component_id=rule_id,
+                        status_value=severidad, # <-- Ahora viene del Diccionario
+                        metric_value=event_count,
                         extra_data={
-                            "services": ev.get("services_affected", []),
-                            "evidence": ev.get("sample_evidence", ""),
-                            "first_seen": ev.get("first_seen", "")
+                            "titulo": titulo,
+                            "descripcion": descripcion,
+                            "accion_recomendada": accion,
+                            "from_dictionary": True # Flag útil para saber que se enriqueció
                         },
-                        timestamp=ev_time
+                        timestamp=scan_ts # Usamos el scan_time general
                     ))
 
             # --- 3. NUEVO: PROCESAR CERTIFICADOS SSL ---
