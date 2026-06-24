@@ -46,7 +46,7 @@ from schemas import DatosRISAnalytics
 
 import csv
 import os
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1634,3 +1634,53 @@ def obtener_detalle_diccionario_log(event_id: str,
         "action": log_dic.action,
         "severity": log_dic.severity
     }
+
+# --- 1. ENDPOINT PARA LEER LAS PREFERENCIAS (GET) ---
+@app.get("/api/hospital/{hospital_id}/kpi-settings")
+def get_kpi_settings(hospital_id: str, db: Session = Depends(get_db), current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria", "Comercial"))):
+    """Devuelve la configuración granular de KPIs para un hospital específico."""
+    hosp = db.query(database.HospitalMetadata).filter_by(hospital_id=hospital_id).first()
+    
+    if not hosp:
+        raise HTTPException(status_code=404, detail="Hospital no encontrado")
+    
+    prefs = {}
+    if hosp.kpi_settings:
+        # Dependiendo del dialecto de DB, kpi_settings podría llegar como string o dict
+        if isinstance(hosp.kpi_settings, str):
+            try:
+                prefs = json.loads(hosp.kpi_settings)
+            except:
+                prefs = {}
+        else:
+            prefs = hosp.kpi_settings
+            
+    # Valores por defecto para la UI si está vacío
+    if not prefs:
+        prefs = {
+            "KPI_INACT_RAD": True,
+            "KPI_INACT_MAMO": False, # Por defecto apagamos mamo hasta que el usuario lo prenda
+        }
+        
+    return {"hospital_id": hospital_id, "kpi_settings": prefs}
+
+
+# --- 2. ENDPOINT PARA GUARDAR LAS PREFERENCIAS (POST) ---
+@app.post("/api/hospital/{hospital_id}/kpi-settings")
+def update_kpi_settings(hospital_id: str, payload: dict, db: Session = Depends(get_db), current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    """Guarda la configuración granular de KPIs desde la UI."""
+    hosp = db.query(database.HospitalMetadata).filter_by(hospital_id=hospital_id).first()
+    
+    if not hosp:
+        raise HTTPException(status_code=404, detail="Hospital no encontrado")
+    
+    # Validamos que el payload sea un diccionario
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Formato de datos inválido. Se esperaba un JSON (diccionario).")
+
+    # Guardamos en la base de datos (SQLAlchemy con tipo JSON lo maneja directamente)
+    hosp.kpi_settings = payload
+    db.commit()
+    
+    return {"status": "success", "message": "Configuración de alertas actualizada correctamente"}
+

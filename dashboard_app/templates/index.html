@@ -802,6 +802,9 @@
             </div>
         </div>
     </div>
+
+
+
     <div style="height: 80px;"></div>
 </div>
 
@@ -833,6 +836,44 @@
     </div>
 </div>
 
+<div id="modalKPIConfig" class="modal-overlay" style="display:none; z-index: 5000;">
+    <div class="modal-content" style="max-width: 450px;">
+        <h3 style="margin-top:0; color:#2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+            ⚙️ Alertas Clínicas: <span id="kpiModalHospitalName" style="color: #3498db;"></span>
+        </h3>
+        <input type="hidden" id="kpiModalHospitalId">
+        <p style="color: #7f8c8d; font-size: 0.9em; margin-bottom: 20px;">Selecciona qué motores de inactividad deben evaluar a este hospital de forma diaria.</p>
+
+        <div class="input-group" style="margin-bottom: 15px;">
+            <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; background:#f8f9fa; padding:15px; border-radius:8px; border:1px solid #e1e4e8;">
+                <input type="checkbox" id="switchKpiRad" style="width:20px; height:20px; margin-top:2px; accent-color:#3498db;">
+                <div>
+                    <span style="font-weight:bold; color:#2c3e50; display:block;">Inactividad en Radiología (RIS)</span>
+                    <span style="font-size:0.85em; color:#7f8c8d;">Monitorea la falta de producción en modalidades generales (DX, CR, etc).</span>
+                </div>
+            </label>
+        </div>
+
+        <div class="input-group" style="margin-bottom: 20px;">
+            <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; background:#f8f9fa; padding:15px; border-radius:8px; border:1px solid #e1e4e8;">
+                <input type="checkbox" id="switchKpiMamo" style="width:20px; height:20px; margin-top:2px; accent-color:#e91e63;">
+                <div>
+                    <span style="font-weight:bold; color:#2c3e50; display:block;">Inactividad en Mamografía (MG)</span>
+                    <span style="font-size:0.85em; color:#7f8c8d;">Monitorea la falta de admisiones exclusivamente en mamógrafos.</span>
+                </div>
+            </label>
+        </div>
+        
+        <div id="kpiModalLoading" style="display:none; text-align:center; padding: 10px; color:#3498db; font-weight:bold;">
+            Sincronizando...
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+            <button class="btn-action" onclick="cerrarModalKPIConfig()" style="background:#95a5a6; width:auto;">Cancelar</button>
+            <button class="btn-action" onclick="guardarKPIConfig()" style="width:auto; background:#3498db;">Guardar Configuración</button>
+        </div>
+    </div>
+</div>
 
 <nav class="bottom-nav" id="bottom-nav">
     <button class="nav-item active" onclick="navegar('view-dashboard', null, this); cargarDatos();">

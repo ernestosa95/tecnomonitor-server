@@ -331,7 +331,6 @@ def _verificar_conectividad(db, config, asana_followers):
 def verificar_actividad_ris(db: Session):
     config = cargar_config(db)
     
-    # 1. ¿Está habilitada la alerta?
     if not config.get('kpi_rad_alert_enabled'):
         return
 
@@ -341,7 +340,6 @@ def verificar_actividad_ris(db: Session):
     modalidades_target = [m.strip().upper() for m in config.get('kpi_rad_modalities', 'DX,CR').split(',')]
     emails_responsables = [e.strip() for e in config.get('kpi_rad_responsible_email', '').split(',') if e.strip()]
     
-    # 2. Buscar los IDs de Asana de los responsables seleccionados
     asana_followers = []
     if emails_responsables:
         usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_responsables)).all()
@@ -349,7 +347,6 @@ def verificar_actividad_ris(db: Session):
 
     fecha_limite = datetime.now() - timedelta(hours=umbral_horas)
     
-    # 3. Obtener hospitales que tienen RIS activado
     hospitales_ris = db.query(database.HospitalMetadata).filter(
         database.HospitalMetadata.is_visible == True,
         database.HospitalMetadata.alerts_enabled == True,
@@ -357,7 +354,17 @@ def verificar_actividad_ris(db: Session):
     ).all()
 
     for hosp in hospitales_ris:
-        # Buscar los reportes de uso en el periodo definido
+        # --- NUEVO LOGICA GRANULAR: Verificamos preferencias en JSON ---
+        kpi_prefs = hosp.kpi_settings or {}
+        if isinstance(kpi_prefs, str):
+            try: kpi_prefs = json.loads(kpi_prefs)
+            except: kpi_prefs = {}
+            
+        # Si explícitamente se apagó para este hospital, saltamos
+        if kpi_prefs.get('KPI_INACT_RAD', False) == False:
+            continue
+        # -------------------------------------------------------------
+
         reportes = db.query(database.ReporteUso).filter(
             database.ReporteUso.hospital_id == hosp.hospital_id,
             database.ReporteUso.timestamp >= fecha_limite
@@ -365,64 +372,27 @@ def verificar_actividad_ris(db: Session):
 
         total_admitidos = 0
         
-        # Parsear los JSONs para contar los admitidos en las modalidades objetivo
         for rep in reportes:
             if not rep.kpi_json_data:
                 continue
             try:
                 metrics = json.loads(rep.kpi_json_data)
                 for item in metrics.get('ris', []):
-                    # Extraemos la modalidad de forma segura
                     mod_reportada = str(item.get('mod', '')).upper()
-                    
-                    # CORRECCIÓN: Verificamos si alguna modalidad target está en la reportada
                     if any(mod_target in mod_reportada for mod_target in modalidades_target):
                         total_admitidos += item.get('admitidos', 0)
             except Exception as e:
                 continue
 
-        # 4. Disparar alerta si no hay actividad
+        # --- CORRECCIÓN BUG 1: Lógica de Auto-cierre si volvió a tener producción ---
         if total_admitidos == 0:
             mensaje = f"Cero (0) admisiones registradas en las modalidades {', '.join(modalidades_target)} durante las últimas {umbral_horas} horas."
-            
-            # Para las alertas de KPI, usamos actualizar_estado_alerta pero le inyectamos los followers
-            # Temporalmente seteamos los followers en la variable global o se los pasamos a la función
-            # Nota: Necesitaremos un pequeño ajuste en asana_conector para recibir followers específicos, 
-            # o directamente crear la tarea aquí si queremos aislar la lógica.
-            
             print(f"⚠️ ALERTA KPI: Inactividad en {hosp.hospital_id}. Generando ticket...")
-            
-            # Verificamos si ya hay una alerta activa de este tipo para no duplicar
-            alerta_existente = db.query(database.AlertaModel).filter(
-                database.AlertaModel.hospital_id == hosp.hospital_id,
-                database.AlertaModel.tipo == "KPI_INACT_RAD",
-                database.AlertaModel.is_active == 1
-            ).first()
-            
-            if not alerta_existente:
-                # Disparamos a Asana (asumiendo que asana_conector tiene una función para esto)
-                gid = None
-                if asana_conector:
-                    gid = asana_conector.crear_tarea_alerta(
-                        hospital_id=hosp.hospital_id, 
-                        tipo="KPI_INACT_RAD", 
-                        nivel="WARNING", 
-                        mensaje_detalle=mensaje, 
-                        hospital_project_gid=hosp.asana_project_id,
-                        extra_followers=asana_followers # <-- Pasamos los IDs recuperados
-                    )
-                
-                # Guardamos en la BD local
-                nueva_alerta = database.AlertaModel(
-                    hospital_id=hosp.hospital_id, 
-                    tipo="KPI_INACT_RAD", 
-                    mensaje=f"[WARNING] {mensaje}", 
-                    start_time=datetime.now(), 
-                    is_active=1, 
-                    asana_task_gid=gid
-                )
-                db.add(nueva_alerta)
-                db.commit()
+            # Usamos la nueva función refactorizada para crear alertas KPI
+            _crear_alerta_kpi_generica(db, hosp, "KPI_INACT_RAD", mensaje, asana_followers)
+        else:
+            # Si hay admisiones, llamamos a actualizar_estado_alerta para que la CIERRE si estaba abierta
+            actualizar_estado_alerta(db, hosp.hospital_id, "KPI_INACT_RAD", "OK", "Producción reanudada", hosp.asana_project_id, asana_followers)
 
 # Variable global para registrar la última ejecución
 ultima_ejecucion_kpis = None
@@ -457,9 +427,10 @@ def verificar_actividad_mamo(db: Session):
 
     print("📊 Verificando KPI 2: Inactividad en Mamografía...")
     dias_umbral = config.get('kpi_mamo_threshold_days', 7)
-    emails_resp = [e.strip() for e in config.get('kpi_rad_responsible_email', '').split(',') if e.strip()]
     
-    # Recuperar seguidores
+    # --- CORRECCIÓN BUG 2: Email cruzado. Apuntamos a la variable correcta ---
+    emails_resp = [e.strip() for e in config.get('kpi_mamo_responsible_email', '').split(',') if e.strip()]
+    
     followers = []
     if emails_resp:
         usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_resp)).all()
@@ -469,10 +440,23 @@ def verificar_actividad_mamo(db: Session):
     
     hospitales_ris = db.query(database.HospitalMetadata).filter(
         database.HospitalMetadata.is_visible == True,
+        # --- CORRECCIÓN BUG 3: Faltaba chequear que las alertas estuvieran encendidas globalmente ---
+        database.HospitalMetadata.alerts_enabled == True,
         database.HospitalMetadata.has_ris == True
     ).all()
 
     for hosp in hospitales_ris:
+        # --- NUEVA LOGICA GRANULAR ---
+        kpi_prefs = hosp.kpi_settings or {}
+        if isinstance(kpi_prefs, str):
+            try: kpi_prefs = json.loads(kpi_prefs)
+            except: kpi_prefs = {}
+            
+        # Si explícitamente se apagó MAMO, saltamos
+        if kpi_prefs.get('KPI_INACT_MAMO', True) == False:
+            continue
+        # -----------------------------
+
         reportes = db.query(database.ReporteUso).filter(
             database.ReporteUso.hospital_id == hosp.hospital_id,
             database.ReporteUso.timestamp >= fecha_limite
@@ -484,19 +468,18 @@ def verificar_actividad_mamo(db: Session):
             try:
                 metrics = json.loads(rep.kpi_json_data)
                 for item in metrics.get('ris', []):
-                    # Extraemos la modalidad de forma segura y la pasamos a mayúsculas
                     mod_reportada = str(item.get('mod', '')).upper()
-                    
-                    # CORRECCIÓN: Verificamos si 'MG' o 'MAMO' es parte del texto (Soporta 'MG/SR', 'MG/OT', etc.)
                     if any(m in mod_reportada for m in ['MG', 'MAMO']):
                         total_mamo += item.get('admitidos', 0)
             except: continue
 
         if total_mamo == 0:
-            # Lógica de creación de alerta (igual que la anterior pero tipo KPI_INACT_MAMO)
-            _crear_alerta_kpi_generica(db, hosp, "KPI_INACT_MAMO", 
-                                     f"Sin admisiones de Mamografía (MG) en los últimos {dias_umbral} días.", 
-                                     followers)
+            mensaje = f"Sin admisiones de Mamografía (MG) en los últimos {dias_umbral} días."
+            print(f"⚠️ ALERTA KPI MAMO: Inactividad en {hosp.hospital_id}.")
+            _crear_alerta_kpi_generica(db, hosp, "KPI_INACT_MAMO", mensaje, followers)
+        else:
+            # Auto-cierre
+            actualizar_estado_alerta(db, hosp.hospital_id, "KPI_INACT_MAMO", "OK", "Producción reanudada", hosp.asana_project_id, followers)
 
 def _crear_alerta_kpi_generica(db, hosp, tipo, mensaje, followers):
     # Verificamos si ya existe para no duplicar

@@ -1421,6 +1421,7 @@ async function listarHospitalesConfig() {
                 <td style="font-family:monospace; font-size:0.9em;">${h.asana_project_id || '-'}</td>
                 <td style="text-align:right;">
                     <button class="btn-small" onclick="toggleRis('${h.hospital_id}')" title="Integración RIS ON/OFF" style="margin-right:5px; background-color:${bgRis}; font-weight:bold;">RIS</button>
+                    ${hasRis ? `<button class="btn-small" onclick="abrirModalKPIConfig('${h.hospital_id}', '${h.nombre.replace(/'/g, "\\'")}')" title="Configurar Alertas Clínicas (KPIs)" style="margin-right:5px; background-color:#3498db; font-weight:bold;">⚙️</button>` : ''}
                     <button class="btn-small ${btnClassBell}" onclick="toggleAlertas('${h.hospital_id}')" title="Alertas ON/OFF" style="margin-right:5px; background-color:${alertsOn?'#e67e22':'#95a5a6'};">${bellIcon}</button>
                     <button class="btn-small ${btnClassVis}" onclick="toggleVisibilidad('${h.hospital_id}')" title="Mostrar/Ocultar Dashboard">${eyeIcon}</button>
                     <button class="btn-small btn-edit" onclick='editarHospital(${JSON.stringify(h).replace(/'/g, "&apos;")})'>✏️</button>
@@ -3967,3 +3968,59 @@ function dibujarGraficoElastic(data) {
         }
     });
 }
+
+function abrirModalKPIConfig(hospitalId, hospitalNombre) {
+    document.getElementById('kpiModalHospitalId').value = hospitalId;
+    document.getElementById('kpiModalHospitalName').innerText = hospitalNombre;
+    
+    document.getElementById('switchKpiRad').checked = false;
+    document.getElementById('switchKpiMamo').checked = false;
+    document.getElementById('kpiModalLoading').style.display = 'block';
+    
+    document.getElementById('modalKPIConfig').style.display = 'flex'; // Abrir nativo
+
+    // Usamos authFetch en lugar de fetch estándar
+    authFetch(`/api/hospital/${hospitalId}/kpi-settings`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('kpiModalLoading').style.display = 'none';
+            const prefs = data.kpi_settings;
+            document.getElementById('switchKpiRad').checked = prefs.KPI_INACT_RAD ?? true;
+            document.getElementById('switchKpiMamo').checked = prefs.KPI_INACT_MAMO ?? false;
+        })
+        .catch(err => {
+            console.error("Error al cargar config KPI:", err);
+            document.getElementById('kpiModalLoading').style.display = 'none';
+            alert("No se pudo cargar la configuración actual.");
+        });
+}
+
+function cerrarModalKPIConfig() {
+    document.getElementById('modalKPIConfig').style.display = 'none';
+}
+
+function guardarKPIConfig() {
+    const hospitalId = document.getElementById('kpiModalHospitalId').value;
+    const payload = {
+        "KPI_INACT_RAD": document.getElementById('switchKpiRad').checked,
+        "KPI_INACT_MAMO": document.getElementById('switchKpiMamo').checked
+    };
+
+    authFetch(`/api/hospital/${hospitalId}/kpi-settings`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Error en la respuesta del servidor");
+        return res.json();
+    })
+    .then(data => {
+        cerrarModalKPIConfig(); // Cerrar nativo
+        console.log("✅ Configuración guardada:", data.message);
+    })
+    .catch(err => {
+        console.error("Error al guardar config KPI:", err);
+        alert("Ocurrió un error al intentar guardar la configuración.");
+    });
+}
+
