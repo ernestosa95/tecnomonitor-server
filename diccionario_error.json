@@ -1,635 +1,653 @@
 {
   "app_name": "suitestensa",
   "dictionary": {
-  "CRIT-MQ-01": {
-    "titulo": "RabbitMQ Saturado",
-    "descripcion": "Agotamiento crítico de canales en el bus de mensajes. El servicio de Radio no puede procesar más solicitudes.",
-    "accion": "URGENTE: Reiniciar el servicio 'Suitestensa Radio Service'.",
-    "severidad_default": "CRITICAL"
-  },
-  "PACS-NULL-01": {
-    "titulo": "Error Crítico PACS (Ref Nula)",
-    "descripcion": "Fallo interno en la compresión o almacenamiento de imágenes DICOM.",
-    "accion": "Reiniciar el servicio 'Suitestensa PACS Server'.",
-    "severidad_default": "CRITICAL"
-  },
-  "IMG-CORRUPT-01": {
-    "titulo": "Bucle por Imagen Corrupta",
-    "descripcion": "JPEG Loop infinito que consume 100% de CPU al intentar convertir una imagen dañada.",
-    "accion": "Identificar y aislar el UID de la imagen corrupta.",
-    "severidad_default": "CRITICAL"
-  },
-  "SYS-MEM-CRASH": {
-    "titulo": "Violación de Acceso en Memoria",
-    "descripcion": "Un servicio intentó leer memoria protegida (ACCESS_VIOLATION / 0xc0000005). Esto provoca un reinicio forzado del servicio.",
-    "accion": "URGENTE: Revisar Visor de Eventos de Windows. Posible corrupción de archivos DICOM, falta de RAM o bug en librerías base (C++).",
-    "severidad_default": "CRITICAL"
-  },
-  "DCM-COM-01": {
-    "titulo": "Fallo de Interoperabilidad DICOM (0x80040221)",
-    "descripcion": "Fallo en la comunicación con librerías COM heredadas (DCMProxy/MPSClient).",
-    "accion": "Reiniciar 'Medical Process Server' (MPS) e IIS.",
-    "severidad_default": "HIGH"
-  },
-  "DCM-STORE-01": {
-    "titulo": "Fallo de Almacenamiento (C-STORE)",
-    "descripcion": "El PACS rechazó la solicitud de guardar imágenes. Posible fallo de permisos o disco lleno.",
-    "accion": "Revisar espacio en unidad DICOMDATA y permisos de escritura.",
-    "severidad_default": "HIGH"
-  },
-  "DCM-NET-01": {
-    "titulo": "Fallo Transmisión DICOM (P-DATA-TF)",
-    "descripcion": "Interrupción abrupta durante la transferencia de datos de imagen (PDU).",
-    "accion": "Verificar estabilidad de la red o reiniciar la modalidad emisora.",
-    "severidad_default": "HIGH"
-  },
-  "SCP-WRITE-01": {
-    "titulo": "Fallo Escritura SCP (System Error)",
-    "descripcion": "El servidor SCP falló al procesar un paquete de datos entrante (State.Write).",
-    "accion": "Posible corrupción de datos en memoria o disco. Verificar estado del servicio 'Suitestensa Worklist'.",
-    "severidad_default": "HIGH"
-  },
-  "PACS-EXT-ERR": {
-    "titulo": "Fallo Módulo Externo PACS",
-    "descripcion": "El PACS Server devolvió un error de componente externo (0x80040219).",
-    "accion": "Verificar base de datos o plugins DICOM activos.",
-    "severidad_default": "HIGH"
-  },
-  "CFG-DB-MISS": {
-    "titulo": "Falta Cadena Conexión DB",
-    "descripcion": "El servicio o aplicación web (IIS) intentó conectar a la base de datos sin una cadena de conexión configurada o inicializada.",
-    "accion": "Revisar archivos .config (web.config/Suitestensa.exe.config) y reiniciar el Application Pool o Servicio.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-DIR-MISS": {
-    "titulo": "Directorio No Encontrado",
-    "descripcion": "Un servicio intentó acceder o escribir en una carpeta que no existe en el disco (DirectoryNotFoundException).",
-    "accion": "Verificar configuración de rutas (logs, repositorios) y crear el directorio si es necesario.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-COM-CLS": {
-    "titulo": "Fallo Componente COM (Class Factory)",
-    "descripcion": "No se pudo instanciar un componente COM heredado (CLSID Failed).",
-    "accion": "Verificar registro de DLLs y componentes Extensa en el servidor.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-COM-ERR": {
-    "titulo": "Excepción General COM",
-    "descripcion": "Un componente no administrado (COM) devolvió una excepción crítica al ser invocado.",
-    "accion": "Verificar la salud del sistema operativo o librerías C++ base.",
-    "severidad_default": "HIGH"
-  },
-  "MPS-ERR-01": {
-    "titulo": "Error de Instancia (TargetException)",
-    "descripcion": "El servidor de procesos falló al invocar un método (Non-static method requires a target).",
-    "accion": "Reiniciar MPS. Verificar salud del Application Pool en IIS.",
-    "severidad_default": "HIGH"
-  },
-  "MPS-LIST-01": {
-    "titulo": "Fallo Recuperación Imágenes (MPS)",
-    "descripcion": "El servidor MPS falló al entregar la lista de imágenes (GetClientRimageList).",
-    "accion": "Posible error de DB o bloqueo del servicio. Reiniciar MPS.",
-    "severidad_default": "HIGH"
-  },
-  "PUB-ISO-FAIL": {
-    "titulo": "Fallo Creación ISO (CD/DVD)",
-    "descripcion": "El sistema falló al intentar empaquetar un estudio en formato ISO (DIR_PROC_ERR).",
-    "accion": "Revisar permisos en la carpeta temporal de exportación y espacio en disco.",
-    "severidad_default": "HIGH"
-  },
-  "PUB-NOTIFY-01": {
-    "titulo": "Fallo Notificación/Cancelación Informe",
-    "descripcion": "Error al notificar o cancelar un informe (IdReport/IsReport inválido).",
-    "accion": "Verificar estado del informe en la base de datos (posible ID huérfano).",
-    "severidad_default": "HIGH"
-  },
-  "PUB-FAIL-01": {
-    "titulo": "Fallo Publicación/Ordenamiento PDF",
-    "descripcion": "Error al generar, ordenar o publicar el archivo PDF del informe.",
-    "accion": "Revisar permisos de escritura en carpeta de reportes o plantilla PDF.",
-    "severidad_default": "HIGH"
-  },
-  "PUB-DISPATCH-01": {
-    "titulo": "Fallo Despacho de Evento",
-    "descripcion": "El sistema falló al emitir el evento (dispatch) notificando que el informe está listo.",
-    "accion": "Revisar conectividad con HIS/RIS o servicios de mensajería (HL7).",
-    "severidad_default": "HIGH"
-  },
-  "COM-PROXY-02": {
-    "titulo": "Fallo Proxy WCF (Radio)",
-    "descripcion": "El servidor web no puede comunicarse con el servicio de Radio (IServiceRadio).",
-    "accion": "Verificar que el servicio 'Suitestensa Radio Service' esté corriendo.",
-    "severidad_default": "HIGH"
-  },
-  "WEB-CTRL-NULL": {
-    "titulo": "Fallo en Control Web (IIS)",
-    "descripcion": "Error de referencia nula en el framework de controles web (SL.Framework.Control).",
-    "accion": "Error interno del aplicativo. Si persiste, reiniciar Application Pool de IIS.",
-    "severidad_default": "HIGH"
-  },
-  "WEB-REST-NULL": {
-    "titulo": "Excepción Nula en API REST",
-    "descripcion": "Error de referencia nula en el backend web de Suitestensa (Estensa.Web.Rest).",
-    "accion": "El servidor recibió datos inesperados o vacíos desde el cliente web.",
-    "severidad_default": "HIGH"
-  },
-  "DCM-DICT-ERR": {
-    "titulo": "Diccionario DICOM Corrupto",
-    "descripcion": "Error interno: No se encontró una clave esperada en el diccionario DICOM (CDicomHelper).",
-    "accion": "Posible corrupción de DLLs o versión incompatible. Reinstalar componentes DICOM.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-LINQ-01": {
-    "titulo": "Dato Inexistente en Consulta (LINQ)",
-    "descripcion": "El sistema intentó acceder a un registro en base de datos que no existe (Sequence contains no elements).",
-    "accion": "Verificar inconsistencias en la base de datos (estudios huérfanos).",
-    "severidad_default": "HIGH"
-  },
-  "DCM-NULL-01": {
-    "titulo": "Excepción Nula DICOM Core",
-    "descripcion": "Fallo no controlado en el framework DICOM (SL.Framework).",
-    "accion": "Reportar a desarrollo con logs completos.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-DLL-01": {
-    "titulo": "Ensamblado no encontrado (DLL)",
-    "descripcion": "IIS no pudo cargar una librería .NET necesaria (ReflectionTypeLoadException).",
-    "accion": "Verificar integridad de la carpeta Bin y versiones de DLLs.",
-    "severidad_default": "HIGH"
-  },
-  "DB-CONN-WALLE": {
-    "titulo": "Fallo DB Walle",
-    "descripcion": "No se puede establecer conexión con la base de datos de auditoría (ExtensaWalle).",
-    "accion": "Verificar estado del SQL Server y cadena de conexión.",
-    "severidad_default": "HIGH"
-  },
-  "MPS-CFG-02": {
-    "titulo": "Cliente sin Grupo (MPS)",
-    "descripcion": "Una estación de trabajo intentó conectarse pero no está asignada a ningún Client Group.",
-    "accion": "Configurar la estación en la Consola de Administración.",
-    "severidad_default": "HIGH"
-  },
-  "NET-TIME-10060": {
-    "titulo": "Timeout de Red (10060)",
-    "descripcion": "El nodo remoto no respondió a tiempo.",
-    "accion": "Verificar conectividad de red, firewall y estado del equipo remoto.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-DISK-01": {
-    "titulo": "Error de I/O o Disco Lleno",
-    "descripcion": "Excepción de entrada/salida o espacio insuficiente.",
-    "accion": "Liberar espacio en disco inmediatamente.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-FILE-LOCK": {
-    "titulo": "Archivo Bloqueado (Access Denied)",
-    "descripcion": "El servicio no pudo acceder a un archivo porque está siendo usado por otro proceso (Error 32).",
-    "accion": "Revisar si el antivirus está bloqueando la carpeta de generación de CDs u otras carpetas temporales.",
-    "severidad_default": "HIGH"
-  },
-  "SYS-FILE-01": {
-    "titulo": "Error de Acceso a Archivo",
-    "descripcion": "No se pudo obtener información de un archivo.",
-    "accion": "Verificar permisos de lectura en el almacenamiento compartido (NAS/SAN).",
-    "severidad_default": "HIGH"
-  },
-  "DB-DEADLOCK-01": {
-    "titulo": "Deadlock en Base de Datos",
-    "descripcion": "La transacción fue víctima de un bloqueo mutuo en SQL Server.",
-    "accion": "Monitorizar rendimiento de SQL. Si es frecuente, requiere tuning de DB.",
-    "severidad_default": "HIGH"
-  },
-  "DB-POOL-01": {
-    "titulo": "Agotamiento de Pool SQL",
-    "descripcion": "No hay conexiones disponibles en el pool de base de datos.",
-    "accion": "Reiniciar servicios que consumen mucha DB o aumentar Max Pool Size.",
-    "severidad_default": "HIGH"
-  },
-  "AUTH-NULL-01": {
-    "titulo": "Token de Autenticación Nulo",
-    "descripcion": "El sistema recibió una petición con un token de seguridad vacío o inválido (IDX10000).",
-    "accion": "Verificar expiración de sesión de usuarios o reiniciar servicios de identidad (STS).",
-    "severidad_default": "MEDIUM"
-  },
-  "AUTH-TOKEN-EXP": {
-    "titulo": "Token Expirado",
-    "descripcion": "El token de seguridad ha caducado (IDX10223).",
-    "accion": "Sincronizar relojes o solicitar re-login del usuario.",
-    "severidad_default": "MEDIUM"
-  },
-  "AUTH-FAIL-01": {
-    "titulo": "Fallo de Autenticación",
-    "descripcion": "Nombre de usuario o contraseña incorrectos.",
-    "accion": "Verificar credenciales.",
-    "severidad_default": "MEDIUM"
-  },
-  "AUTH-SESS-INV": {
-    "titulo": "Sesión Inválida o Expirada",
-    "descripcion": "Acceso denegado o sesión caducada en el servidor.",
-    "accion": "La sesión del usuario ha expirado. Forzar re-login.",
-    "severidad_default": "MEDIUM"
-  },
-  "SEC-DOM-MISS": {
-    "titulo": "Dominio No Reconocido",
-    "descripcion": "Intento de acceso desde un dominio o equipo no registrado en la DB.",
-    "accion": "Registrar el dominio/equipo en la tabla de configuración de seguridad.",
-    "severidad_default": "MEDIUM"
-  },
-  "SEC-HOST-INV": {
-    "titulo": "Nombre de Host Inválido",
-    "descripcion": "El nombre del servidor en la petición no coincide con el esperado (Security Error).",
-    "accion": "Verificar nombres de host y configuración de DNS/Hosts.",
-    "severidad_default": "MEDIUM"
-  },
-  "SEC-REST-01": {
-    "titulo": "Excepción de Seguridad REST",
-    "descripcion": "Acceso denegado a la API Web (ClaimsAuthorization). El usuario no tiene permisos.",
-    "accion": "Verificar roles del usuario o configuración de seguridad del IIS.",
-    "severidad_default": "MEDIUM"
-  },
-  "SEC-ATNA-01": {
-    "titulo": "Fallo Auditoría ATNA",
-    "descripcion": "No se pudo registrar la acción en la base de auditoría por falta de ID de paciente.",
-    "accion": "Verificar integridad de los datos DICOM en el estudio visualizado.",
-    "severidad_default": "MEDIUM"
-  },
-  "CFG-PARAM-01": {
-    "titulo": "Parámetro Faltante (IdPacsScelto)",
-    "descripcion": "El sistema web perdió el contexto del PACS seleccionado (ArgumentException).",
-    "accion": "Posible expiración de sesión o error en web.config. Borrar cookies del cliente.",
-    "severidad_default": "MEDIUM"
-  },
-  "SYS-SIGN-01": {
-    "titulo": "Firma Digital Faltante",
-    "descripcion": "No se encontró el archivo de imagen de firma para el usuario.",
-    "accion": "Cargar la firma digital del médico en la carpeta de usuarios configurada.",
-    "severidad_default": "MEDIUM"
-  },
-  "PACS-INPUT-01": {
-    "titulo": "Objeto Inválido/Fallo PACS",
-    "descripcion": "El PACS rechazó un objeto o generó una excepción de falla (FaultException).",
-    "accion": "Revisar datos enviados por la modalidad o cliente DICOM. Posible formato corrupto.",
-    "severidad_default": "MEDIUM"
-  },
-  "PAT-DATA-01": {
-    "titulo": "Datos Paciente Faltantes",
-    "descripcion": "Fallo al guardar paciente. Falta fecha de nacimiento u otro dato obligatorio.",
-    "accion": "Verificar datos enviados por el RIS o ingresados manualmente en admisión.",
-    "severidad_default": "MEDIUM"
-  },
-  "MPS-FILE-ERR": {
-    "titulo": "Fallo Lectura Archivo MPS",
-    "descripcion": "El proceso MPS no pudo acceder o leer un archivo temporal de imagen en disco.",
-    "accion": "Verificar permisos de carpeta temporal o exclusiones de antivirus.",
-    "severidad_default": "MEDIUM"
-  },
-  "NET-ABORT-10053": {
-    "titulo": "Conexión Abortada Local (10053)",
-    "descripcion": "El servidor abortó la conexión (Timeout interno o bloqueo de seguridad).",
-    "accion": "Revisar exclusiones del Antivirus y carga del servidor.",
-    "severidad_default": "MEDIUM"
-  },
-  "NET-RESET-10054": {
-    "titulo": "Conexión Reiniciada (10054)",
-    "descripcion": "El cliente o un dispositivo intermedio cerró la conexión forzadamente.",
-    "accion": "Verificar estabilidad de la red LAN/WAN.",
-    "severidad_default": "MEDIUM"
-  },
-  "COM-PROXY-KEY": {
-    "titulo": "Proxy WCF Inválido",
-    "descripcion": "Intento de uso de un proxy de comunicación cerrado o inexistente (Key doesn't exist).",
-    "accion": "Reinicio de servicios o pérdida temporal de comunicación entre capas.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-JS-CONFIG": {
-    "titulo": "Error Configuración Visualizador",
-    "descripcion": "El visor HTML5 no pudo cargar sus settings (Error JS en cliente).",
-    "accion": "Limpiar caché del navegador del cliente afectado.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-JS-CRIT": {
-    "titulo": "Fallo Crítico JavaScript",
-    "descripcion": "El navegador cliente experimentó un error grave (Variables no definidas o bucles infinitos en AngularJS).",
-    "accion": "Refrescar el navegador. Si persiste, error de código en la interfaz web.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-GEN-01": {
-    "titulo": "Error Genérico Web (Unspecified)",
-    "descripcion": "Error no controlado en el backend del visualizador web.",
-    "accion": "Revisar logs detallados de IIS si el error persiste.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-HTTP-FAIL": {
-    "titulo": "Respuesta Fallo HTTP",
-    "descripcion": "El cliente web recibió una respuesta de error (400/500) del servidor.",
-    "accion": "Verificar logs de IIS para ver el error exacto del backend.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-IMG-MISS": {
-    "titulo": "Imagen Web No Encontrada",
-    "descripcion": "El visualizador web no encontró las imágenes solicitadas en el servidor (Immagini non trovate).",
-    "accion": "Verificar si el estudio está archivado o si hay problemas de permisos en la carpeta cache.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-FLT-NULL": {
-    "titulo": "Fallo Filtro de Excepciones (Web)",
-    "descripcion": "Error interno del aplicativo al intentar filtrar o capturar otra excepción previa.",
-    "accion": "Error de programación. Si persiste, escalar al soporte de nivel 3.",
-    "severidad_default": "MEDIUM"
-  },
-  "PACS-IMG-NONE": {
-    "titulo": "Estudio Sin Imágenes",
-    "descripcion": "El sistema solicitó imágenes para un estudio, pero no se encontraron (No images found).",
-    "accion": "Verificar si el estudio está archivado, offline o si la migración de datos está incompleta.",
-    "severidad_default": "MEDIUM"
-  },
-  "PUB-IMG-SIZE": {
-    "titulo": "Tamaño de Imagen Web No Disponible",
-    "descripcion": "Fallo al calcular el tamaño de una imagen para su visualización web o exportación (GetWebSize).",
-    "accion": "Posible imagen corrupta o no procesada. Verificar el estudio en el servidor PACS.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-NEGO-01": {
-    "titulo": "Fallo Negociación Web",
-    "descripcion": "Error en la negociación de la conexión (SignalR/WebSocket) entre cliente y servidor.",
-    "accion": "Verificar configuración de WebSockets en IIS o proxies intermedios.",
-    "severidad_default": "MEDIUM"
-  },
-  "SYS-THREAD-01": {
-    "titulo": "Aborto de Hilo (ThreadAbort)",
-    "descripcion": "Un hilo de ejecución fue detenido forzosamente (Posible reinicio o timeout interno).",
-    "accion": "Informativo si es esporádico. Si es masivo, el servicio se está reiniciando.",
-    "severidad_default": "MEDIUM"
-  },
-  "SYS-THREAD-SYNC": {
-    "titulo": "Deshabilitación por Sincronización",
-    "descripcion": "WaitDialog deshabilitado por problemas de hilos.",
-    "accion": "Informativo. Mecanismo de autoprotección del sistema.",
-    "severidad_default": "MEDIUM"
-  },
-  "SVC-LOOP-01": {
-    "titulo": "Bucle de Hilo (Radio)",
-    "descripcion": "Hilo de examen en espera infinita por fallo de integración.",
-    "accion": "Reiniciar 'Suitestensa Radio Service'.",
-    "severidad_default": "MEDIUM"
-  },
-  "INT-FALSE-01": {
-    "titulo": "Integración RIS Rechazada",
-    "descripcion": "El sistema externo (RIS) devolvió Result=FALSE.",
-    "accion": "Revisar mensajería HL7 y datos del paciente.",
-    "severidad_default": "MEDIUM"
-  },
-  "CFG-DOM-01": {
-    "titulo": "Error de Registro de Dominio",
-    "descripcion": "Parámetro inválido al verificar el dominio en DBManager.",
-    "accion": "Verificar configuración de dominio en Suitestensa.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-PROXY-01": {
-    "titulo": "Fallo Proxy Web",
-    "descripcion": "Excepción en el proxy interno de Estensa.Web.",
-    "accion": "Reiniciar IIS (iisreset).",
-    "severidad_default": "MEDIUM"
-  },
-  "MPS-REG-01": {
-    "titulo": "MPS No Registrado",
-    "descripcion": "La IP del MPS no está autorizada o registrada.",
-    "accion": "Registrar la IP en la configuración del sistema.",
-    "severidad_default": "MEDIUM"
-  },
-  "AUTH-TOKEN-01": {
-    "titulo": "Firma de Token Inválida",
-    "descripcion": "No se encuentra la clave para validar el token de seguridad (IDX10517).",
-    "accion": "Sincronizar hora del servidor y reiniciar servicios de autenticación.",
-    "severidad_default": "MEDIUM"
-  },
-  "WEB-KEY-01": {
-    "titulo": "Clave Web No Encontrada",
-    "descripcion": "KeyNotFoundException en el proceso w3wp.",
-    "accion": "Verificar caché de sesión o reiniciar App Pool.",
-    "severidad_default": "MEDIUM"
-  },
-  "NET-SOCK-10038": {
-    "titulo": "Operación en No-Socket (10038)",
-    "descripcion": "Intento de operation de red en un objeto que no es un socket.",
-    "accion": "Error de programación o corrupción de memoria puntual.",
-    "severidad_default": "MEDIUM"
-  },
-  "SYS-LOG-TRUNC": {
-    "titulo": "Escritura de Log Truncada",
-    "descripcion": "El servicio escribió un mensaje incompleto en el log. Posible cuelgue (Crash) del servicio en ese instante.",
-    "accion": "Verificar el Visor de Eventos de Windows para confirmar caídas de servicios.",
-    "severidad_default": "MEDIUM"
-  },
-  "SYS-JOB-ERR": {
-    "titulo": "Fallo en Tarea Programada",
-    "descripcion": "Un trabajo en segundo plano (Job/Quartz) devolvió una excepción.",
-    "accion": "Revisar qué módulo de mantenimiento falló.",
-    "severidad_default": "MEDIUM"
-  },
-  "DCM-DATA-01": {
-    "titulo": "Datos DICOM Incompletos",
-    "descripcion": "Faltan datos obligatorios del paciente (ej. Sexo) para procesar el trabajo.",
-    "accion": "Corregir datos del paciente en el RIS o consola.",
-    "severidad_default": "LOW"
-  },
-  "DCM-PCTX-01": {
-    "titulo": "Fallo Negociación DICOM",
-    "descripcion": "No se encontró un contexto de presentación válido (Transfer Syntax) en la asociación.",
-    "accion": "Verificar configuración de compresión/sintaxis en ambos extremos.",
-    "severidad_default": "LOW"
-  },
-  "DCM-VAL-01": {
-    "titulo": "Validación DICOMDIR Fallida",
-    "descripcion": "Faltan etiquetas obligatorias (ej. StudyDescription) en las imágenes recibidas.",
-    "accion": "Revisar configuración de la modalidad que envía las imágenes.",
-    "severidad_default": "LOW"
-  },
-  "INT-PAT-WARN": {
-    "titulo": "Advertencia Integración (Paciente)",
-    "descripcion": "Problema al procesar datos de un paciente específico en la integración.",
-    "accion": "Verificar ID del paciente en el RIS y en el PACS.",
-    "severidad_default": "LOW"
-  },
-  "DCM-IMPORT-01": {
-    "titulo": "Rechazo Asociación DICOM",
-    "descripcion": "Fallo en el handshake inicial (AAssociateRQ).",
-    "accion": "Verificar AE Title y IP de la modalidad emisora.",
-    "severidad_default": "LOW"
-  },
-  "INT-RIS-01": {
-    "titulo": "Paciente no Arribado",
-    "descripcion": "Llegó una imagen pero no existe la orden (Patient Not Arrived).",
-    "accion": "Revisar flujo de ingreso de pacientes en recepción.",
-    "severidad_default": "LOW"
-  },
-  "INT-TRACE-01": {
-    "titulo": "Traza de Integración",
-    "descripcion": "Inicio o fin de examen (Informativo).",
-    "accion": "Ninguna. Log de auditoría.",
-    "severidad_default": "LOW"
-  },
-  "DCM-TYPE-01": {
-    "titulo": "Archivo No DICOM",
-    "descripcion": "Se recibió un archivo que no cumple el estándar DICOM.",
-    "accion": "Verificar la fuente de las imágenes.",
-    "severidad_default": "LOW"
-  },
-  "SEC-PERM-01": {
-    "titulo": "Acceso No Autorizado",
-    "descripcion": "Usuario intentó acceder a una función sin permisos.",
-    "accion": "Revisar roles y permisos del usuario.",
-    "severidad_default": "LOW"
-  },
-  "DCM-OBJ-LEAK": {
-    "titulo": "Objetos DICOM en Memoria",
-    "descripcion": "El sistema detectó objetos 'vivos' al cerrar un proceso (Memory Leak).",
-    "accion": "Informativo. Si aumenta drásticamente, reiniciar servicio.",
-    "severidad_default": "LOW"
-  },
-  "SYS-LOC-01": {
-    "titulo": "Fallo de Traducción",
-    "descripcion": "No se encontró un recurso de texto (String) para el idioma actual.",
-    "accion": "Informativo (Cosmético).",
-    "severidad_default": "LOW"
-  },
-  "DCM-GRAPH-01": {
-    "titulo": "Log Gráfico DICOM",
-    "descripcion": "Traza de depuración de objetos gráficos (GraphObj).",
-    "accion": "Informativo. Ruido de log.",
-    "severidad_default": "LOW"
-  },
-  "CFG-VNEXT-01": {
-    "titulo": "Módulo VNext / Modificación",
-    "descripcion": "Traza informativa sobre el estado de un módulo administrativo.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "DB-SESS-01": {
-    "titulo": "Contexto de Sesión Perdido",
-    "descripcion": "El sistema no pudo recuperar la información de sesión (GUID 0000 o nulo).",
-    "accion": "Informativo. Indica expiración de sesión del usuario.",
-    "severidad_default": "LOW"
-  },
-  "PACS-QUERY-01": {
-    "titulo": "Límite de Resultados de Búsqueda",
-    "descripcion": "Se bloqueó una consulta por devolver demasiados resultados (Too Many Patients).",
-    "accion": "Indicar al usuario que use filtros más específicos en la búsqueda.",
-    "severidad_default": "LOW"
-  },
-  "SVC-WKL-LIMIT": {
-    "titulo": "Límite Worklist Excedido",
-    "descripcion": "Se solicitó una lista de trabajo demasiado grande (Too many records). Se recortaron resultados.",
-    "accion": "Configurar la modalidad para pedir rangos de fecha más cortos.",
-    "severidad_default": "LOW"
-  },
-  "CFG-UI-MISS": {
-    "titulo": "Fallo UI SettingManager",
-    "descripcion": "No se encontró un contenedor de configuración de interfaz (UIElement SettingManagerContainer).",
-    "accion": "Informativo/Configuración visual.",
-    "severidad_default": "LOW"
-  },
-  "CFG-UI-TAB": {
-    "titulo": "Tab No Encontrada",
-    "descripcion": "No se encontró una pestaña específica en la interfaz de configuración (AdminPacsSettings).",
-    "accion": "Informativo/Cosmético.",
-    "severidad_default": "LOW"
-  },
-  "DCM-TRACE-01": {
-    "titulo": "Traza DICOM Query",
-    "descripcion": "Log de depuración del QueryManager.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "MPS-TRACE-01": {
-    "titulo": "Traza Cliente MPS",
-    "descripcion": "Registro de IP cliente conectando al MPS.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "PUB-TRACE-01": {
-    "titulo": "Traza Publicación (Info)",
-    "descripcion": "Registro informativo de generación o grabación de CD/DVD (GetDicomSize / reordering).",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "MPS-INFO-01": {
-    "titulo": "MPS Operación de Cola (Informativo)",
-    "descripcion": "Operaciones normales del servidor MPS (RetrieveQueue / GetFirstImageData).",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "MPS-SHMEM-INFO": {
-    "titulo": "Traza Memoria Compartida MPS",
-    "descripcion": "El MPS consultó datos de paciente en la memoria compartida local.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "ADM-USER-01": {
-    "titulo": "Carga de Usuarios Admin",
-    "descripcion": "Inicio del proceso de obtención de lista de usuarios (AdminUser).",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "SYS-BROKER-INFO": {
-    "titulo": "Sincronización de Bus (Broker)",
-    "descripcion": "Traza de bajo nivel de notificación al bus de mensajes interno.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "SYS-INFO-FILL": {
-    "titulo": "Carga de Entidades (Info)",
-    "descripcion": "Proceso informativo de carga de entidades del servidor.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "SYS-JOB-INFO": {
-    "titulo": "Ejecución de Tarea Programada",
-    "descripcion": "El planificador interno ejecutó una tarea en segundo plano (Job Group).",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "CFG-TPL-MISS": {
-    "titulo": "Plantilla de Reporte Faltante",
-    "descripcion": "No se encontró el archivo de reporte (.report) solicitado en la base de datos.",
-    "accion": "Restaurar la plantilla en la configuración del sistema.",
-    "severidad_default": "LOW"
-  },
-  "SYS-MAINT-INFO": {
-    "titulo": "Limpieza de Mantenimiento",
-    "descripcion": "El sistema ejecutó una rutina programada de limpieza de carpetas.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "SYS-TIME-GEN": {
-    "titulo": "Tiempo de Espera Agotado (Timeout)",
-    "descripcion": "Una operación excedió el tiempo máximo de espera (15 seconds o similar).",
-    "accion": "Verificar rendimiento de la red o carga del servidor.",
-    "severidad_default": "LOW"
-  },
-  "DCM-IMP-STOP": {
-    "titulo": "Dicom Import Detenido",
-    "descripcion": "El servicio de importación de imágenes finalizó su proceso o fue detenido.",
-    "accion": "Informativo. Verificar si fue una parada programada.",
-    "severidad_default": "LOW"
-  },
-  "DCM-TAG-DUMP": {
-    "titulo": "Volcado Etiqueta DICOM (Informativo)",
-    "descripcion": "El sistema imprimió el valor crudo de un tag DICOM en el log.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "AUTH-CLOSE-WEB": {
-    "titulo": "Cierre de Sesión Web",
-    "descripcion": "El usuario cerró sesión en la plataforma web de manera normal.",
-    "accion": "Informativo.",
-    "severidad_default": "LOW"
-  },
-  "UNKNOWN-ERR-99": {
-    "titulo": "Error Desconocido",
-    "descripcion": "Patrón de error no tipificado en la base de conocimientos.",
-    "accion": "Revisar 'unknowns_lab.json' para análisis.",
-    "severidad_default": "WARNING"
+    "CRIT-MQ-01": {
+      "titulo": "RabbitMQ Saturado",
+      "descripcion": "Agotamiento crítico de canales en el bus de mensajes. El servicio de Radio no puede procesar más solicitudes.",
+      "accion": "URGENTE: Reiniciar el servicio 'Suitestensa Radio Service'.",
+      "severidad_default": "CRITICAL"
+    },
+    "PACS-NULL-01": {
+      "titulo": "Error Crítico PACS (Ref Nula)",
+      "descripcion": "Fallo interno en la compresión o almacenamiento de imágenes DICOM.",
+      "accion": "Reiniciar el servicio 'Suitestensa PACS Server'.",
+      "severidad_default": "CRITICAL"
+    },
+    "IMG-CORRUPT-01": {
+      "titulo": "Bucle por Imagen Corrupta",
+      "descripcion": "JPEG Loop infinito que consume 100% de CPU al intentar convertir una imagen dañada.",
+      "accion": "Identificar y aislar el UID de la imagen corrupta.",
+      "severidad_default": "CRITICAL"
+    },
+    "SYS-MEM-CRASH": {
+      "titulo": "Violación de Acceso en Memoria",
+      "descripcion": "Un servicio intentó leer memoria protegida (ACCESS_VIOLATION / 0xc0000005). Esto provoca un reinicio forzado del servicio.",
+      "accion": "URGENTE: Revisar Visor de Eventos de Windows. Posible corrupción de archivos DICOM, falta de RAM o bug en librerías base (C++).",
+      "severidad_default": "CRITICAL"
+    },
+    "DCM-COM-01": {
+      "titulo": "Fallo de Interoperabilidad DICOM (0x80040221)",
+      "descripcion": "Fallo en la comunicación con librerías COM heredadas (DCMProxy/MPSClient).",
+      "accion": "Reiniciar 'Medical Process Server' (MPS) e IIS.",
+      "severidad_default": "HIGH"
+    },
+    "DCM-STORE-01": {
+      "titulo": "Fallo de Almacenamiento (C-STORE)",
+      "descripcion": "El PACS rechazó la solicitud de guardar imágenes. Posible fallo de permisos o disco lleno.",
+      "accion": "Revisar espacio en unidad DICOMDATA y permisos de escritura.",
+      "severidad_default": "HIGH"
+    },
+    "DCM-NET-01": {
+      "titulo": "Fallo Transmisión DICOM (P-DATA-TF)",
+      "descripcion": "Interrupción abrupta durante la transferencia de datos de imagen (PDU).",
+      "accion": "Verificar estabilidad de la red o reiniciar la modalidad emisora.",
+      "severidad_default": "HIGH"
+    },
+    "SCP-WRITE-01": {
+      "titulo": "Fallo Escritura SCP (System Error)",
+      "descripcion": "El servidor SCP falló al procesar un paquete de datos entrante (State.Write).",
+      "accion": "Posible corrupción de datos en memoria o disco. Verificar estado del servicio 'Suitestensa Worklist'.",
+      "severidad_default": "HIGH"
+    },
+    "PACS-EXT-ERR": {
+      "titulo": "Fallo Módulo Externo PACS",
+      "descripcion": "El PACS Server devolvió un error de componente externo (0x80040219).",
+      "accion": "Verificar base de datos o plugins DICOM activos.",
+      "severidad_default": "HIGH"
+    },
+    "CFG-DB-MISS": {
+      "titulo": "Falta Cadena Conexión DB",
+      "descripcion": "El servicio o aplicación web (IIS) intentó conectar a la base de datos sin una cadena de conexión configurada o inicializada.",
+      "accion": "Revisar archivos .config (web.config/Suitestensa.exe.config) y reiniciar el Application Pool o Servicio.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-DIR-MISS": {
+      "titulo": "Directorio No Encontrado",
+      "descripcion": "Un servicio intentó acceder o escribir en una carpeta que no existe en el disco (DirectoryNotFoundException).",
+      "accion": "Verificar configuración de rutas (logs, repositorios) y crear el directorio si es necesario.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-COM-CLS": {
+      "titulo": "Fallo Componente COM (Class Factory)",
+      "descripcion": "No se pudo instanciar un componente COM heredado (CLSID Failed).",
+      "accion": "Verificar registro de DLLs y componentes Extensa en el servidor.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-COM-ERR": {
+      "titulo": "Excepción General COM",
+      "descripcion": "Un componente no administrado (COM) devolvió una excepción crítica al ser invocado.",
+      "accion": "Verificar la salud del sistema operativo o librerías C++ base.",
+      "severidad_default": "HIGH"
+    },
+    "MPS-ERR-01": {
+      "titulo": "Error de Instancia (TargetException)",
+      "descripcion": "El servidor de procesos falló al invocar un método (Non-static method requires a target).",
+      "accion": "Reiniciar MPS. Verificar salud del Application Pool en IIS.",
+      "severidad_default": "HIGH"
+    },
+    "MPS-LIST-01": {
+      "titulo": "Fallo Recuperación Imágenes (MPS)",
+      "descripcion": "El servidor MPS falló al entregar la lista de imágenes (GetClientRimageList).",
+      "accion": "Posible error de DB o bloqueo del servicio. Reiniciar MPS.",
+      "severidad_default": "HIGH"
+    },
+    "PUB-ISO-FAIL": {
+      "titulo": "Fallo Creación ISO (CD/DVD)",
+      "descripcion": "El sistema falló al intentar empaquetar un estudio en formato ISO (DIR_PROC_ERR).",
+      "accion": "Revisar permisos en la carpeta temporal de exportación y espacio en disco.",
+      "severidad_default": "HIGH"
+    },
+    "PUB-NOTIFY-01": {
+      "titulo": "Fallo Notificación/Cancelación Informe",
+      "descripcion": "Error al notificar o cancelar un informe (IdReport/IsReport inválido).",
+      "accion": "Verificar estado del informe en la base de datos (posible ID huérfano).",
+      "severidad_default": "HIGH"
+    },
+    "PUB-FAIL-01": {
+      "titulo": "Fallo Publicación/Ordenamiento PDF",
+      "descripcion": "Error al generar, ordenar o publicar el archivo PDF del informe.",
+      "accion": "Revisar permisos de escritura en carpeta de reportes o plantilla PDF.",
+      "severidad_default": "HIGH"
+    },
+    "PUB-DISPATCH-01": {
+      "titulo": "Fallo Despacho de Evento",
+      "descripcion": "El sistema falló al emitir el evento (dispatch) notificando que el informe está listo.",
+      "accion": "Revisar conectividad con HIS/RIS o servicios de mensajería (HL7).",
+      "severidad_default": "HIGH"
+    },
+    "COM-PROXY-02": {
+      "titulo": "Fallo Proxy WCF (Radio)",
+      "descripcion": "El servidor web no puede comunicarse con el servicio de Radio (IServiceRadio).",
+      "accion": "Verificar que el servicio 'Suitestensa Radio Service' esté corriendo.",
+      "severidad_default": "HIGH"
+    },
+    "WEB-CTRL-NULL": {
+      "titulo": "Fallo en Control Web (IIS)",
+      "descripcion": "Error de referencia nula en el framework de controles web (SL.Framework.Control).",
+      "accion": "Error interno del aplicativo. Si persiste, reiniciar Application Pool de IIS.",
+      "severidad_default": "HIGH"
+    },
+    "WEB-REST-NULL": {
+      "titulo": "Excepción Nula en API REST",
+      "descripcion": "Error de referencia nula en el backend web de Suitestensa (Estensa.Web.Rest).",
+      "accion": "El servidor recibió datos inesperados o vacíos desde el cliente web.",
+      "severidad_default": "HIGH"
+    },
+    "DCM-DICT-ERR": {
+      "titulo": "Diccionario DICOM Corrupto",
+      "descripcion": "Error interno: No se encontró una clave esperada en el diccionario DICOM (CDicomHelper).",
+      "accion": "Posible corrupción de DLLs o versión incompatible. Reinstalar componentes DICOM.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-LINQ-01": {
+      "titulo": "Dato Inexistente en Consulta (LINQ)",
+      "descripcion": "El sistema intentó acceder a un registro en base de datos que no existe (Sequence contains no elements).",
+      "accion": "Verificar inconsistencias en la base de datos (estudios huérfanos).",
+      "severidad_default": "HIGH"
+    },
+    "DCM-NULL-01": {
+      "titulo": "Excepción Nula DICOM Core",
+      "descripcion": "Fallo no controlado en el framework DICOM (SL.Framework).",
+      "accion": "Reportar a desarrollo con logs completos.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-DLL-01": {
+      "titulo": "Ensamblado no encontrado (DLL)",
+      "descripcion": "IIS no pudo cargar una librería .NET necesaria (ReflectionTypeLoadException).",
+      "accion": "Verificar integridad de la carpeta Bin y versiones de DLLs.",
+      "severidad_default": "HIGH"
+    },
+    "DB-CONN-WALLE": {
+      "titulo": "Fallo DB Walle",
+      "descripcion": "No se puede establecer conexión con la base de datos de auditoría (ExtensaWalle).",
+      "accion": "Verificar estado del SQL Server y cadena de conexión.",
+      "severidad_default": "HIGH"
+    },
+    "MPS-CFG-02": {
+      "titulo": "Cliente sin Grupo (MPS)",
+      "descripcion": "Una estación de trabajo intentó conectarse pero no está asignada a ningún Client Group.",
+      "accion": "Configurar la estación en la Consola de Administración.",
+      "severidad_default": "HIGH"
+    },
+    "NET-TIME-10060": {
+      "titulo": "Timeout de Red (10060)",
+      "descripcion": "El nodo remoto no respondió a tiempo.",
+      "accion": "Verificar conectividad de red, firewall y estado del equipo remoto.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-DISK-01": {
+      "titulo": "Error de I/O o Disco Lleno",
+      "descripcion": "Excepción de entrada/salida o espacio insuficiente.",
+      "accion": "Liberar espacio en disco inmediatamente.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-FILE-LOCK": {
+      "titulo": "Archivo Bloqueado (Access Denied)",
+      "descripcion": "El servicio no pudo acceder a un archivo porque está siendo usado por otro proceso (Error 32).",
+      "accion": "Revisar si el antivirus está bloqueando la carpeta de generación de CDs u otras carpetas temporales.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-FILE-01": {
+      "titulo": "Error de Acceso a Archivo",
+      "descripcion": "No se pudo obtener información de un archivo.",
+      "accion": "Verificar permisos de lectura en el almacenamiento compartido (NAS/SAN).",
+      "severidad_default": "HIGH"
+    },
+    "DB-DEADLOCK-01": {
+      "titulo": "Deadlock en Base de Datos",
+      "descripcion": "La transacción fue víctima de un bloqueo mutuo en SQL Server.",
+      "accion": "Monitorizar rendimiento de SQL. Si es frecuente, requiere tuning de DB.",
+      "severidad_default": "HIGH"
+    },
+    "DB-POOL-01": {
+      "titulo": "Agotamiento de Pool SQL",
+      "descripcion": "No hay conexiones disponibles en el pool de base de datos.",
+      "accion": "Reiniciar servicios que consumen mucha DB o aumentar Max Pool Size.",
+      "severidad_default": "HIGH"
+    },
+    "AUTH-NULL-01": {
+      "titulo": "Token de Autenticación Nulo",
+      "descripcion": "El sistema recibió una petición con un token de seguridad vacío o inválido (IDX10000).",
+      "accion": "Verificar expiración de sesión de usuarios o reiniciar servicios de identidad (STS).",
+      "severidad_default": "MEDIUM"
+    },
+    "AUTH-TOKEN-EXP": {
+      "titulo": "Token Expirado",
+      "descripcion": "El token de seguridad ha caducado (IDX10223).",
+      "accion": "Sincronizar relojes o solicitar re-login del usuario.",
+      "severidad_default": "MEDIUM"
+    },
+    "AUTH-FAIL-01": {
+      "titulo": "Fallo de Autenticación",
+      "descripcion": "Nombre de usuario o contraseña incorrectos.",
+      "accion": "Verificar credenciales.",
+      "severidad_default": "MEDIUM"
+    },
+    "AUTH-SESS-INV": {
+      "titulo": "Sesión Inválida o Expirada",
+      "descripcion": "Acceso denegado o sesión caducada en el servidor.",
+      "accion": "La sesión del usuario ha expirado. Forzar re-login.",
+      "severidad_default": "MEDIUM"
+    },
+    "SEC-DOM-MISS": {
+      "titulo": "Dominio No Reconocido",
+      "descripcion": "Intento de acceso desde un dominio o equipo no registrado en la DB.",
+      "accion": "Registrar el dominio/equipo en la tabla de configuración de seguridad.",
+      "severidad_default": "MEDIUM"
+    },
+    "SEC-HOST-INV": {
+      "titulo": "Nombre de Host Inválido",
+      "descripcion": "El nombre del servidor en la petición no coincide con el esperado (Security Error).",
+      "accion": "Verificar nombres de host y configuración de DNS/Hosts.",
+      "severidad_default": "MEDIUM"
+    },
+    "SEC-REST-01": {
+      "titulo": "Excepción de Seguridad REST",
+      "descripcion": "Acceso denegado a la API Web (ClaimsAuthorization). El usuario no tiene permisos.",
+      "accion": "Verificar roles del usuario o configuración de seguridad del IIS.",
+      "severidad_default": "MEDIUM"
+    },
+    "SEC-ATNA-01": {
+      "titulo": "Fallo Auditoría ATNA",
+      "descripcion": "No se pudo registrar la acción en la base de auditoría por falta de ID de paciente.",
+      "accion": "Verificar integridad de los datos DICOM en el estudio visualizado.",
+      "severidad_default": "MEDIUM"
+    },
+    "CFG-PARAM-01": {
+      "titulo": "Parámetro Faltante (IdPacsScelto)",
+      "descripcion": "El sistema web perdió el contexto del PACS seleccionado (ArgumentException).",
+      "accion": "Posible expiración de sesión o error en web.config. Borrar cookies del cliente.",
+      "severidad_default": "MEDIUM"
+    },
+    "SYS-SIGN-01": {
+      "titulo": "Firma Digital Faltante",
+      "descripcion": "No se encontró el archivo de imagen de firma para el usuario.",
+      "accion": "Cargar la firma digital del médico en la carpeta de usuarios configurada.",
+      "severidad_default": "MEDIUM"
+    },
+    "PACS-INPUT-01": {
+      "titulo": "Objeto Inválido/Fallo PACS",
+      "descripcion": "El PACS rechazó un objeto o generó una excepción de falla (FaultException).",
+      "accion": "Revisar datos enviados por la modalidad o cliente DICOM. Posible formato corrupto.",
+      "severidad_default": "MEDIUM"
+    },
+    "PAT-DATA-01": {
+      "titulo": "Datos Paciente Faltantes",
+      "descripcion": "Fallo al guardar paciente. Falta fecha de nacimiento u otro dato obligatorio.",
+      "accion": "Verificar datos enviados por el RIS o ingresados manualmente en admisión.",
+      "severidad_default": "MEDIUM"
+    },
+    "MPS-FILE-ERR": {
+      "titulo": "Fallo Lectura Archivo MPS",
+      "descripcion": "El proceso MPS no pudo acceder o leer un archivo temporal de imagen en disco.",
+      "accion": "Verificar permisos de carpeta temporal o exclusiones de antivirus.",
+      "severidad_default": "MEDIUM"
+    },
+    "NET-ABORT-10053": {
+      "titulo": "Conexión Abortada Local (10053)",
+      "descripcion": "El servidor abortó la conexión (Timeout interno o bloqueo de seguridad).",
+      "accion": "Revisar exclusiones del Antivirus y carga del servidor.",
+      "severidad_default": "MEDIUM"
+    },
+    "NET-RESET-10054": {
+      "titulo": "Conexión Reiniciada (10054)",
+      "descripcion": "El cliente o un dispositivo intermedio cerró la conexión forzadamente.",
+      "accion": "Verificar estabilidad de la red LAN/WAN.",
+      "severidad_default": "MEDIUM"
+    },
+    "COM-PROXY-KEY": {
+      "titulo": "Proxy WCF Inválido",
+      "descripcion": "Intento de uso de un proxy de comunicación cerrado o inexistente (Key doesn't exist).",
+      "accion": "Reinicio de servicios o pérdida temporal de comunicación entre capas.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-JS-CONFIG": {
+      "titulo": "Error Configuración Visualizador",
+      "descripcion": "El visor HTML5 no pudo cargar sus settings (Error JS en cliente).",
+      "accion": "Limpiar caché del navegador del cliente afectado.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-JS-CRIT": {
+      "titulo": "Fallo Crítico JavaScript",
+      "descripcion": "El navegador cliente experimentó un error grave (Variables no definidas o bucles infinitos en AngularJS).",
+      "accion": "Refrescar el navegador. Si persiste, error de código en la interfaz web.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-GEN-01": {
+      "titulo": "Error Genérico Web (Unspecified)",
+      "descripcion": "Error no controlado en el backend del visualizador web.",
+      "accion": "Revisar logs detallados de IIS si el error persiste.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-HTTP-FAIL": {
+      "titulo": "Respuesta Fallo HTTP",
+      "descripcion": "El cliente web recibió una respuesta de error (400/500) del servidor.",
+      "accion": "Verificar logs de IIS para ver el error exacto del backend.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-IMG-MISS": {
+      "titulo": "Imagen Web No Encontrada",
+      "descripcion": "El visualizador web no encontró las imágenes solicitadas en el servidor (Immagini non trovate).",
+      "accion": "Verificar si el estudio está archivado o si hay problemas de permisos en la carpeta cache.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-FLT-NULL": {
+      "titulo": "Fallo Filtro de Excepciones (Web)",
+      "descripcion": "Error interno del aplicativo al intentar filtrar o capturar otra excepción previa.",
+      "accion": "Error de programación. Si persiste, escalar al soporte de nivel 3.",
+      "severidad_default": "MEDIUM"
+    },
+    "PACS-IMG-NONE": {
+      "titulo": "Estudio Sin Imágenes",
+      "descripcion": "El sistema solicitó imágenes para un estudio, pero no se encontraron (No images found).",
+      "accion": "Verificar si el estudio está archivado, offline o si la migración de datos está incompleta.",
+      "severidad_default": "MEDIUM"
+    },
+    "PUB-IMG-SIZE": {
+      "titulo": "Tamaño de Imagen Web No Disponible",
+      "descripcion": "Fallo al calcular el tamaño de una imagen para su visualización web o exportación (GetWebSize).",
+      "accion": "Posible imagen corrupta o no procesada. Verificar el estudio en el servidor PACS.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-NEGO-01": {
+      "titulo": "Fallo Negociación Web",
+      "descripcion": "Error en la negociación de la conexión (SignalR/WebSocket) entre cliente y servidor.",
+      "accion": "Verificar configuración de WebSockets en IIS o proxies intermedios.",
+      "severidad_default": "MEDIUM"
+    },
+    "SYS-THREAD-01": {
+      "titulo": "Aborto de Hilo (ThreadAbort)",
+      "descripcion": "Un hilo de ejecución fue detenido forzosamente (Posible reinicio o timeout interno).",
+      "accion": "Informativo si es esporádico. Si es masivo, el servicio se está reiniciando.",
+      "severidad_default": "MEDIUM"
+    },
+    "SYS-THREAD-SYNC": {
+      "titulo": "Deshabilitación por Sincronización",
+      "descripcion": "WaitDialog deshabilitado por problemas de hilos.",
+      "accion": "Informativo. Mecanismo de autoprotección del sistema.",
+      "severidad_default": "MEDIUM"
+    },
+    "SVC-LOOP-01": {
+      "titulo": "Bucle de Hilo (Radio)",
+      "descripcion": "Hilo de examen en espera infinita por fallo de integración.",
+      "accion": "Reiniciar 'Suitestensa Radio Service'.",
+      "severidad_default": "MEDIUM"
+    },
+    "INT-FALSE-01": {
+      "titulo": "Integración RIS Rechazada",
+      "descripcion": "El sistema externo (RIS) devolvió Result=FALSE.",
+      "accion": "Revisar mensajería HL7 y datos del paciente.",
+      "severidad_default": "MEDIUM"
+    },
+    "CFG-DOM-01": {
+      "titulo": "Error de Registro de Dominio",
+      "descripcion": "Parámetro inválido al verificar el dominio en DBManager.",
+      "accion": "Verificar configuración de dominio en Suitestensa.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-PROXY-01": {
+      "titulo": "Fallo Proxy Web",
+      "descripcion": "Excepción en el proxy interno de Estensa.Web.",
+      "accion": "Reiniciar IIS (iisreset).",
+      "severidad_default": "MEDIUM"
+    },
+    "MPS-REG-01": {
+      "titulo": "MPS No Registrado",
+      "descripcion": "La IP del MPS no está autorizada o registrada.",
+      "accion": "Registrar la IP en la configuración del sistema.",
+      "severidad_default": "MEDIUM"
+    },
+    "AUTH-TOKEN-01": {
+      "titulo": "Firma de Token Inválida",
+      "descripcion": "No se encuentra la clave para validar el token de seguridad (IDX10517).",
+      "accion": "Sincronizar hora del servidor y reiniciar servicios de autenticación.",
+      "severidad_default": "MEDIUM"
+    },
+    "WEB-KEY-01": {
+      "titulo": "Clave Web No Encontrada",
+      "descripcion": "KeyNotFoundException en el proceso w3wp.",
+      "accion": "Verificar caché de sesión o reiniciar App Pool.",
+      "severidad_default": "MEDIUM"
+    },
+    "NET-SOCK-10038": {
+      "titulo": "Operación en No-Socket (10038)",
+      "descripcion": "Intento de operation de red en un objeto que no es un socket.",
+      "accion": "Error de programación o corrupción de memoria puntual.",
+      "severidad_default": "MEDIUM"
+    },
+    "SYS-LOG-TRUNC": {
+      "titulo": "Escritura de Log Truncada",
+      "descripcion": "El servicio escribió un mensaje incompleto en el log. Posible cuelgue (Crash) del servicio en ese instante.",
+      "accion": "Verificar el Visor de Eventos de Windows para confirmar caídas de servicios.",
+      "severidad_default": "MEDIUM"
+    },
+    "SYS-JOB-ERR": {
+      "titulo": "Fallo en Tarea Programada",
+      "descripcion": "Un trabajo en segundo plano (Job/Quartz) devolvió una excepción.",
+      "accion": "Revisar qué módulo de mantenimiento falló.",
+      "severidad_default": "MEDIUM"
+    },
+    "DCM-DATA-01": {
+      "titulo": "Datos DICOM Incompletos",
+      "descripcion": "Faltan datos obligatorios del paciente (ej. Sexo) para procesar el trabajo.",
+      "accion": "Corregir datos del paciente en el RIS o consola.",
+      "severidad_default": "LOW"
+    },
+    "DCM-PCTX-01": {
+      "titulo": "Fallo Negociación DICOM",
+      "descripcion": "No se encontró un contexto de presentación válido (Transfer Syntax) en la asociación.",
+      "accion": "Verificar configuración de compresión/sintaxis en ambos extremos.",
+      "severidad_default": "LOW"
+    },
+    "DCM-VAL-01": {
+      "titulo": "Validación DICOMDIR Fallida",
+      "descripcion": "Faltan etiquetas obligatorias (ej. StudyDescription) en las imágenes recibidas.",
+      "accion": "Revisar configuración de la modalidad que envía las imágenes.",
+      "severidad_default": "LOW"
+    },
+    "INT-PAT-WARN": {
+      "titulo": "Advertencia Integración (Paciente)",
+      "descripcion": "Problema al procesar datos de un paciente específico en la integración.",
+      "accion": "Verificar ID del paciente en el RIS y en el PACS.",
+      "severidad_default": "LOW"
+    },
+    "DCM-IMPORT-01": {
+      "titulo": "Rechazo Asociación DICOM",
+      "descripcion": "Fallo en el handshake inicial (AAssociateRQ).",
+      "accion": "Verificar AE Title y IP de la modalidad emisora.",
+      "severidad_default": "LOW"
+    },
+    "INT-RIS-01": {
+      "titulo": "Paciente no Arribado",
+      "descripcion": "Llegó una imagen pero no existe la orden (Patient Not Arrived).",
+      "accion": "Revisar flujo de ingreso de pacientes en recepción.",
+      "severidad_default": "LOW"
+    },
+    "INT-TRACE-01": {
+      "titulo": "Traza de Integración",
+      "descripcion": "Inicio o fin de examen (Informativo).",
+      "accion": "Ninguna. Log de auditoría.",
+      "severidad_default": "LOW"
+    },
+    "DCM-TYPE-01": {
+      "titulo": "Archivo No DICOM",
+      "descripcion": "Se recibió un archivo que no cumple el estándar DICOM.",
+      "accion": "Verificar la fuente de las imágenes.",
+      "severidad_default": "LOW"
+    },
+    "SEC-PERM-01": {
+      "titulo": "Acceso No Autorizado",
+      "descripcion": "Usuario intentó acceder a una función sin permisos.",
+      "accion": "Revisar roles y permisos del usuario.",
+      "severidad_default": "LOW"
+    },
+    "DCM-OBJ-LEAK": {
+      "titulo": "Objetos DICOM en Memoria",
+      "descripcion": "El sistema detectó objetos 'vivos' al cerrar un proceso (Memory Leak).",
+      "accion": "Informativo. Si aumenta drásticamente, reiniciar servicio.",
+      "severidad_default": "LOW"
+    },
+    "SYS-LOC-01": {
+      "titulo": "Fallo de Traducción",
+      "descripcion": "No se encontró un recurso de texto (String) para el idioma actual.",
+      "accion": "Informativo (Cosmético).",
+      "severidad_default": "LOW"
+    },
+    "DCM-GRAPH-01": {
+      "titulo": "Log Gráfico DICOM",
+      "descripcion": "Traza de depuración de objetos gráficos (GraphObj).",
+      "accion": "Informativo. Ruido de log.",
+      "severidad_default": "LOW"
+    },
+    "CFG-VNEXT-01": {
+      "titulo": "Módulo VNext / Modificación",
+      "descripcion": "Traza informativa sobre el estado de un módulo administrativo.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "DB-SESS-01": {
+      "titulo": "Contexto de Sesión Perdido",
+      "descripcion": "El sistema no pudo recuperar la información de sesión (GUID 0000 o nulo).",
+      "accion": "Informativo. Indica expiración de sesión del usuario.",
+      "severidad_default": "LOW"
+    },
+    "PACS-QUERY-01": {
+      "titulo": "Límite de Resultados de Búsqueda",
+      "descripcion": "Se bloqueó una consulta por devolver demasiados resultados (Too Many Patients).",
+      "accion": "Indicar al usuario que use filtros más específicos en la búsqueda.",
+      "severidad_default": "LOW"
+    },
+    "SVC-WKL-LIMIT": {
+      "titulo": "Límite Worklist Excedido",
+      "descripcion": "Se solicitó una lista de trabajo demasiado grande (Too many records). Se recortaron resultados.",
+      "accion": "Configurar la modalidad para pedir rangos de fecha más cortos.",
+      "severidad_default": "LOW"
+    },
+    "CFG-UI-MISS": {
+      "titulo": "Fallo UI SettingManager",
+      "descripcion": "No se encontró un contenedor de configuración de interfaz (UIElement SettingManagerContainer).",
+      "accion": "Informativo/Configuración visual.",
+      "severidad_default": "LOW"
+    },
+    "CFG-UI-TAB": {
+      "titulo": "Tab No Encontrada",
+      "descripcion": "No se encontró una pestaña específica en la interfaz de configuración (AdminPacsSettings).",
+      "accion": "Informativo/Cosmético.",
+      "severidad_default": "LOW"
+    },
+    "DCM-TRACE-01": {
+      "titulo": "Traza DICOM Query",
+      "descripcion": "Log de depuración del QueryManager.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "MPS-TRACE-01": {
+      "titulo": "Traza Cliente MPS",
+      "descripcion": "Registro de IP cliente conectando al MPS.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "PUB-TRACE-01": {
+      "titulo": "Traza Publicación (Info)",
+      "descripcion": "Registro informativo de generación o grabación de CD/DVD (GetDicomSize / reordering).",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "MPS-INFO-01": {
+      "titulo": "MPS Operación de Cola (Informativo)",
+      "descripcion": "Operaciones normales del servidor MPS (RetrieveQueue / GetFirstImageData).",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "MPS-SHMEM-INFO": {
+      "titulo": "Traza Memoria Compartida MPS",
+      "descripcion": "El MPS consultó datos de paciente en la memoria compartida local.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "ADM-USER-01": {
+      "titulo": "Carga de Usuarios Admin",
+      "descripcion": "Inicio del proceso de obtención de lista de usuarios (AdminUser).",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "SYS-BROKER-INFO": {
+      "titulo": "Sincronización de Bus (Broker)",
+      "descripcion": "Traza de bajo nivel de notificación al bus de mensajes interno.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "SYS-INFO-FILL": {
+      "titulo": "Carga de Entidades (Info)",
+      "descripcion": "Proceso informativo de carga de entidades del servidor.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "SYS-JOB-INFO": {
+      "titulo": "Ejecución de Tarea Programada",
+      "descripcion": "El planificador interno ejecutó una tarea en segundo plano (Job Group).",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "CFG-TPL-MISS": {
+      "titulo": "Plantilla de Reporte Faltante",
+      "descripcion": "No se encontró el archivo de reporte (.report) solicitado en la base de datos.",
+      "accion": "Restaurar la plantilla en la configuración del sistema.",
+      "severidad_default": "LOW"
+    },
+    "SYS-MAINT-INFO": {
+      "titulo": "Limpieza de Mantenimiento",
+      "descripcion": "El sistema ejecutó una rutina programada de limpieza de carpetas.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "SYS-TIME-GEN": {
+      "titulo": "Tiempo de Espera Agotado (Timeout)",
+      "descripcion": "Una operación excedió el tiempo máximo de espera (15 seconds o similar).",
+      "accion": "Verificar rendimiento de la red o carga del servidor.",
+      "severidad_default": "LOW"
+    },
+    "DCM-IMP-STOP": {
+      "titulo": "Dicom Import Detenido",
+      "descripcion": "El servicio de importación de imágenes finalizó su proceso o fue detenido.",
+      "accion": "Informativo. Verificar si fue una parada programada.",
+      "severidad_default": "LOW"
+    },
+    "DCM-TAG-DUMP": {
+      "titulo": "Volcado Etiqueta DICOM (Informativo)",
+      "descripcion": "El sistema imprimió el valor crudo de un tag DICOM en el log.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "AUTH-CLOSE-WEB": {
+      "titulo": "Cierre de Sesión Web",
+      "descripcion": "El usuario cerró sesión en la plataforma web de manera normal.",
+      "accion": "Informativo.",
+      "severidad_default": "LOW"
+    },
+    "UNKNOWN-ERR-99": {
+      "titulo": "Error Desconocido",
+      "descripcion": "Patrón de error no tipificado en la base de conocimientos.",
+      "accion": "Revisar 'unknowns_lab.json' para análisis.",
+      "severidad_default": "WARNING"
+    },
+    "AUTH-CRED-Q-01": {
+      "titulo": "Fallo en Cola de Credenciales",
+      "descripcion": "El servicio de cola no pudo gestionar o desencriptar las credenciales (Password) para el ID del paciente.",
+      "accion": "Verificar la disponibilidad de la base de datos de auditoría/credenciales (Walle/STS) y revisar el visor de eventos para el paciente afectado.",
+      "severidad_default": "HIGH"
+    },
+    "AUTH-REFRESH-01": {
+      "titulo": "Fallo al Refrescar Token (HTTP)",
+      "descripcion": "Un servicio interno falló al renovar su token de seguridad debido a una excepción de red (HttpRequestException).",
+      "accion": "Verificar la disponibilidad del servidor de Identidad (IdentityServer/STS) y la conectividad interna entre los nodos IIS.",
+      "severidad_default": "HIGH"
+    },
+    "SYS-HTTP-RET-01": {
+      "titulo": "Fallo HTTP en Recuperación de Peticiones",
+      "descripcion": "Un servicio no pudo recuperar datos de peticiones debido a una excepción de red HTTP (HttpRequestException).",
+      "accion": "Revisar los servicios dependientes (Publication/Patient) y comprobar la conectividad de red local.",
+      "severidad_default": "HIGH"
+    }
   }
-}
 }
