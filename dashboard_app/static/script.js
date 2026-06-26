@@ -1087,6 +1087,7 @@ function actualizarOpcionesMetricas() {
     if (source === 'global') {
         metricSelect.add(new Option('Uso CPU Host (%)', 'cpu_host'));
         metricSelect.add(new Option('Temperaturas (Ambiente + CPUs)', 'thermal_combined'));
+        metricSelect.add(new Option('Conectividad y Red', 'network'));
     } else {
         metricSelect.add(new Option('Rendimiento (CPU + RAM)', 'performance'));
     }
@@ -1203,7 +1204,32 @@ function actualizarGrafico() {
     } else if (metric === 'performance') {
         datasets.push({ ...common, label: 'CPU (%)', data: currentHistoryData.map(d => getSafeVMData(d, source).cpu), borderColor: '#3498db' });
         datasets.push({ ...common, label: 'RAM (%)', data: currentHistoryData.map(d => getSafeVMData(d, source).ram), borderColor: '#9b59b6' });
-    } else {
+    } else if (metric === 'network' && source === 'global') {
+        // NUEVO: Dibujamos la Red
+        datasets.push({ 
+            ...common, 
+            label: 'Latencia (ms)', 
+            data: currentHistoryData.map(d => (d.global && d.global.network && d.global.network.lat != null) ? d.global.network.lat : null), 
+            borderColor: '#e74c3c', // Rojo para latencia
+            borderDash: [5,5] 
+        });
+        datasets.push({ 
+            ...common, 
+            label: 'Subida (Mbps)', 
+            data: currentHistoryData.map(d => (d.global && d.global.network && d.global.network.up != null) ? d.global.network.up : null), 
+            borderColor: '#3498db', // Azul
+            fill: true, 
+            backgroundColor: 'rgba(52,152,219,0.1)' 
+        });
+        datasets.push({ 
+            ...common, 
+            label: 'Bajada (Mbps)', 
+            data: currentHistoryData.map(d => (d.global && d.global.network && d.global.network.dw != null) ? d.global.network.dw : null), 
+            borderColor: '#2ecc71', // Verde
+            fill: true, 
+            backgroundColor: 'rgba(46,204,113,0.1)' 
+        });
+    }  else {
         datasets.push({ ...common, label: 'Uso CPU Host (%)', data: currentHistoryData.map(d => (d.global && d.global[metric] != null) ? d.global[metric] : null), borderColor: '#3498db', fill: true, backgroundColor: 'rgba(52,152,219,0.05)' });
     }
 

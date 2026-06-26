@@ -507,6 +507,14 @@ def obtener_historial(hospital_id: str, horas: int = 24,
                         amb_val = x.get("value")
                         break
 
+            # --------------------------------------------------------
+            # --- 1.5 Datos de Red (NUEVO) ---
+            # --------------------------------------------------------
+            net_health = phy.get("network_health") or {}
+            net_lat = net_health.get("cloud_latency_ms")
+            net_up = net_health.get("upload_usage_mbps")
+            net_dw = net_health.get("download_usage_mbps")
+
             # 2. Datos Virtuales
             vms_data = {}
             if "virtual_layer" in d and isinstance(d["virtual_layer"], list):
@@ -527,7 +535,17 @@ def obtener_historial(hospital_id: str, horas: int = 24,
 
             historial.append({
                 "timestamp": str(row.timestamp)[:19].replace("T", " "),
-                "global": {"cpu_host": cpu_val, "temp_amb": amb_val, "cpu_sensors": cpu_s},
+                "global": {
+                    "cpu_host": cpu_val, 
+                    "temp_amb": amb_val, 
+                    "cpu_sensors": cpu_s,
+                    # --- NUEVO: Inyectamos la red en el scope global ---
+                    "network": {
+                        "lat": net_lat, 
+                        "up": net_up, 
+                        "dw": net_dw
+                    } 
+                },
                 "vms": vms_data
             })
         except Exception as e:
