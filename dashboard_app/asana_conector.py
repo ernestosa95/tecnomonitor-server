@@ -59,10 +59,14 @@ def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_proje
         Asignada automáticamente por TecnoMonitor."""
     
     # Configurar proyectos de destino (Global + Específico del Hospital)
-    proyectos_destino = [str(MAIN_PROJECT_GID)]
-    if hospital_project_gid and len(str(hospital_project_gid)) > 5:
-        if str(hospital_project_gid) != str(MAIN_PROJECT_GID):
-            proyectos_destino.append(str(hospital_project_gid))
+    proyectos_destino = [str(MAIN_PROJECT_GID).strip()]
+    if hospital_project_gid:
+        clean_gid = str(hospital_project_gid).strip() # Limpiamos espacios basura
+        # Aseguramos que sea mayor a 5 caracteres Y que contenga ÚNICAMENTE números
+        if len(clean_gid) > 5 and clean_gid.isdigit() and clean_gid != str(MAIN_PROJECT_GID).strip():
+            proyectos_destino.append(clean_gid)
+        elif clean_gid and not clean_gid.isdigit():
+            logger.error(f"⚠️ Asana Project ID inválido para {hospital_id}: '{clean_gid}'. Se ignorará y solo se usará el Main Project.")
 
     # ========================================================
     # SEGUIDORES: Usar únicamente los configurados en la interfaz

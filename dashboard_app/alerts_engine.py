@@ -138,25 +138,46 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
     phy = data.get('physical_layer') or {}
     tele_host = phy.get('telemetry') or {}
     sensors = phy.get('sensors') or {}
-    storage_layer = phy.get('storage_layer') or {} 
+    storage_layer = phy.get('storage_layer') or {}
+    host_info = phy.get('host_info') or {} # <-- Para el uptime
+    net_health = phy.get('network_health') or {} # <-- Para la red
     v_layer = data.get('virtual_layer') or []
 
-    # 1. ANÁLOGOS (CPU/RAM/Temp)
+    # =========================================================
+    # 🟢 1. ANÁLOGOS Y MÉTRICAS DE HOST (CPU/RAM/Temp/Uptime)
+    # =========================================================
     cpu_usage = (tele_host.get('cpu') or {}).get('usage_percent', 0) or 0
     hallazgos["HOST_CPU"] = (_nivel_cpu_ram(cpu_usage), f"Uso CPU: {cpu_usage}%")
-
-    # ram_pct = (tele_host.get('ram') or {}).get('usage_percent', 0) or 0
-    # hallazgos["HOST_RAM"] = (_nivel_cpu_ram(ram_pct), f"Uso RAM: {int(ram_pct)}%")
 
     temp_list = sensors.get('temperatures') or []
     for t in temp_list:
         val = t.get('value', 0)
         name = t.get('name', 'Unknown')
-        # Evaluamos según el máximo crítico configurado en DB
         nivel_t = _nivel_temp(val, config['temp_cpu_max'])
         hallazgos[f"TEMP_{name}"] = (nivel_t, f"Temperatura {name}: {val}°C")
 
-    # 2. BOOLEANOS (Todo o nada -> CRITICAL o OK)
+    # 🚨 NUEVA ALERTA: Reinicios abruptos del Host Físico
+    uptime_host = host_info.get('uptime_seconds') or tele_host.get('uptime_seconds', -1)
+    if uptime_host is not None and uptime_host >= 0:
+        dias_uptime = uptime_host / 86400.0
+        if uptime_host < 600: # Menos de 10 minutos (600 segs)
+            hallazgos["HOST_UPTIME"] = ("WARNING", f"Reinicio reciente/abrupto detectado. Uptime: {int(uptime_host/60)} min")
+        else:
+            hallazgos["HOST_UPTIME"] = ("OK", f"Uptime estable: {int(dias_uptime)} días")
+
+    # 🚨 NUEVA ALERTA: Latencia de Red (Saturación)
+    latencia_ms = net_health.get('cloud_latency_ms', -1)
+    if latencia_ms is not None and latencia_ms >= 0:
+        if latencia_ms >= 500:
+            hallazgos["NETWORK_LATENCY"] = ("CRITICAL", f"Latencia de red severa: {latencia_ms} ms")
+        elif latencia_ms >= 200:
+            hallazgos["NETWORK_LATENCY"] = ("NOTICE", f"Saturación/Latencia de red elevada: {latencia_ms} ms")
+        else:
+            hallazgos["NETWORK_LATENCY"] = ("OK", f"Latencia de red normal: {latencia_ms} ms")
+
+    # =========================================================
+    # 🟢 2. BOOLEANOS (Todo o nada -> CRITICAL o OK)
+    # =========================================================
     if config['enable_fans']:
         for f in sensors.get('fans', []):
             st = f.get('status', 'OK')
@@ -173,33 +194,7 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
         for ld in storage_layer.get('logical_volumes', []):
             st = ld.get('status', 'OK')
             nivel = "OK" if st in ['OK', 'Online'] else "CRITICAL"
-            hallazgos[f"RAID_VOL_{ld.get('name')}"] = (nivel, f"Fallo Volumen: {st}")
-            
-        for pd in storage_layer.get('physical_drives', []):
-            st = pd.get('status', 'OK')
-            nivel = "OK" if st in ['OK', 'Online'] else "CRITICAL"
-            hallazgos[f"RAID_DISK_{pd.get('slot')}"] = (nivel, f"Fallo Disco {pd.get('slot')}: {st}")
-
-    # 3. VMs
-    for resource in v_layer:
-        if resource.get('state') not in ['Online', 'Running']: continue
-        rid = resource.get('id', 'Unknown')
-        r_tele = resource.get('telemetry') or {}
-        
-        vm_cpu = (r_tele.get('cpu') or {}).get('usage_percent', 0)
-        hallazgos[f"VM_CPU_{rid}"] = (_nivel_cpu_ram(vm_cpu), f"CPU en {rid}: {vm_cpu}%")
-
-        vm_ram = (r_tele.get('ram') or {}).get('usage_percent', 0)
-        hallazgos[f"VM_RAM_{rid}"] = (_nivel_cpu_ram(vm_ram), f"RAM en {rid}: {vm_ram}%")
-
-        for disk in resource.get('storage', []):
-            mount = disk.get('mount_point', 'Unknown')
-            usage = disk.get('usage_percent', 0)
-            hallazgos[f"DISK_{rid}_{mount}"] = (_nivel_disco(usage), f"Disco Lleno en {rid} ({mount}): {usage}%")
-
-    # 4. ENVIAR AL GESTOR INTELIGENTE
-    for tipo_unico, (nivel, msg) in hallazgos.items():
-        actualizar_estado_alerta(db, hid, tipo_unico, nivel, msg, asana_proj_id, asana_followers)
+            hallazgos
 
 # --- GESTOR INTELIGENTE DE INCIDENTES V3 ---
 def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None, asana_followers=None):
