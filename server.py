@@ -35,6 +35,11 @@ try:
 except Exception as e:
     print(f"❌ Error cargando Dashboard: {e}")
     sys.exit(1)
+
+try:
+    import asana_conector
+except ImportError:
+    from dashboard_app import asana_conector
  
 # --- BACKGROUND SERVICE ---
 async def ciclo_vigilancia():
@@ -87,6 +92,10 @@ async def ciclo_vigilancia():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 Iniciando eventos de ciclo de vida (Lifespan)...")
+    try:
+        asana_conector.verificar_conexion_asana()   # deja en el log si el token funciona o no
+    except Exception as e:
+        print(f"⚠️ No se pudo verificar Asana al inicio: {repr(e)}")
     vigilancia_task = asyncio.create_task(ciclo_vigilancia())
     yield 
     print("🛑 Apagando servidor, cancelando hilo de vigilancia...")

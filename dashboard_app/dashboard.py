@@ -1702,3 +1702,6 @@ def update_kpi_settings(hospital_id: str, payload: dict, db: Session = Depends(g
     
     return {"status": "success", "message": "Configuración de alertas actualizada correctamente"}
 
+@app.get("/beta")
+async def beta_dashboard(request: Request):
+    return templates.TemplateResponse("index_beta.html", {"request": request})

@@ -234,3 +234,22 @@ Solicitud enviada desde el portal de acceso de TecnoMonitor."""
     except Exception as e:
         logger.error(f"❌ Error al enviar solicitud a Asana: {e}")
         return False
+
+def verificar_conexion_asana():
+    """Valida que el token no solo exista, sino que autentique. Detecta el token expirado."""
+    if not ASANA_ENABLED:
+        logger.warning("⚠️ Asana deshabilitado: no hay ASANA_ACCESS_TOKEN en el entorno.")
+        return False
+    try:
+        configuration = asana.Configuration()
+        configuration.access_token = ASANA_ACCESS_TOKEN
+        api_client = asana.ApiClient(configuration)
+        users_api = asana.UsersApi(api_client)
+        me = users_api.get_user("me", {"opt_fields": "name"})
+        nombre = me.get("name") if isinstance(me, dict) else getattr(me, "name", "?")
+        logger.info(f"✅ Asana operativo. Autenticado como: {nombre}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Asana NO responde (token inválido/expirado o sin salida a api.asana.com): {repr(e)}")
+        return False
+

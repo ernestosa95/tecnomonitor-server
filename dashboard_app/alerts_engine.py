@@ -72,46 +72,77 @@ def analizar_reporte(hospital_id, json_data_v3, db: Session):
 def procesar_offline(db: Session):
     config = cargar_config(db)
 
-    # --- NUEVO: Buscar IDs de Asana Globales ---
+    # --- IDs de Asana Globales ---
     emails_globales = [e.strip() for e in config.get('global_alert_responsible_email', '').split(',') if e.strip()]
     global_asana_followers = []
     if emails_globales:
         usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_globales)).all()
         global_asana_followers = [u.asana_id for u in usuarios if u.asana_id]
-    # -------------------------------------------
 
-    _verificar_conectividad(db, config, global_asana_followers)
+    # OFFLINE aislado: si falla, no arrastra al resto del tick
+    try:
+        _verificar_conectividad(db, config, global_asana_followers)
+    except Exception as e:
+        print(f"⚠️ [Vigilancia] Falló _verificar_conectividad: {repr(e)}")
+
+    # --- Contadores del tick ---
+    total = evaluados = omitidos = con_error = total_hallazgos = 0
 
     try:
-        # =========================================================
-        # 🛡️ FIX BATCH: CARGA EN LOTE PARA EVITAR N+1 QUERIES
-        # =========================================================
-        # 1. Traemos TODA la metadata de una sola vez (1 query)
+        # Carga en lote (evita N+1)
         toda_la_metadata = db.query(database.HospitalMetadata).all()
-        
-        # 2. Armamos un Diccionario para búsqueda instantánea en RAM
-        # Estructura: {"H01": <Objeto Metadata>, "H02": <Objeto Metadata>}
         meta_dict = {meta.hospital_id: meta for meta in toda_la_metadata}
 
-        # 3. Traemos el último reporte de cada hospital (1 query)
         query = text("""
-            SELECT h.hospital_id, h.full_json_data 
+            SELECT h.hospital_id, h.full_json_data
             FROM reportes_historicos h
-            INNER JOIN (SELECT hospital_id, MAX(timestamp) as max_t FROM reportes_historicos GROUP BY hospital_id) max_h 
+            INNER JOIN (SELECT hospital_id, MAX(timestamp) as max_t FROM reportes_historicos GROUP BY hospital_id) max_h
             ON h.hospital_id = max_h.hospital_id AND h.timestamp = max_h.max_t
         """)
         reportes = db.execute(query).fetchall()
-        
-        # 4. El bucle ahora es instantáneo, lee de la RAM (meta_dict) en vez de la DB
+        total = len(reportes)
+
         for row in reportes:
             meta = meta_dict.get(row.hospital_id)
-            
-            if meta and meta.alerts_enabled and row.full_json_data:
+
+            if not (meta and meta.alerts_enabled and row.full_json_data):
+                omitidos += 1
+                continue
+
+            # 🛡️ AISLAMIENTO POR HOSPITAL: un payload roto ya no tumba a los demás
+            try:
                 data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
-                _evaluar_reglas_v3(row.hospital_id, data, db, config, meta.asana_project_id, global_asana_followers)
-                
+                resultado = _evaluar_reglas_v3(
+                    row.hospital_id, data, db, config,
+                    meta.asana_project_id, global_asana_followers
+                )
+                if isinstance(resultado, int):   # ver nota sobre el return opcional
+                    total_hallazgos += resultado
+                evaluados += 1
+            except Exception as e:
+                con_error += 1
+                # 🔑 Limpia la transacción sucia para que el próximo hospital no herede el error
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                print(f"❌ [Vigilancia] Hospital '{row.hospital_id}' falló y se salteó: {repr(e)}")
+
     except Exception as e:
-        print(f"❌ Error en ciclo de vigilancia: {e}")
+        # Esto ahora SOLO salta por fallos de carga (query/lote), no por un hospital puntual
+        print(f"❌ [Vigilancia] Error de carga en procesar_offline: {repr(e)}")
+
+    # --- HEALTH-CHECK DEL TICK ---
+    try:
+        activas_ahora = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1).count()
+    except Exception:
+        activas_ahora = -1
+
+    print(
+        f"🩺 [Vigilancia] Tick | hospitales={total} evaluados={evaluados} "
+        f"omitidos={omitidos} con_error={con_error} "
+        f"hallazgos_no_ok={total_hallazgos} alertas_activas={activas_ahora}"
+    )
 
 # --- HELPERS DE UMBRALES TRIPLES ---
 def _nivel_cpu_ram(valor):
@@ -285,42 +316,61 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             db.add(nueva)
             db.commit()
 
-            
-# --- CHECK OFFLINE ---
+def _parsear_timestamp(ts_val):
+    """Convierte un timestamp de la DB a datetime. Devuelve None SOLO si es irrecuperable."""
+    if isinstance(ts_val, datetime):
+        return ts_val
+    if not ts_val:
+        return None
+    s = str(ts_val).strip()
+    if s.endswith("Z"):          # sufijo UTC que fromisoformat no traga en 3.10
+        s = s[:-1]
+    try:
+        return datetime.fromisoformat(s)          # cubre 'T' y espacio, con/sin microsegundos
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    try:                          # último recurso: recortar zona/microsegundos sobrantes
+        return datetime.strptime(s.replace("T", " ").split(".")[0], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
 def _verificar_conectividad(db, config, asana_followers):
     limit_min = config['offline_minutes']
     limit_delta = timedelta(minutes=limit_min)
     ahora = datetime.now()
-    
+
     hospitales_meta = db.query(database.HospitalMetadata).filter_by(alerts_enabled=True).all()
-    
+
     for meta in hospitales_meta:
         last_report = db.execute(
             text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1"),
             {"hid": meta.hospital_id}
         ).fetchone()
 
-        nivel = "CRITICAL" # Offline no tiene Warning
-        last_seen = None
-
-        if last_report:
-            ts_val = last_report.timestamp
-            if isinstance(ts_val, str):
-                try: ts_val = datetime.fromisoformat(ts_val)
-                except: pass
-            
-            if isinstance(ts_val, datetime):
-                last_seen = ts_val
-                if (ahora - last_seen) <= limit_delta:
-                    nivel = "OK"
-        
-        # --- BLOQUEO DE FALSOS POSITIVOS ---
-        # Si el hospital nunca se conectó (no hay last_seen), ignoramos la alerta.
-        # Esto evita el spam masivo de "Sin conexión registrada." en nodos nuevos.
-        if not last_seen:
+        # CASO 1: nunca reportó -> nodo nuevo legítimo, lo ignoramos (anti falso-positivo)
+        if not last_report:
             continue
-            
-        msg = f"Sin conexión hace {int((ahora - last_seen).total_seconds()/60)} min."
+
+        last_seen = _parsear_timestamp(last_report.timestamp)
+
+        # CASO 2: HAY reporte pero el timestamp no parsea.
+        # Antes esto caía en el mismo bucket que "nunca conectó" y se salteaba EN SILENCIO.
+        # Ese era exactamente el agujero: un hospital que SÍ reportaba quedaba sin alerta OFFLINE.
+        if last_seen is None:
+            print(f"⚠️ [OFFLINE] '{meta.hospital_id}' tiene reporte pero timestamp ilegible: {last_report.timestamp!r}. Se omite este ciclo.")
+            continue
+
+        minutos = int((ahora - last_seen).total_seconds() / 60)
+        nivel = "OK" if (ahora - last_seen) <= limit_delta else "CRITICAL"
+        msg = (f"Sin conexión hace {minutos} min." if nivel == "CRITICAL"
+               else f"Conectado (último reporte hace {minutos} min).")
+
         actualizar_estado_alerta(db, meta.hospital_id, "OFFLINE", nivel, msg, meta.asana_project_id, asana_followers)
 
 def verificar_actividad_ris(db: Session):
@@ -573,5 +623,7 @@ def verificar_estado_software(db: Session):
                 asana_proj_id=hosp.asana_project_id, 
                 asana_followers=asana_followers
             )
+
+
 
 

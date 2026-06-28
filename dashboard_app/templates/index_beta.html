@@ -1,0 +1,2618 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TM Infra">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <meta name="theme-color" content="#0A0A0B">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TecnoMonitor</title>
+    <!-- Tabler Icons y Google Fonts bloqueados por CSP del servidor.
+         Los íconos se renderizan con SVG inline; Inter usa fallback del sistema. -->
+    <style>
+    /* Fallback font stack cuando Google Fonts está bloqueado por CSP */
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important; }
+    /* Stub para clases ti ti-* que no cargan por CSP — ocultamos el char de fallback */
+    [class*="ti ti-"]{ font-family: monospace; font-size: 0; }
+    [class*="ti ti-"]::before{ content: ''; }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+/* ============================================================
+   TECNOMONITOR — DESIGN SYSTEM OSCURO v2
+   Compatible 1:1 con script.js de producción
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+    --bg:#0A0A0B;
+    --surface:#111113;
+    --surface2:#18181B;
+    --surface3:#1E1E22;
+    --border:#232327;
+    --border2:#2e2e34;
+    --text:#F0F0F2;
+    --muted:#6B6B7A;
+    --muted2:#44444F;
+    --green:#00E5A0;
+    --green-dim:rgba(0,229,160,0.12);
+    --green-dim2:rgba(0,229,160,0.06);
+    --red:#FF5C5C;
+    --red-dim:rgba(255,92,92,0.12);
+    --red-dim2:rgba(255,92,92,0.06);
+    --blue:#4A8FFF;
+    --blue-dim:rgba(74,143,255,0.12);
+    --amber:#FFA940;
+    --amber-dim:rgba(255,169,64,0.1);
+    --purple:#A855F7;
+    --purple-dim:rgba(168,85,247,0.12);
+    --radius:8px;
+    --radius2:12px;
+    --radius3:16px;
+    /* Legacy compat */
+    --primary:#4A8FFF;
+    --dark:#0A0A0B;
+    --light:#0A0A0B;
+    --success:#00E5A0;
+    --warning:#FFA940;
+    --danger:#FF5C5C;
+    --pill-radius:50px;
+}
+
+html,body{
+    background:var(--bg);
+    font-family:'Inter',sans-serif;
+    color:var(--text);
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    scrollbar-width:thin;
+    scrollbar-color:var(--border2) transparent;
+    /* layout vertical con scroll nativo */
+    height:auto;
+    overflow-x:hidden;
+    overflow-y:auto;
+}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ── FLOATING NAV PILL ── */
+#app-container{display:block;width:100%;}
+
+.top-nav{
+    position:fixed;top:20px;left:50%;transform:translateX(-50%);
+    background:rgba(255,255,255,0.08);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.12);padding:10px 24px;
+    border-radius:50px;display:flex;justify-content:space-between;align-items:center;gap:40px;
+    z-index:9999;transition:all .4s cubic-bezier(.4,0,.2,1);width:max-content;
+    box-shadow:0 4px 32px rgba(0,0,0,0.3);
+}
+/* Cuando estamos en cualquier sección distinta al Home:
+   la pill se "posa" centrada verticalmente en el área reservada (72px) */
+.top-nav.in-section{
+    top:16px;
+    background:rgba(17,17,19,0.97);
+    border-color:rgba(255,255,255,0.06);
+    padding:7px 14px;gap:8px;
+    box-shadow:0 4px 24px rgba(0,0,0,0.5);
+}
+.top-nav.in-section .nav-logo-text{max-width:0;opacity:0;margin:0;padding:0;}
+.top-nav.in-section .nav-btn{padding:8px 10px;color:var(--muted);}
+.top-nav.in-section .nav-btn .nav-label{max-width:0;opacity:0;overflow:hidden;margin:0;}
+.top-nav.in-section .nav-btn:hover,.top-nav.in-section .nav-btn.active{background:var(--surface2);color:var(--text);}
+.top-nav.in-section .nav-btn-bottom{color:var(--muted2);}
+.top-nav.in-section .nav-btn-bottom:hover{color:var(--text);}
+.top-nav.in-section .nav-left{gap:4px;}
+.top-nav.in-section .nav-right{gap:4px;}
+.nav-left{display:flex;align-items:center;gap:20px;}
+.nav-right{display:flex;align-items:center;gap:16px;}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:#fff;}
+.nav-logo-text{white-space:nowrap;overflow:hidden;transition:all .4s;}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex-shrink:0}
+.nav-links{display:flex;gap:4px;}
+.nav-btn{
+    display:flex;align-items:center;gap:6px;padding:7px 14px;
+    border-radius:50px;color:rgba(255,255,255,0.65);font-size:12px;font-weight:600;
+    background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;
+    transition:all .25s;text-decoration:none;
+}
+.nav-btn:hover,.nav-btn.active{background:rgba(255,255,255,0.15);color:#fff;}
+.nav-btn svg,.nav-btn .ti{font-size:15px;flex-shrink:0;}
+.nav-label{white-space:nowrap;transition:all .3s;}
+.nav-btn-bottom{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;padding:6px 10px;border-radius:50px;transition:all .25s;}
+.nav-btn-bottom:hover{color:#fff;}
+.nav-alert-active{color:var(--red)!important;position:relative;}
+.nav-alert-active::after{
+    content:'';position:absolute;top:4px;right:4px;
+    width:5px;height:5px;border-radius:50%;
+    background:var(--red);
+}
+@keyframes pulse-red{0%{box-shadow:0 0 0 0 rgba(255,92,92,.7)}70%{box-shadow:0 0 0 8px rgba(255,92,92,0)}100%{box-shadow:0 0 0 0 rgba(255,92,92,0)}}
+
+/* scrolled: compacto sobre el Home al hacer scroll */
+.top-nav.scrolled:not(.in-section){
+    top:10px;
+    background:rgba(17,17,19,0.97);
+    border-color:rgba(255,255,255,0.06);
+    padding:7px 14px;gap:8px;
+    box-shadow:0 4px 24px rgba(0,0,0,0.5);
+}
+.top-nav.scrolled:not(.in-section) .nav-logo-text{max-width:0;opacity:0;margin:0;padding:0;}
+.top-nav.scrolled:not(.in-section) .nav-btn{padding:8px 10px;color:var(--muted);}
+.top-nav.scrolled:not(.in-section) .nav-btn .nav-label{max-width:0;opacity:0;overflow:hidden;margin:0;}
+.top-nav.scrolled:not(.in-section) .nav-btn:hover,
+.top-nav.scrolled:not(.in-section) .nav-btn.active{background:var(--surface2);color:var(--text);}
+.top-nav.scrolled:not(.in-section) .nav-btn-bottom{color:var(--muted2);}
+.top-nav.scrolled:not(.in-section) .nav-btn-bottom:hover{color:var(--text);}
+.top-nav.scrolled:not(.in-section) .nav-left{gap:4px;}
+.top-nav.scrolled:not(.in-section) .nav-right{gap:4px;}
+
+/* ── SIDEBAR (oculto en nueva UI) ── */
+.sidebar-right{display:none!important;}
+.bottom-nav{display:none!important;}
+
+/* ── CONTENT VERTICAL ── */
+.content{
+    display:block!important;
+    width:100%;
+    padding:0;
+    background:var(--bg);
+    position:relative;
+}
+/* Cada sección ocupa su espacio natural, separadas con padding */
+.view-section{
+    padding:48px 24px 64px;
+    max-width:1200px;
+    margin:0 auto;
+}
+.view-section-header{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border);
+}
+.section-divider{
+    border:none;border-top:1px solid var(--border);
+    margin:0;
+}
+
+/* Hero section */
+#view-resumen{
+    padding-top:0;
+}
+.hero-section{
+    position:relative;width:100%;height:100vh;
+    overflow:hidden;display:flex;flex-direction:column;background:#000;
+}
+.bg-slider{position:absolute;inset:0;z-index:1;}
+.slide{
+    position:absolute;inset:0;background-size:cover;background-position:center;
+    opacity:0;animation:fadeZoom 18s infinite;
+}
+.slide:nth-child(1){
+    background-image:url('https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=2000&auto=format&fit=crop');
+    animation-delay:0s;
+}
+.slide:nth-child(2){
+    background-image:url('https://images.unsplash.com/photo-1538108149393-cebb47acddb2?q=80&w=2000&auto=format&fit=crop');
+    animation-delay:6s;
+}
+.slide:nth-child(3){
+    background-image:url('https://images.unsplash.com/photo-1551076805-e1869033e561?q=80&w=2000&auto=format&fit=crop');
+    animation-delay:12s;
+}
+@keyframes fadeZoom{
+    0%{opacity:0;transform:scale(1)}
+    8%{opacity:1;transform:scale(1.02)}
+    33%{opacity:1;transform:scale(1.05)}
+    41%{opacity:0;transform:scale(1.05)}
+    100%{opacity:0;transform:scale(1)}
+}
+.hero-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.3) 0%,rgba(0,0,0,0.8) 100%);z-index:2;}
+.hero-content{
+    position:relative;z-index:3;max-width:1200px;margin:0 auto;width:100%;
+    height:100%;display:flex;flex-direction:column;padding:7rem 28px 2.5rem;box-sizing:border-box;
+}
+.hero-welcome{margin-top:auto;margin-bottom:28px;color:#fff;}
+.hero-welcome h1{font-size:2.6rem;font-weight:800;margin:0 0 6px;text-shadow:0 2px 8px rgba(0,0,0,0.5);}
+.hero-welcome h1 span{color:var(--green);}
+.hero-welcome p{font-size:1rem;color:rgba(255,255,255,0.75);margin:0;max-width:500px;}
+.kpi-hero-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:2rem;}
+.kpi-hero-card{
+    background:rgba(0,0,0,0.55);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,0.1);border-radius:var(--radius2);padding:20px 22px;
+    position:relative;overflow:hidden;transition:transform .2s;
+}
+.kpi-hero-card:hover{transform:translateY(-4px);}
+.kpi-hero-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.kpi-hero-card.red::before{background:var(--red);}
+.kpi-hero-card.green::before{background:var(--green);}
+.kpi-hero-card.blue::before{background:var(--blue);}
+.kpi-hero-card.amber::before{background:var(--amber);}
+.kpi-hero-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
+.kpi-hero-num{font-size:2.4rem;font-weight:800;line-height:1;color:#fff;}
+.kpi-hero-hint{font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px;}
+
+/* Dashboard fixed layout */
+#view-dashboard.active{
+    display:block;height:auto;overflow:visible;padding:0!important;
+}
+
+/* ── HOSPITALES: sección con área propia para la nav pill ── */
+#view-dashboard{
+    background:var(--bg);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+.hosp-nav-area{
+    height:72px;
+    flex-shrink:0;
+    background:var(--bg);
+}
+.hosp-body{
+    flex:1;
+    padding:12px 20px 20px;
+    box-sizing:border-box;
+    height:calc(100vh - 72px);
+    overflow:hidden;
+}
+
+/* ── TARJETA ÚNICA que envuelve lista + mapa ── */
+.hosp-card{
+    height:100%;
+    display:grid;
+    grid-template-columns:70fr 30fr;
+    gap:12px;
+}
+
+/* Panel izquierdo — lista */
+.hosp-list-panel{
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+}
+.hosp-list-toolbar{
+    flex-shrink:0;
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+    display:flex;
+    align-items:center;
+    gap:12px;
+}
+.hosp-search-wrap{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:50px;
+    padding:8px 16px;
+    transition:border-color .2s;
+}
+.hosp-search-wrap:focus-within{border-color:var(--green);}
+.hosp-search-wrap svg{color:var(--muted);flex-shrink:0;}
+.hosp-search-wrap input{
+    background:none;border:none;outline:none;
+    color:var(--text);font-size:13px;font-family:'Inter',sans-serif;
+    width:100%;
+}
+.hosp-search-wrap input::placeholder{color:var(--muted);}
+.hosp-filter-btns{display:flex;gap:6px;flex-shrink:0;}
+.hosp-filter-btn{
+    padding:6px 14px;border-radius:50px;
+    border:1px solid var(--border);
+    background:none;color:var(--muted);
+    font-size:12px;font-weight:600;font-family:'Inter',sans-serif;
+    cursor:pointer;transition:all .2s;white-space:nowrap;
+}
+.hosp-filter-btn.active,.hosp-filter-btn:hover{
+    background:var(--surface2);color:var(--text);border-color:var(--border2);
+}
+.hosp-list-scroll{
+    flex:1;overflow-y:auto;
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+}
+.hosp-table{width:100%;border-collapse:collapse;}
+.hosp-table thead tr{
+    background:var(--surface2);
+    position:sticky;top:0;z-index:2;
+}
+.hosp-table th{
+    font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--muted2);
+    padding:10px 18px;text-align:left;
+    border-bottom:1px solid var(--border);
+}
+.hosp-table tbody tr{
+    border-bottom:1px solid var(--border);
+    cursor:pointer;transition:background .15s;
+}
+.hosp-table tbody tr:hover{background:var(--surface2);}
+.hosp-table tbody tr.row-offline{border-left:3px solid var(--red);}
+.hosp-table tbody tr.row-online{border-left:3px solid var(--green);}
+.hosp-table tbody tr.row-warn{border-left:3px solid var(--amber);}
+.hosp-table td{
+    padding:13px 18px;font-size:13px;color:var(--muted);
+    vertical-align:middle;
+}
+.hosp-table td:first-child{color:var(--text);}
+.hosp-id-badge{
+    display:inline-block;
+    background:var(--surface2);border:1px solid var(--border);
+    border-radius:6px;padding:3px 8px;
+    font-size:11px;font-weight:700;color:var(--muted);
+    font-family:monospace;margin-bottom:4px;
+}
+.hosp-name-cell{font-size:13px;font-weight:600;color:var(--text);}
+.hosp-chevron{color:var(--muted2);flex-shrink:0;}
+
+/* Panel derecho — mapa */
+.hosp-map-panel{
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+}
+.hosp-map-toolbar{
+    flex-shrink:0;
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.hosp-map-title{font-size:13px;font-weight:700;color:var(--text);}
+.hosp-map-container{flex:1;overflow:hidden;position:relative;}
+#map-dashboard-container{width:100%;height:100%;}
+#btn-tour-dash{position:absolute;bottom:16px;right:16px;z-index:2000;}
+
+/* ── PAGE TITLE ── */
+.page-title{
+    font-size:1.4rem;font-weight:800;color:var(--text);
+    margin-bottom:20px;display:flex;align-items:center;gap:10px;
+}
+.page-title span{font-size:1rem;font-weight:500;color:var(--muted)}
+
+
+/* ── FILTER BAR ── */
+.filter-bar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.search-pill{
+    flex:1;min-width:200px;
+    background:var(--surface2);border-radius:var(--pill-radius);
+    padding:4px 16px;display:flex;align-items:center;
+    border:1px solid var(--border);
+}
+.search-pill input{
+    border:none;outline:none;width:100%;padding:8px;
+    font-size:.9rem;background:transparent;color:var(--text);
+    font-family:'Inter',sans-serif;
+}
+.search-pill input::placeholder{color:var(--muted)}
+.select-pill-wrapper{flex:1;min-width:200px}
+.select-pill{
+    width:100%;padding:10px 16px;border-radius:var(--pill-radius);
+    border:1px solid var(--border);background:var(--surface2);
+    font-size:.9rem;cursor:pointer;outline:none;
+    appearance:none;color:var(--text);
+    font-family:'Inter',sans-serif;
+}
+
+/* ── TABLE ISLAND ── */
+.table-container-island table{width:100%;border-collapse:separate;border-spacing:0 8px}
+.table-container-island th{
+    text-align:left;color:var(--muted);font-weight:600;
+    padding:0 14px 8px;font-size:.78em;text-transform:uppercase;letter-spacing:.06em;
+}
+.table-container-island tbody tr{
+    background:var(--surface);
+    transition:transform .2s,background .2s;cursor:pointer;
+}
+.table-container-island tbody tr:hover{transform:translateY(-1px);background:var(--surface2)}
+.table-container-island td{
+    padding:14px;vertical-align:middle;
+    border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+    color:var(--text);
+}
+.table-container-island td:first-child{
+    border-top-left-radius:var(--radius2);border-bottom-left-radius:var(--radius2);
+    border-left:3px solid transparent;
+}
+.table-container-island td:last-child{
+    border-top-right-radius:var(--radius2);border-bottom-right-radius:var(--radius2);
+    border-right:1px solid var(--border);
+}
+tr.row-status-success td:first-child{border-left-color:var(--green)!important}
+tr.row-status-warning td:first-child{border-left-color:var(--amber)!important}
+tr.row-status-danger td:first-child{border-left-color:var(--red)!important}
+.chevron-icon{color:var(--muted2);transition:.2s}
+tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
+
+/* ── BADGES ── */
+.hospital-tag{
+    font-family:monospace;font-weight:700;color:var(--text);
+    background:var(--surface2);padding:3px 8px;border-radius:4px;
+    border:1px solid var(--border2);display:inline-block;font-size:.85em;
+}
+.status-badge{padding:3px 10px;border-radius:20px;font-size:.8em;font-weight:700}
+.status-online{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,229,160,.2)}
+.status-offline{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,92,92,.2)}
+/* notice: azul suave — menos agresivo que el amarillo saturado */
+.status-notice{background:rgba(74,143,255,.1);color:var(--blue);border:1px solid rgba(74,143,255,.2)}
+.status-warning{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,169,64,.2)}
+/* critical: fondo más sutil, solo el texto en rojo */
+.status-critical{background:rgba(255,92,92,.07);color:var(--red);border:1px solid rgba(255,92,92,.15)}
+
+/* ── ALERT TABLES ── */
+.table-clean{width:100%;border-collapse:collapse;margin-bottom:0}
+.table-clean th{
+    text-align:left;padding:12px 18px;font-size:.75em;text-transform:uppercase;
+    letter-spacing:.07em;color:var(--muted2);font-weight:700;
+    border-bottom:1px solid var(--border);
+}
+.table-clean td{padding:13px 18px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+.table-clean tbody tr:last-child td{border-bottom:none}
+/* header incidentes: neutro, sin el rojo agresivo */
+.table-clean.active-incidents th{background:var(--surface2);color:var(--muted2);border-bottom-color:var(--border)}
+.table-clean.history th{background:var(--surface2);color:var(--muted2)}
+.table-clean tbody tr:hover td{background:rgba(255,255,255,.03)}
+/* columna Tiempo en incidentes activos: ámbar en lugar de rojo intenso */
+.table-clean.active-incidents td:last-child{
+    color:var(--amber);
+    font-weight:600;
+    font-size:.9em;
+}
+
+/* ── CONFIG TABLE ── */
+.scrollable-config-table{max-height:480px;overflow-y:auto;position:relative;border-bottom:1px solid var(--border)}
+.scrollable-config-table thead th{position:sticky;top:0;background:var(--surface2);z-index:10;box-shadow:0 1px 0 var(--border)}
+
+/* ── CARDS ── */
+.card{
+    background:var(--surface);border-radius:var(--radius2);
+    padding:20px;border:1px solid var(--border);
+    margin-bottom:16px;width:100%;
+}
+.detail-card{background:var(--surface);border-radius:var(--radius2);border:1px solid var(--border);overflow:hidden;height:100%}
+.detail-card-header{
+    padding:12px 18px;font-weight:700;color:var(--text);
+    text-transform:uppercase;font-size:.8em;letter-spacing:.5px;
+    display:flex;justify-content:space-between;align-items:center;
+}
+.detail-card-body{padding:18px}
+.detail-top-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-2-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* collapsed cards */
+.detail-card-header{cursor:pointer}
+.detail-card.collapsed .detail-card-body,.vm-card.collapsed .vm-body{display:none}
+.card-chevron{transition:transform .3s ease}
+.detail-card.collapsed .card-chevron,.vm-card.collapsed .card-chevron{transform:rotate(-90deg)}
+
+/* ── HOME: FONDO ANIMADO (imágenes locales) ── */
+.home-bg{
+    position:absolute;inset:0;z-index:0;overflow:hidden;
+}
+.home-bg-slide{
+    position:absolute;inset:0;
+    background-size:cover;background-position:center;
+    opacity:0;
+    transform:scale(1.04);
+    transition:opacity 1.6s cubic-bezier(.4,0,.2,1), transform 14s linear;
+    will-change:opacity,transform;
+}
+.home-bg-slide.active{
+    opacity:1;transform:scale(1.08);
+}
+/* overlay gradiente sobre las imágenes */
+.home-bg-overlay{
+    position:absolute;inset:0;z-index:1;
+    background:linear-gradient(
+        135deg,
+        rgba(10,10,11,0.72) 0%,
+        rgba(10,10,11,0.50) 50%,
+        rgba(10,10,11,0.78) 100%
+    );
+}
+/* partículas sutiles animadas encima */
+.home-bg-particles{
+    position:absolute;inset:0;z-index:2;
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(0,229,160,0.04) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(74,143,255,0.05) 0%, transparent 50%);
+    animation:particlesDrift 20s ease-in-out infinite alternate;
+}
+@keyframes particlesDrift{
+    0%{background-position:0% 0%, 100% 100%;}
+    100%{background-position:3% 5%, 97% 95%;}
+}
+
+/* ── HOME SECTION ── */
+#view-resumen{
+    position:relative;
+    overflow:hidden;
+    background:var(--bg);
+    min-height:100vh;
+}
+.home-inner{
+    position:relative;
+    z-index:10;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;           /* saludo + cards al fondo */
+    padding:0 0 48px;
+}
+.home-header{
+    padding:0 40px;
+    margin-bottom:28px;
+}
+.home-header h2{
+    font-size:2.2rem;
+    font-weight:800;
+    color:#fff;
+    margin:0 0 8px;
+    text-shadow:0 2px 12px rgba(0,0,0,0.6);
+}
+.home-header p{
+    font-size:14px;
+    color:rgba(255,255,255,0.65);
+    margin:0 0 14px;
+    max-width:520px;
+}
+/* Botón secundario de acceso a Herramientas */
+.home-tools-btn{
+    display:inline-flex;align-items:center;gap:10px;
+    padding:8px 16px 8px 14px;
+    border-radius:12px;
+    background:rgba(255,255,255,0.07);
+    border:1px solid rgba(255,255,255,0.13);
+    color:rgba(255,255,255,0.75);
+    font-family:'Inter',sans-serif;
+    text-decoration:none;
+    transition:all .2s;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+}
+.home-tools-btn:hover{
+    background:rgba(255,255,255,0.12);
+    border-color:rgba(255,255,255,0.22);
+    color:#fff;
+}
+
+/* ── KPI ROW: scroll horizontal automático ── */
+.kpi-scroll-track{
+    overflow:hidden;
+    position:relative;
+    mask-image:linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+    -webkit-mask-image:linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+}
+.kpi-scroll-inner{
+    display:flex;
+    gap:14px;
+    width:max-content;
+    animation:kpiScroll 32s linear infinite;
+    padding:16px 0 20px;
+}
+.kpi-scroll-inner:hover{
+    animation-play-state:paused;
+}
+@keyframes kpiScroll{
+    0%{transform:translateX(0);}
+    100%{transform:translateX(-50%);}
+}
+.kpi-card-h{
+    flex-shrink:0;
+    width:200px;
+    background:rgba(17,17,19,0.75);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:var(--radius2);
+    padding:20px 22px;
+    position:relative;overflow:hidden;
+    transition:transform .25s, border-color .25s, box-shadow .25s;
+    cursor:default;
+}
+.kpi-card-h:hover{
+    transform:translateY(-5px);
+    border-color:rgba(255,255,255,0.15);
+    box-shadow:0 12px 40px rgba(0,0,0,0.4);
+}
+.kpi-card-h::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    transition:opacity .25s;
+}
+.kpi-card-h.blue::before{background:var(--blue);}
+.kpi-card-h.green::before{background:var(--green);}
+.kpi-card-h.red::before{background:var(--red);}
+.kpi-card-h.amber::before{background:var(--amber);}
+.kpi-card-h.purple::before{background:var(--purple);}
+/* glow sutil al hover */
+.kpi-card-h.blue:hover{box-shadow:0 8px 32px rgba(74,143,255,0.15);}
+.kpi-card-h.green:hover{box-shadow:0 8px 32px rgba(0,229,160,0.12);}
+.kpi-card-h.red:hover{box-shadow:0 8px 32px rgba(255,92,92,0.15);}
+.kpi-card-h.amber:hover{box-shadow:0 8px 32px rgba(255,169,64,0.12);}
+.kpi-card-h.purple:hover{box-shadow:0 8px 32px rgba(168,85,247,0.12);}
+
+.kpi-card-h .kpi-icon{
+    font-size:18px;color:var(--muted2);margin-bottom:14px;display:block;
+}
+.kpi-card-h .kpi-label{
+    font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.08em;color:rgba(255,255,255,0.4);margin-bottom:8px;
+}
+.kpi-card-h .kpi-num{
+    font-size:2.2rem;font-weight:800;line-height:1;color:#fff;
+}
+.kpi-card-h .kpi-hint{
+    font-size:11px;color:rgba(255,255,255,0.35);margin-top:7px;line-height:1.4;
+}
+
+/* SUMMARY legacy (oculto, reemplazado) */
+.summary-map-wrapper{display:none!important;}
+.summary-cards-vertical{display:none!important;}
+
+/* ── DETALLE HOSPITAL: modal centrado tipo tarjeta ── */
+#detalle-backdrop{
+    position:fixed;inset:0;
+    background:rgba(0,0,0,0.78);
+    z-index:10000;
+    display:none;
+    backdrop-filter:blur(5px);
+    -webkit-backdrop-filter:blur(5px);
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    box-sizing:border-box;
+}
+#detalle-backdrop.active{display:flex;}
+
+.detalle-modal-overlay{
+    position:relative;
+    width:min(1100px,96vw);
+    max-height:88vh;
+    z-index:10001!important;
+    background:var(--surface)!important;
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 32px 80px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.04);
+    transform:scale(0.96) translateY(16px);
+    opacity:0;
+    transition:transform .28s cubic-bezier(.4,0,.2,1), opacity .28s ease;
+    cursor:default;
+}
+#detalle-backdrop.active .detalle-modal-overlay{
+    transform:scale(1) translateY(0);
+    opacity:1;
+}
+.detalle-modal-overlay .detalle-nav-bar{
+    position:sticky;top:0;z-index:100;
+    background:var(--surface2);
+    border-bottom:1px solid var(--border);
+    border-radius:var(--radius2) var(--radius2) 0 0;
+    flex-shrink:0;
+}
+.detalle-modal-overlay-body{
+    overflow-y:auto;
+    flex:1;
+    scrollbar-width:thin;
+    scrollbar-color:var(--border2) transparent;
+}
+.detalle-modal-overlay .tab-content{flex-shrink:0;}
+
+/* ── CONFIG: layout con scroll libre (no pantalla completa fija) ── */
+#view-config{
+    background:var(--bg);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+.conf-nav-area{
+    height:72px;flex-shrink:0;background:var(--bg);
+}
+.conf-body{
+    flex:1;
+    padding:20px 28px 20px;
+    box-sizing:border-box;
+    max-width:1100px;width:100%;margin:0 auto;
+    height:calc(100vh - 72px);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+}
+.conf-page-header{
+    flex-shrink:0;
+    margin-bottom:16px;
+}
+.conf-page-header h2{font-size:1.2rem;font-weight:800;color:var(--text);margin:0 0 4px;}
+.conf-page-header p{font-size:13px;color:var(--muted);margin:0;}
+.conf-page-header hr{border:none;border-top:1px solid var(--border);margin:12px 0 0;}
+
+/* Tarjeta principal con tabs — ocupa el espacio restante */
+.conf-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+    overflow:hidden;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+}
+.conf-tabs{
+    display:flex;
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+    flex-shrink:0;
+}
+.conf-tab{
+    display:flex;align-items:center;gap:8px;
+    padding:14px 24px;
+    font-size:13px;font-weight:600;font-family:'Inter',sans-serif;
+    color:var(--muted);border:none;background:none;cursor:pointer;
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+    transition:all .2s;white-space:nowrap;
+}
+.conf-tab svg{flex-shrink:0;}
+.conf-tab:hover{color:var(--text);}
+.conf-tab.active{color:var(--green);border-bottom-color:var(--green);}
+/* Panels: scroll interno, altura rellenando la tarjeta */
+.conf-tab-panel{
+    display:none;
+    padding:24px 28px;
+    overflow-y:auto;
+    flex:1;
+    scrollbar-width:thin;
+    scrollbar-color:var(--border2) transparent;
+}
+.conf-tab-panel.active{display:flex;flex-direction:column;}
+
+/* Subtítulo de sección dentro del panel */
+.conf-section-title{
+    font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--muted2);
+    margin:0 0 16px;padding-bottom:10px;
+    border-bottom:1px solid var(--border);
+}
+.conf-section-block{margin-bottom:24px;flex-shrink:0;}
+.conf-section-block:last-child{margin-bottom:0;}
+/* WIP badge */
+.badge-wip{
+    display:inline-flex;align-items:center;gap:5px;
+    background:var(--amber-dim);border:1px solid rgba(255,169,64,.2);
+    color:var(--amber);font-size:10px;font-weight:700;
+    padding:3px 10px;border-radius:20px;letter-spacing:.05em;
+    margin-left:10px;vertical-align:middle;
+}
+
+/* ── REPORTES: mismo patrón que Alertas ── */
+#view-ia{
+    background:var(--bg);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+.rep-nav-area{
+    height:72px;
+    flex-shrink:0;
+    background:var(--bg);
+}
+.rep-body{
+    flex:1;
+    padding:12px 20px 20px;
+    box-sizing:border-box;
+    height:calc(100vh - 72px);
+    overflow:hidden;
+    display:grid;
+    grid-template-columns:30fr 70fr;
+    gap:12px;
+}
+/* Tarjeta izquierda — formulario procesamiento */
+.rep-form-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+}
+.rep-form-header{
+    flex-shrink:0;
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:8px;
+}
+.rep-form-title{font-size:13px;font-weight:700;color:var(--text);}
+.rep-form-scroll{
+    flex:1;overflow-y:auto;padding:18px;
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+}
+/* Tarjeta derecha — historial */
+.rep-hist-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+}
+.rep-hist-header{
+    flex-shrink:0;
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.rep-hist-title{font-size:13px;font-weight:700;color:var(--text);}
+.rep-hist-scroll{
+    flex:1;overflow-y:auto;
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+}
+
+/* ── ALERTAS: mismo patrón que Hospitales ── */
+#view-alertas{
+    background:var(--bg);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+.alert-nav-area{
+    height:72px;
+    flex-shrink:0;
+    background:var(--bg);
+}
+.alert-body{
+    flex:1;
+    padding:12px 20px 20px;
+    box-sizing:border-box;
+    height:calc(100vh - 72px);
+    overflow:hidden;
+    display:grid;
+    grid-template-columns:30fr 70fr;
+    gap:12px;
+}
+
+/* Tarjeta izquierda — indicadores */
+.alert-stats-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+}
+.alert-stats-header{
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:8px;
+    flex-shrink:0;
+}
+.alert-stats-title{font-size:13px;font-weight:700;color:var(--text);}
+.alert-live-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--red);flex-shrink:0;
+    box-shadow:0 0 0 2px var(--red-dim);
+}
+.alert-stats-body{
+    flex:1;overflow-y:auto;
+    padding:16px;
+    display:flex;flex-direction:column;gap:12px;
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+}
+.alert-kpi-card{
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    position:relative;overflow:hidden;
+}
+.alert-kpi-card::before{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+}
+.alert-kpi-card.red::before{background:var(--red);}
+.alert-kpi-card.blue::before{background:var(--blue);}
+.alert-kpi-card.green::before{background:var(--green);}
+.alert-kpi-card.amber::before{background:var(--amber);}
+.alert-kpi-label{
+    font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.07em;color:var(--muted2);margin-bottom:10px;
+}
+.alert-kpi-num{
+    font-size:2rem;font-weight:800;line-height:1;margin-bottom:4px;
+}
+.alert-kpi-num.red{color:var(--red);}
+.alert-kpi-num.blue{color:var(--blue);}
+.alert-kpi-num.green{color:var(--green);}
+.alert-kpi-num.amber{color:var(--amber);}
+.alert-kpi-hint{font-size:11px;color:var(--muted);line-height:1.4;}
+
+/* Tarjeta derecha — tabla incidentes */
+.alert-table-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius2);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+}
+.alert-table-header{
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    flex-shrink:0;
+}
+.alert-table-scroll{
+    flex:1;overflow-y:auto;
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+}
+
+/* ── INPUT GROUP ── */
+.input-group{margin-bottom:10px}
+.input-group label{
+    font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);margin-bottom:4px;display:block;font-weight:600;
+}
+.input-group input,
+.input-group input[readonly],
+.input-group input[type="number"],
+.input-group select,
+.input-group textarea{
+    background:var(--surface2);border:1px solid var(--border);
+    color:var(--text);font-weight:500;width:100%;padding:9px 12px;
+    border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:.9em;
+    outline:none;transition:border-color .2s;
+}
+.input-group input:focus,
+.input-group select:focus,
+.input-group textarea:focus{border-color:var(--green)}
+.input-group input[type="time"]{color:var(--text)}
+.input-group input[type="date"]{color:var(--text);color-scheme:dark}
+
+/* ── BUTTONS ── */
+.btn-action{
+    width:100%;padding:11px 16px;background:var(--blue);
+    color:white;border:none;border-radius:var(--radius);
+    font-size:.9em;font-weight:700;cursor:pointer;transition:.2s;
+    font-family:'Inter',sans-serif;
+}
+.btn-action:hover{opacity:.85}
+
+.btn-small{padding:5px 10px;font-size:.78em;border-radius:var(--radius);border:none;cursor:pointer;margin-left:4px;color:white;font-family:'Inter',sans-serif}
+.btn-edit{background:var(--amber)}
+.btn-delete{background:var(--red)}
+.btn-view{background:var(--blue)}
+.btn-hide{background:var(--muted)}
+.btn-small svg{vertical-align:middle}
+
+/* ── TOGGLE / STATUS BARS ── */
+.status-toggle-bar,.tab-toggle-bar{
+    display:inline-flex;background:var(--surface2);
+    border-radius:20px;padding:3px;gap:4px;border:1px solid var(--border);
+}
+.toggle-btn,.tab-btn{
+    border:none;background:transparent;padding:5px 14px;
+    border-radius:16px;color:var(--muted);font-weight:600;
+    font-size:.82em;cursor:pointer;transition:all .2s;
+    font-family:'Inter',sans-serif;
+}
+.toggle-btn:hover:not(.active),.tab-btn:hover:not(.active){background:var(--surface3);color:var(--text)}
+.toggle-btn.active,.tab-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+
+/* ── CHART TOOLBAR ── */
+.chart-toolbar{
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:10px;margin-bottom:14px;
+    background:var(--surface2);padding:10px;border-radius:var(--radius);border:1px solid var(--border);
+}
+.chart-selects{display:flex;gap:10px;flex:1}
+.chart-selects select{
+    padding:6px 10px;border-radius:var(--radius);
+    border:1px solid var(--border);font-size:.85em;cursor:pointer;
+    background:var(--surface);color:var(--text);font-family:'Inter',sans-serif;
+}
+.chart-toggles{display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.chart-btn{
+    background:var(--surface);border:none;padding:6px 12px;cursor:pointer;
+    font-size:.82em;border-right:1px solid var(--border);color:var(--muted);
+    font-family:'Inter',sans-serif;transition:all .2s;
+}
+.chart-btn:last-child{border-right:none}
+.chart-btn.active{background:var(--blue);color:white}
+.chart-btn:hover:not(.active){background:var(--surface2);color:var(--text)}
+
+/* ── DETAIL NAV BAR ── */
+.detalle-nav-bar{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--surface);padding:10px 18px;
+    border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:900;
+}
+.detail-back-btn{
+    border:none;background:var(--surface2);color:var(--muted);
+    width:34px;height:34px;border-radius:50%;
+    display:flex;justify-content:center;align-items:center;
+    cursor:pointer;transition:all .2s;
+}
+.detail-back-btn:hover{background:var(--blue);color:white}
+.hosp-card-badge{
+    background:var(--green-dim);border:1px solid rgba(0,229,160,.2);
+    padding:5px 14px;border-radius:var(--radius);color:var(--text);
+}
+.hosp-card-badge .row-1{font-weight:700;font-size:1em}
+.hosp-card-badge .row-2{font-size:.78em;color:var(--muted)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ── SENSORS / VMs ── */
+.sensor-section-title{
+    font-size:.72em;color:var(--muted);font-weight:700;
+    margin-top:14px;margin-bottom:8px;text-transform:uppercase;
+    letter-spacing:.05em;border-bottom:1px dashed var(--border);padding-bottom:5px;
+}
+.fans-grid,.sensor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.fan-chip,.sensor-chip{
+    background:var(--surface2);border:1px solid var(--border);
+    border-radius:var(--radius);padding:8px 12px;font-size:.82em;
+    display:flex;justify-content:space-between;align-items:center;
+}
+.fan-chip.ok,.sensor-chip.ok{border-left:3px solid var(--green)}
+.fan-chip.fail,.sensor-chip.fail{border-left:3px solid var(--amber)}
+.fan-name,.sensor-label{font-weight:600;color:var(--text)}
+.fan-rpm,.sensor-value{font-family:monospace;color:var(--muted)}
+.vm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;margin-top:16px}
+.vm-card{background:var(--surface);border-radius:var(--radius2);border:1px solid var(--border);overflow:hidden;transition:transform .2s}
+.vm-card:hover{transform:translateY(-2px)}
+.vm-body{padding:14px}
+.progress-track{background:var(--surface2);height:5px;border-radius:3px;overflow:hidden;border:1px solid var(--border)}
+.progress-fill{height:100%;transition:width .5s ease}
+.service-chip{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:3px 9px;border-radius:20px;font-size:.72em;font-weight:600;
+    margin-right:4px;margin-bottom:4px;
+    background:var(--surface2);color:var(--muted);
+}
+.service-chip.running{background:var(--green-dim);color:var(--green)}
+.service-chip.stopped{background:var(--red-dim);color:var(--red)}
+
+/* ── MAP ── */
+.map-tour-btn{
+    position:absolute;bottom:30px;right:30px;z-index:1000;
+    background:var(--surface);color:var(--text);
+    border:1px solid var(--border2);padding:10px 20px;
+    border-radius:50px;cursor:pointer;font-weight:700;
+    transition:all .3s;font-size:.8em;display:flex;align-items:center;gap:8px;
+    font-family:'Inter',sans-serif;
+}
+.map-tour-btn:hover{background:var(--blue);border-color:var(--blue);color:white}
+.map-tour-btn.active{background:var(--red);border-color:var(--red);color:white}
+
+/* ── MIRTH PILLS ── */
+.mirth-pills-grid{display:flex;flex-wrap:wrap;gap:12px;padding:16px;background:var(--surface2)}
+.mirth-pill{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:10px 14px;
+    width:calc(33.333% - 8px);min-width:240px;
+    transition:transform .2s,box-shadow .2s;flex-grow:1;
+}
+.mirth-pill:hover{transform:translateY(-1px)}
+.mirth-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.mirth-pill-name{font-weight:600;font-size:.85em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── AUTOCOMPLETE ── */
+.autocomplete-wrapper{position:relative}
+.autocomplete-list{
+    position:absolute;top:100%;left:0;right:0;
+    background:var(--surface);border:1px solid var(--border2);
+    border-top:none;border-radius:0 0 var(--radius) var(--radius);
+    z-index:4000;max-height:220px;overflow-y:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);
+}
+.chip-tag{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:3px 10px;border-radius:20px;font-size:.78em;font-weight:600;
+    background:var(--blue-dim);color:var(--blue);border:1px solid rgba(74,143,255,.2);
+    cursor:pointer;
+}
+.chip-tag:hover{background:var(--red-dim);color:var(--red)}
+
+/* ── MODAL ── */
+.modal-overlay{
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,.7);z-index:1000;
+    display:flex;justify-content:center;align-items:center;
+    backdrop-filter:blur(4px);
+}
+.modal-content{
+    background:var(--surface);padding:28px;border-radius:var(--radius3);
+    width:90%;max-width:500px;border:1px solid var(--border2);
+    box-shadow:0 24px 64px rgba(0,0,0,.5);animation:slideIn .25s ease;
+}
+.modal-content h3{color:var(--text);margin-top:0;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:18px}
+.modal-content input,.modal-content select,.modal-content textarea{
+    width:100%;padding:9px 12px;border:1px solid var(--border);
+    border-radius:var(--radius);background:var(--surface2);color:var(--text);
+    box-sizing:border-box;font-family:'Inter',sans-serif;font-size:.9em;
+    outline:none;transition:border-color .2s;
+}
+.modal-content input:focus,.modal-content select:focus{border-color:var(--green)}
+@keyframes slideIn{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* IA option cards */
+.ia-option-card{transition:all .2s;border-radius:var(--radius2)!important}
+.ia-option-card.selected{border:2px solid var(--purple)!important;background:var(--purple-dim)!important}
+
+/* search item */
+.search-item:hover{background:var(--surface2);color:var(--blue)}
+
+/* ── LOADER ── */
+.loader{
+    width:28px;height:28px;border:3px solid var(--border2);
+    border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── TOAST ── */
+.toast-notification{
+    position:fixed;bottom:24px;right:24px;z-index:9999;
+    background:var(--surface);border:1px solid var(--border2);
+    color:var(--text);padding:14px 20px;border-radius:var(--radius2);
+    font-size:.9em;font-weight:600;font-family:'Inter',sans-serif;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);animation:slideIn .3s ease;
+    display:flex;align-items:center;gap:10px;
+}
+.toast-notification.success{border-left:3px solid var(--green)}
+.toast-notification.error{border-left:3px solid var(--red)}
+.toast-notification.info{border-left:3px solid var(--blue)}
+
+/* ── LOGIN PAGE ── */
+.login-wrapper{
+    display:flex;align-items:center;justify-content:center;
+    width:100%;height:100vh;background:var(--bg);
+}
+.login-card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius3);padding:40px;width:90%;max-width:380px;
+    box-shadow:0 24px 64px rgba(0,0,0,.4);
+}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:32px}
+.login-logo .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+.login-logo h1{font-size:1.3em;font-weight:800;color:var(--text);margin:0}
+.btn-login{
+    width:100%;padding:11px;background:var(--green);color:#0A0A0B;
+    border:none;border-radius:var(--radius);font-size:.95em;
+    font-weight:800;cursor:pointer;font-family:'Inter',sans-serif;
+    transition:opacity .2s;
+}
+.btn-login:hover{opacity:.85}
+
+/* ── BOTTOM NAV (MOBILE) ── */
+.bottom-nav{
+    display:none;position:fixed;bottom:0;left:0;width:100%;
+    background:var(--surface);border-top:1px solid var(--border);
+    justify-content:space-around;padding:8px 0;z-index:1000;
+}
+.nav-item{
+    background:none;border:none;display:flex;flex-direction:column;
+    align-items:center;color:var(--muted);gap:3px;font-size:.7rem;
+    cursor:pointer;font-family:'Inter',sans-serif;padding:4px 8px;
+}
+.nav-item.active{color:var(--green)}
+
+/* ── MISC ── */
+.detail-top-grid.grid-3{grid-template-columns:repeat(3,1fr)}
+#chart-loader,#kpi-chart-loader{
+    background:rgba(17,17,19,.85)!important;
+    border-radius:var(--radius);
+}
+
+/* override inline styles injected by JS that use old light colors */
+[style*="color: #2c3e50"],[style*="color:#2c3e50"]{color:var(--text)!important}
+[style*="color: #7f8c8d"],[style*="color:#7f8c8d"]{color:var(--muted)!important}
+[style*="color: #34495e"],[style*="color:#34495e"]{color:var(--text)!important}
+[style*="color: #95a5a6"],[style*="color:#95a5a6"]{color:var(--muted)!important}
+[style*="color: #27ae60"],[style*="color:#27ae60"]{color:var(--green)!important}
+[style*="color: #e74c3c"],[style*="color:#e74c3c"]{color:var(--red)!important}
+/* La columna Tiempo en incidentes activos: si JS inyecta color rojo inline, lo suavizamos a ámbar */
+.table-clean.active-incidents td:last-child[style*="color"]{color:var(--amber)!important}
+/* Texto muted en tabla activa */
+.table-clean.active-incidents td:nth-child(3){color:var(--muted);font-size:.88em}
+
+/* ── Historial reportes: overrides de fondos claros ── */
+[style*="background-color: white"],[style*="background-color:white"],
+[style*="background: white"],[style*="background:white"],
+[style*="background: #fff"],[style*="background:#fff"],
+[style*="background-color: #fff"],[style*="background-color:#fff"],
+[style*="background: #f8f9fa"],[style*="background:#f8f9fa"],
+[style*="background-color: #f8f9fa"],[style*="background-color:#f8f9fa"],
+[style*="background: #fdfdfd"],[style*="background:#fdfdfd"],
+[style*="background: #ecf0f1"],[style*="background:#ecf0f1"],
+[style*="background-color: #ecf0f1"],[style*="background-color:#ecf0f1"],
+[style*="background-color: #fdfdfd"]{background:var(--surface2)!important;color:var(--text)!important}
+[style*="border: 1px solid #e1e4e8"],[style*="border:1px solid #e1e4e8"],
+[style*="border-bottom: 1px solid #eee"],[style*="border-bottom:1px solid #eee"],
+[style*="border-top: 1px solid #eee"],[style*="border-top:1px solid #eee"]{border-color:var(--border)!important}
+
+/* Estados en historial reportes */
+[style*="background:#eafaf1"],[style*="background: #eafaf1"]{background:var(--green-dim)!important;color:var(--green)!important}
+[style*="background:#fadbd8"],[style*="background: #fadbd8"]{background:var(--red-dim)!important;color:var(--red)!important}
+[style*="background:#f0fcf4"],[style*="background: #f0fcf4"]{background:var(--green-dim)!important;color:var(--green)!important}
+[style*="background:#fdedec"],[style*="background: #fdedec"]{background:var(--red-dim)!important;color:var(--red)!important}
+[style*="background:#fef5e7"],[style*="background: #fef5e7"]{background:var(--amber-dim)!important;color:var(--amber)!important}
+[style*="background:#ebf5fb"],[style*="background: #ebf5fb"]{background:var(--blue-dim)!important;color:var(--blue)!important}
+[style*="background:#fdf2e9"],[style*="background: #fdf2e9"]{background:var(--amber-dim)!important;color:var(--amber)!important}
+
+/* Botón "Ver" azul y botón "Local" gris del historial */
+#tabla-historial-body a[style*="background: #3498db"],
+#tabla-historial-body a[style*="background:#3498db"]{
+    background:var(--blue-dim)!important;color:var(--blue)!important;
+    border:1px solid rgba(74,143,255,.25)!important;
+    border-radius:var(--radius)!important;padding:5px 12px!important;
+    font-size:12px!important;font-weight:600!important;
+    text-decoration:none!important;display:inline-block!important;
+}
+#tabla-historial-body span[style*="background: #bdc3c7"],
+#tabla-historial-body span[style*="background:#bdc3c7"]{
+    background:var(--surface2)!important;color:var(--muted)!important;
+    border:1px solid var(--border)!important;
+    border-radius:var(--radius)!important;padding:5px 12px!important;
+    font-size:12px!important;font-weight:600!important;
+}
+/* Texto "PDF Completo" y subtexto de período */
+#tabla-historial-body td small{color:var(--muted)!important;font-size:11px!important}
+
+/* chart.js dark defaults */
+canvas{color-scheme:dark}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+    .detail-top-grid,.grid-2-col{grid-template-columns:1fr}
+    .summary-map-wrapper{flex-direction:column;height:auto}
+    .summary-cards-vertical{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+    .card-map-large{min-height:450px}
+    .mirth-pill{width:100%}
+}
+@media(max-width:768px){
+    .sidebar-right{display:none}
+    .bottom-nav{display:flex}
+    .content{padding:14px}
+    .hosp-body{height:auto;padding:10px;}
+    .hosp-card{grid-template-columns:1fr;height:auto;}
+    .hosp-list-panel{height:60vh;}
+    .hosp-map-panel{height:50vh;}
+    #view-dashboard.active{height:auto;}
+    .filter-bar{flex-direction:column;gap:8px}
+    .search-pill,.select-pill-wrapper{width:100%;min-width:0}
+    .chart-toolbar{flex-direction:column;align-items:stretch}
+    .chart-selects{flex-direction:column;width:100%}
+    .chart-selects select{width:100%;margin-bottom:5px}
+    .chart-toggles{width:100%;justify-content:center}
+    .chart-btn{flex:1}
+    .map-tour-btn{display:none!important}
+    .detalle-nav-bar{flex-wrap:wrap;justify-content:flex-start;gap:10px;padding:10px 12px}
+    .detail-back-btn{order:1}
+    .tab-toggle-bar{order:2;flex:1;justify-content:center}
+    .hosp-card-badge{order:3;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center}
+    .tab-btn{padding:5px 10px;font-size:.78em}
+    .table-container-island table,tbody,tr,td{display:block;width:100%}
+    .table-container-island thead{display:none}
+    .table-container-island tbody tr{
+        margin-bottom:12px;border-radius:var(--radius2);padding:14px;
+        display:grid;grid-template-columns:1fr auto;
+        grid-template-areas:"id status" "date date" "elems elems";
+        border-left:3px solid transparent;
+        background:var(--surface);border:1px solid var(--border);
+    }
+    .table-container-island td{border:none;padding:4px 0}
+    .table-container-island td:first-child{grid-area:id;border:none;font-size:1.05em}
+    .table-container-island td:nth-child(2){grid-area:status;text-align:right}
+    .table-container-island td:nth-child(3){grid-area:elems;margin-top:8px}
+    .table-container-island td:nth-child(4){grid-area:date;color:var(--muted);font-size:.82em;margin-top:-4px}
+    .table-container-island td:nth-child(5){display:none}
+    #view-alertas table,#view-alertas thead,#view-alertas tbody,#view-alertas th,#view-alertas td,#view-alertas tr{display:block;width:100%;box-sizing:border-box}
+    #view-alertas thead tr{position:absolute;top:-9999px;left:-9999px}
+    #view-alertas tr{margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius2);background:var(--surface);padding:10px;overflow:hidden}
+    #view-alertas td{border:none;border-bottom:1px solid var(--border);padding:7px 5px;text-align:left;white-space:normal}
+    #view-alertas td:last-child{border-bottom:none}
+    #view-alertas td:nth-of-type(1){background:var(--surface2);margin:-10px -10px 10px;padding:10px 14px;border-bottom:1px solid var(--border);font-weight:bold}
+    #view-alertas td:nth-of-type(4){font-weight:bold;text-align:right;color:var(--red);padding-top:8px}
+    .detail-top-grid{grid-template-columns:1fr}
+}
+@media(max-width:380px){
+    .tab-btn{padding:5px 8px;font-size:.72em}
+    .tab-toggle-bar{gap:3px}
+}
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+
+
+<!-- ══════════════════════════════════════
+     NAV FLOTANTE PILL
+══════════════════════════════════════ -->
+<nav id="main-nav" class="top-nav">
+    <div class="nav-left">
+        <div class="nav-logo">
+            <div class="logo-dot"></div>
+            <span class="nav-logo-text">TecnoMonitor</span>
+        </div>
+        <div class="nav-links">
+            <button id="btn-resumen" class="nav-btn active" onclick="scrollToSection('view-resumen','btn-resumen');cargarDatos();">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span class="nav-label">Home</span>
+            </button>
+            <button id="btn-dash" class="nav-btn" onclick="scrollToSection('view-dashboard','btn-dash');cargarDatos();">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                <span class="nav-label">Hospitales</span>
+            </button>
+            <button id="btn-alert" class="nav-btn" onclick="scrollToSection('view-alertas','btn-alert');cargarAlertas();">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span class="nav-label">Alertas</span>
+            </button>
+            <button id="btn-ia" class="nav-btn" onclick="scrollToSection('view-ia','btn-ia');">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z"/><path d="M19 16L19.6 17.4L21 18L19.6 18.6L19 20L18.4 18.6L17 18L18.4 17.4L19 16Z"/></svg>
+                <span class="nav-label">Reportes</span>
+            </button>
+            <!-- btn-herramientas oculto — requerido por aplicarRestriccionesUI -->
+            <span id="btn-herramientas" style="display:none"></span>
+        </div>
+    </div>
+    <div class="nav-right">
+        <button id="btn-conf" class="nav-btn-bottom" onclick="scrollToSection('view-config','btn-conf');" title="Configuración">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="nav-btn-bottom" onclick="scrollToSection('view-config','btn-conf');" title="Configuración" style="display:none"></button>
+    </div>
+</nav>
+
+    <!-- ══════════════════════════════════════
+         VIEW: RESUMEN EJECUTIVO
+    ══════════════════════════════════════ -->
+    <!-- ══ HOME ══ -->
+    <div id="view-resumen" class="content active">
+
+        <!-- Fondo animado con imágenes locales -->
+        <div class="home-bg" id="home-bg">
+            <div class="home-bg-slide" style="background-image:url('/static/home_1.png')"></div>
+            <div class="home-bg-slide" style="background-image:url('/static/home_2.png')"></div>
+            <div class="home-bg-slide" style="background-image:url('/static/home_3.png')"></div>
+            <div class="home-bg-overlay"></div>
+            <div class="home-bg-particles"></div>
+        </div>
+
+        <div class="home-inner">
+            <!-- Saludo -->
+            <div class="home-header">
+                <h2>Hola, <span id="hero-user-name" style="color:var(--green)">Usuario</span> 👋</h2>
+                <p>Centro de monitoreo proactivo · Estado en tiempo real de la infraestructura en todas las sedes.</p>
+                <a href="/herramientas" target="_blank" class="home-tools-btn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    <span>
+                        <strong style="display:block;font-size:12px;font-weight:700;line-height:1.2">Herramientas</strong>
+                        <span style="font-size:10px;font-weight:400;opacity:.75">RIS Analytics · Sandbox HL7</span>
+                    </span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+            </div>
+
+            <!-- KPI cards en fila con scroll automático -->
+            <div class="kpi-scroll-track">
+                <div class="kpi-scroll-inner" id="kpi-scroll-inner">
+                    <!-- Set 1 -->
+                    <div class="kpi-card-h blue">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                        <div class="kpi-label">Hospitales Totales</div>
+                        <div class="kpi-num" id="sum-total">-</div>
+                        <div class="kpi-hint">Sedes monitoreadas</div>
+                    </div>
+                    <div class="kpi-card-h green">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                        <div class="kpi-label">Operando Normal</div>
+                        <div class="kpi-num" id="sum-online">-</div>
+                        <div class="kpi-hint">Online ahora</div>
+                    </div>
+                    <div class="kpi-card-h red">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.47 14.28A2 2 0 0 0 3.54 21h16.92a2 2 0 0 0 1.72-3.01L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <div class="kpi-label">Con Problemas</div>
+                        <div class="kpi-num" id="sum-offline">-</div>
+                        <div class="kpi-hint">Requieren atención</div>
+                    </div>
+                    <div class="kpi-card-h purple">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                        <div class="kpi-label">Nodos Monitoreados</div>
+                        <div class="kpi-num" id="sum-elementos">-</div>
+                        <div class="kpi-hint">Servers físicos + VMs</div>
+                    </div>
+                    <div class="kpi-card-h amber">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+                        <div class="kpi-label">Estudios en la Red</div>
+                        <div class="kpi-num" id="sum-estudios">-</div>
+                        <div class="kpi-hint">Histórico PACS</div>
+                    </div>
+                    <div class="kpi-card-h green">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        <div class="kpi-label">Equipos Médicos</div>
+                        <div class="kpi-num" id="sum-equipos">-</div>
+                        <div class="kpi-hint">Total histórico único</div>
+                    </div>
+                    <div class="kpi-card-h purple">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg>
+                        <div class="kpi-label">Procesamientos IA</div>
+                        <div class="kpi-num" id="sum-ia">-</div>
+                        <div class="kpi-hint">Análisis históricos únicos</div>
+                    </div>
+                    <!-- Set 2 — clon para loop seamless -->
+                    <div class="kpi-card-h blue">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                        <div class="kpi-label">Hospitales Totales</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-total">-</div>
+                        <div class="kpi-hint">Sedes monitoreadas</div>
+                    </div>
+                    <div class="kpi-card-h green">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                        <div class="kpi-label">Operando Normal</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-online">-</div>
+                        <div class="kpi-hint">Online ahora</div>
+                    </div>
+                    <div class="kpi-card-h red">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.47 14.28A2 2 0 0 0 3.54 21h16.92a2 2 0 0 0 1.72-3.01L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <div class="kpi-label">Con Problemas</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-offline">-</div>
+                        <div class="kpi-hint">Requieren atención</div>
+                    </div>
+                    <div class="kpi-card-h purple">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                        <div class="kpi-label">Nodos Monitoreados</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-elementos">-</div>
+                        <div class="kpi-hint">Servers físicos + VMs</div>
+                    </div>
+                    <div class="kpi-card-h amber">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+                        <div class="kpi-label">Estudios en la Red</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-estudios">-</div>
+                        <div class="kpi-hint">Histórico PACS</div>
+                    </div>
+                    <div class="kpi-card-h green">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        <div class="kpi-label">Equipos Médicos</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-equipos">-</div>
+                        <div class="kpi-hint">Total histórico único</div>
+                    </div>
+                    <div class="kpi-card-h purple">
+                        <svg class="kpi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg>
+                        <div class="kpi-label">Procesamientos IA</div>
+                        <div class="kpi-num kpi-clone" data-src="sum-ia">-</div>
+                        <div class="kpi-hint">Análisis históricos únicos</div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /home-inner -->
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:0;">
+
+    <!-- ══════════════════════════════════════
+         VIEW: MONITOR GLOBAL (DASHBOARD)
+    ══════════════════════════════════════ -->
+    <div id="view-dashboard" class="content">
+        <!-- Área reservada para la nav pill — queda visualmente "dentro" de esta sección -->
+        <div class="hosp-nav-area"></div>
+
+        <div class="hosp-body">
+            <div class="hosp-card">
+
+                <!-- ── PANEL IZQUIERDO: lista de hospitales ── -->
+                <div class="hosp-list-panel">
+                    <div class="hosp-list-toolbar">
+                        <div class="hosp-search-wrap">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="filter-hospital" placeholder="Buscar ID..." onkeyup="aplicarFiltros()" autocomplete="off">
+                        </div>
+                        <div class="hosp-filter-btns">
+                            <button class="hosp-filter-btn toggle-btn dash-toggle-btn active" data-status="all">Todos</button>
+                            <button class="hosp-filter-btn toggle-btn dash-toggle-btn" data-status="online">Online</button>
+                            <button class="hosp-filter-btn toggle-btn dash-toggle-btn" data-status="offline">Offline</button>
+                        </div>
+                    </div>
+                    <div class="hosp-list-scroll">
+                        <table class="hosp-table" id="tabla-pacientes">
+                            <thead>
+                                <tr>
+                                    <th style="width:20%">ID</th>
+                                    <th style="width:15%">Estado</th>
+                                    <th style="width:35%">Elementos</th>
+                                    <th style="width:25%">Último Reporte</th>
+                                    <th style="width:5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ── PANEL DERECHO: mapa ── -->
+                <div class="hosp-map-panel">
+                    <div class="hosp-map-toolbar">
+                        <div class="hosp-map-title">Cobertura Geográfica</div>
+                        <div class="status-toggle-bar">
+                            <button class="toggle-btn dash-map-toggle-btn active" data-map-status="all">Todos</button>
+                            <button class="toggle-btn dash-map-toggle-btn" data-map-status="online">Online</button>
+                            <button class="toggle-btn dash-map-toggle-btn" data-map-status="offline">Offline</button>
+                        </div>
+                    </div>
+                    <div class="hosp-map-container">
+                        <div id="map-dashboard-container" style="width:100%;height:100%;"></div>
+                        <button id="btn-tour-dash" onclick="toggleTourDash()" class="map-tour-btn">
+                            ▶ INICIAR RECORRIDO
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         VIEW: DETALLE HOSPITAL — Modal tarjeta centrada
+    ══════════════════════════════════════ -->
+    <div id="detalle-backdrop" onclick="if(event.target===this)volverAlDashboard()">
+    <div id="view-detalle" class="content detalle-modal-overlay">
+        <div class="detalle-nav-bar">
+            <button class="detail-back-btn" onclick="volverAlDashboard()" title="Volver">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            </button>
+            <div class="tab-toggle-bar">
+                <button class="tab-btn active" onclick="switchTab('infra',this)">Infraestructura</button>
+                <button class="tab-btn" onclick="switchTab('logs',this)">Software</button>
+                <button class="tab-btn" onclick="switchTab('kpis',this)">KPIs Uso</button>
+            </div>
+            <div class="hosp-card-badge">
+                <div id="hosp-card-row1" class="row-1">-- | Cargando...</div>
+                <div id="hosp-card-row2" class="row-2">--/--/-- --:--</div>
+            </div>
+        </div>
+
+        <div id="tab-infra" class="tab-content active" style="padding:20px">
+            <div id="top-cards-container" class="detail-top-grid"></div>
+            <div id="vms-container"></div>
+
+            <!-- Controles del gráfico de infraestructura — requeridos por script.js -->
+            <div class="card" style="padding:18px;margin-top:16px">
+                <div class="chart-toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+                    <div class="chart-toggles" style="display:flex">
+                        <button class="chart-btn active" onclick="cambiarRango(24,this)">24H</button>
+                        <button class="chart-btn" onclick="cambiarRango(72,this)">3D</button>
+                        <button class="chart-btn" onclick="cambiarRango(168,this)">7D</button>
+                        <button class="chart-btn" onclick="cambiarRango(720,this)">30D</button>
+                    </div>
+                    <select id="chart-source" onchange="actualizarOpcionesMetricas();actualizarGrafico()" class="select-pill" style="height:34px;padding:0 12px;min-width:160px">
+                        <option value="global">Vista Global</option>
+                    </select>
+                    <select id="chart-metric" onchange="actualizarGrafico()" class="select-pill" style="height:34px;padding:0 12px;min-width:180px">
+                        <option value="cpu_host">Uso CPU Host (%)</option>
+                        <option value="thermal_combined">Temperaturas</option>
+                        <option value="network">Conectividad y Red</option>
+                        <option value="performance">Rendimiento CPU+RAM</option>
+                    </select>
+                </div>
+                <div style="height:260px;width:100%;position:relative">
+                    <div id="chart-loader" style="display:none;position:absolute;inset:0;justify-content:center;align-items:center;flex-direction:column;background:var(--surface);border-radius:var(--radius);z-index:5">
+                        <div class="loader"></div>
+                    </div>
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-logs" class="tab-content" style="padding:20px">
+            <div id="logs-content"></div>
+        </div>
+
+        <div id="tab-kpis" class="tab-content" style="padding-top:20px">
+            <div style="width:100%;margin-bottom:16px">
+                <div id="kpi-legend" style="text-align:center;color:var(--muted);font-size:.82em;margin-bottom:10px;font-weight:600;letter-spacing:.05em">Cargando información de sincronización...</div>
+                <div class="chart-toggles" style="display:flex;width:100%;flex-wrap:wrap">
+                    <button class="chart-btn kpi-global-time-btn active" style="flex:1;padding:8px 5px;font-weight:700;font-size:.85em;min-width:50px" onclick="cambiarRangoGlobalKpi(168,this)">7D</button>
+                    <button class="chart-btn kpi-global-time-btn" style="flex:1;padding:8px 5px;font-weight:700;font-size:.85em;min-width:50px" onclick="cambiarRangoGlobalKpi(720,this)">1M</button>
+                    <button class="chart-btn kpi-global-time-btn" style="flex:1;padding:8px 5px;font-weight:700;font-size:.85em;min-width:50px" onclick="cambiarRangoGlobalKpi(2160,this)">3M</button>
+                    <button class="chart-btn kpi-global-time-btn" style="flex:1;padding:8px 5px;font-weight:700;font-size:.85em;min-width:50px" onclick="cambiarRangoGlobalKpi(8760,this)">1A</button>
+                    <button class="chart-btn kpi-global-time-btn" style="flex:1;padding:8px 5px;font-weight:700;font-size:.85em;min-width:50px" onclick="cambiarRangoGlobalKpi(43800,this)">5A</button>
+                </div>
+            </div>
+            <div style="width:100%;margin-bottom:16px">
+                <div class="chart-toggles" style="display:flex;width:100%;flex-wrap:wrap"></div>
+            </div>
+            <div id="kpi-top-cards" class="detail-top-grid" style="margin-bottom:16px;display:none">
+                <div class="detail-card">
+                    <div class="detail-card-header" style="background:#1a3a5c">
+                        <span>Tasa de Asociación de Imágenes</span>
+                        <span style="opacity:.8;cursor:help" title="Porcentaje de órdenes admitidas que ya cuentan con imágenes DICOM asociadas en el PACS."><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    </div>
+                    <div class="detail-card-body" style="text-align:center;padding:24px 20px">
+                        <div id="kpi-card-tasa-val" style="font-size:2.6em;font-weight:800;color:var(--text);line-height:1">0%</div>
+                        <div style="color:var(--muted);font-size:.82em;margin-top:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">
+                            <span id="kpi-card-assoc-val" style="font-weight:800;color:var(--blue);font-size:1.2em">0</span> estudios asociados
+                        </div>
+                    </div>
+                </div>
+                <div class="detail-card">
+                    <div class="detail-card-header" style="background:#0d3320">
+                        <span>Tasa de Informes Definitivos</span>
+                        <span style="opacity:.8;cursor:help" title="Porcentaje de estudios ejecutados en sala que ya cuentan con un informe médico firmado."><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    </div>
+                    <div class="detail-card-body" style="text-align:center;padding:24px 20px">
+                        <div id="kpi-card-comp-val" style="font-size:2.6em;font-weight:800;color:var(--text);line-height:1">0%</div>
+                        <div style="color:var(--muted);font-size:.82em;margin-top:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">
+                            <span id="kpi-card-def-val" style="font-weight:800;color:var(--green);font-size:1.2em">0</span> informes definitivos
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding:18px;margin-bottom:16px">
+                <div class="chart-toolbar">
+                    <div class="chart-selects" style="align-items:center;display:flex;gap:12px;flex-wrap:wrap;width:100%">
+                        <span style="font-weight:700;font-size:.9em;display:flex;align-items:center;color:var(--text)">
+                            Evolución Temporal
+                            <span style="cursor:help;margin-left:6px" title="MÉTRICAS RIS: Citados, Admitidos, Ejecutados, Asociados, Borradores, Definitivos, Suspendidos. MÉTRICA PACS: Almacenados.">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </span>
+                        </span>
+                        <div class="chart-toggles">
+                            <button id="btn-modo-ris" class="chart-btn kpi-modo-btn active" onclick="seleccionarModoKpi('ris',this)">RIS</button>
+                            <button id="btn-modo-pacs" class="chart-btn kpi-modo-btn" onclick="seleccionarModoKpi('pacs',this)">PACS</button>
+                        </div>
+                        <input type="hidden" id="kpi-modo" value="ris">
+                        <div class="chart-toggles">
+                            <button id="btn-agrup-equipo" class="chart-btn kpi-agrup-btn" onclick="seleccionarAgrupacionKpi('equipo',this)">Equipos</button>
+                            <button id="btn-agrup-mod" class="chart-btn kpi-agrup-btn" onclick="seleccionarAgrupacionKpi('modalidad',this)">Modalidad</button>
+                            <button id="btn-agrup-total" class="chart-btn kpi-agrup-btn active" onclick="seleccionarAgrupacionKpi('total',this)">Total</button>
+                        </div>
+                        <input type="hidden" id="kpi-agrupacion" value="total">
+                        <select id="kpi-nodo" onchange="actualizarGraficoKpiTemporal()" class="select-pill" style="min-width:150px;flex-grow:1;height:36px;padding:0 14px"></select>
+                    </div>
+                </div>
+                <div style="height:280px;width:100%;position:relative;margin-top:14px">
+                    <div id="kpi-chart-loader" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;justify-content:center;align-items:center;flex-direction:column;border-radius:var(--radius)">
+                        <div class="loader" style="width:24px;height:24px;border-width:3px"></div>
+                        <small style="margin-top:8px;color:var(--muted)">Actualizando métricas...</small>
+                    </div>
+                    <canvas id="kpiRisChart"></canvas>
+                </div>
+            </div>
+
+            <div id="kpis-bottom-container" class="grid-2-col" style="gap:16px">
+                <div class="card" style="padding:18px;position:relative;min-height:380px;display:flex;flex-direction:column">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+                        <span style="display:flex;align-items:center">
+                            <span id="titulo-dona" style="font-weight:700;font-size:.9em;color:var(--text)">Órdenes Creadas</span>
+                            <span style="cursor:help;margin-left:6px" title="Totales: suma absoluta de órdenes nuevas creadas (RIS) o estudios almacenados (PACS).">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </span>
+                        </span>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                            <div class="chart-toggles">
+                                <button class="chart-btn donut-modo-btn active" onclick="seleccionarModoDonut('ris',this)">RIS</button>
+                                <button class="chart-btn donut-modo-btn" onclick="seleccionarModoDonut('pacs',this)">PACS</button>
+                            </div>
+                            <input type="hidden" id="donut-modo" value="ris">
+                            <div class="chart-toggles">
+                                <button class="chart-btn donut-agrup-btn active" onclick="seleccionarAgrupacionDonut('equipo',this)">Equipos</button>
+                                <button class="chart-btn donut-agrup-btn" onclick="seleccionarAgrupacionDonut('modalidad',this)">Modalidad</button>
+                            </div>
+                            <input type="hidden" id="donut-agrupacion" value="equipo">
+                        </div>
+                    </div>
+                    <div style="position:relative;flex-grow:1;display:flex;justify-content:center;align-items:center">
+                        <canvas id="kpiDonutChart"></canvas>
+                    </div>
+                </div>
+                <div class="card" style="padding:18px;display:flex;flex-direction:column">
+                    <div style="margin-bottom:16px"><span style="font-weight:700;font-size:.9em;color:var(--text)">Panel de Usuarios</span></div>
+                    <div style="overflow-x:auto;flex-grow:1">
+                        <table style="width:100%;border-collapse:collapse;text-align:left;min-width:280px">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:.78em;text-transform:uppercase">
+                                    <th style="padding:10px;font-weight:600">Rol</th>
+                                    <th style="padding:10px;font-weight:600;text-align:right">Usuarios únicos</th>
+                                    <th style="padding:10px;font-weight:600;text-align:right">Inicios sesión</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-usuarios-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div style="height:80px"></div>
+        </div>
+    </div>
+    </div><!-- /#detalle-backdrop -->
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:0;">
+
+    <!-- ══════════════════════════════════════
+         VIEW: ALERTAS
+    ══════════════════════════════════════ -->
+    <div id="view-alertas" class="content">
+        <div class="alert-nav-area"></div>
+        <div class="alert-body">
+
+            <!-- ── TARJETA IZQUIERDA: indicadores ── -->
+            <div class="alert-stats-card">
+                <div class="alert-stats-header">
+                    <div class="alert-live-dot"></div>
+                    <div class="alert-stats-title">Estado Operativo</div>
+                </div>
+                <div class="alert-stats-body">
+
+                    <div class="alert-kpi-card red">
+                        <div class="alert-kpi-label">Alertas activas</div>
+                        <div class="alert-kpi-num red" id="kpi-alertas-activas">—</div>
+                        <div class="alert-kpi-hint">Incidentes abiertos en este momento</div>
+                    </div>
+
+                    <div class="alert-kpi-card green">
+                        <div class="alert-kpi-label">Resueltas hoy</div>
+                        <div class="alert-kpi-num green" id="kpi-alertas-resueltas">—</div>
+                        <div class="alert-kpi-hint">Incidentes cerrados en las últimas 24 h</div>
+                    </div>
+
+                    <div class="alert-kpi-card blue">
+                        <div class="alert-kpi-label">Tiempo promedio de cierre</div>
+                        <div class="alert-kpi-num blue" id="kpi-alertas-tiempo">—</div>
+                        <div class="alert-kpi-hint">Promedio histórico en minutos</div>
+                    </div>
+
+                    <div class="alert-kpi-card amber">
+                        <div class="alert-kpi-label">Sedes con incidentes</div>
+                        <div class="alert-kpi-num amber" id="kpi-alertas-sedes">—</div>
+                        <div class="alert-kpi-hint">Hospitales con al menos una alerta activa</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ── TARJETA DERECHA: incidentes en curso ── -->
+            <div class="alert-table-card">
+                <div class="alert-table-header">
+                    <div style="font-size:13px;font-weight:700;color:var(--text);">Incidentes en Curso</div>
+                    <div style="display:flex;align-items:center;gap:6px;background:var(--red-dim);border:1px solid rgba(255,92,92,0.2);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;color:var(--red);">
+                        <div class="alert-live-dot"></div>
+                        LIVE
+                    </div>
+                </div>
+                <div class="alert-table-scroll">
+                    <table class="table-clean active-incidents" style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:var(--surface2);position:sticky;top:0;z-index:2;">
+                                <th style="width:15%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">ID Hospital</th>
+                                <th style="width:50%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">Detalle del Incidente</th>
+                                <th style="width:20%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">Inicio</th>
+                                <th style="width:15%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">Tiempo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertas-activas-body"></tbody>
+                    </table>
+                    <div id="no-activas" style="padding:40px;text-align:center;color:var(--muted);display:none;font-size:.9em;">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:10px;"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                        Todos los sistemas operando normalmente.
+                    </div>
+                </div>
+                <!-- tbody oculto del historial — requerido por script.js -->
+                <table style="display:none"><tbody id="alertas-historial-body"></tbody></table>
+            </div>
+
+        </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:0;">
+
+    <!-- ══════════════════════════════════════
+         VIEW: REPORTES & IA
+    ══════════════════════════════════════ -->
+    <div id="view-ia" class="content">
+        <div class="rep-nav-area"></div>
+        <div class="rep-body">
+
+            <!-- ── TARJETA IZQUIERDA: nuevo procesamiento ── -->
+            <div class="rep-form-card">
+                <div class="rep-form-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    <div class="rep-form-title">Nuevo Procesamiento</div>
+                </div>
+                <div class="rep-form-scroll" id="tarjeta-procesamiento">
+
+                    <div style="margin-bottom:18px">
+                        <label style="font-weight:700;color:var(--muted2);display:block;margin-bottom:8px;font-size:10px;text-transform:uppercase;letter-spacing:.07em">1. Tipo de Reporte</label>
+                        <div class="chart-toggles" style="display:flex;width:100%">
+                            <button id="btn-tipo-ia" class="chart-btn" onclick="cambiarTipoProcesamiento('ia')" style="flex:1;padding:8px 12px">Análisis IA</button>
+                            <button id="btn-tipo-pdf" class="chart-btn active" onclick="cambiarTipoProcesamiento('pdf')" style="flex:1;padding:8px 12px">Reporte Uso (PDF)</button>
+                        </div>
+                        <input type="hidden" id="proc-tipo" value="pdf">
+                    </div>
+
+                    <div style="margin-bottom:18px">
+                        <label style="font-weight:700;color:var(--muted2);display:block;margin-bottom:8px;font-size:10px;text-transform:uppercase;letter-spacing:.07em">2. Hospital</label>
+                        <div class="input-group" style="position:relative;margin-bottom:0">
+                            <div class="search-pill" style="width:100%;margin:0;border:1px solid var(--border);background:var(--surface2)">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="ia-input-id" placeholder="Buscar Hospital (Ej: H05)..." style="background:transparent" autocomplete="off">
+                            </div>
+                            <div id="ia-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-top:none;border-radius:0 0 var(--radius) var(--radius);z-index:4000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:18px">
+                        <label style="font-weight:700;color:var(--muted2);display:block;margin-bottom:8px;font-size:10px;text-transform:uppercase;letter-spacing:.07em">3. Período</label>
+                        <div class="chart-toggles" style="border-radius:var(--radius);overflow:hidden;display:flex;width:100%;margin-bottom:8px">
+                            <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(1,this)" style="flex:1;padding:6px 0;font-size:.78em">1M</button>
+                            <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(6,this)" style="flex:1;padding:6px 0;font-size:.78em">6M</button>
+                            <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(12,this)" style="flex:1;padding:6px 0;font-size:.78em">1A</button>
+                            <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(24,this)" style="flex:1;padding:6px 0;font-size:.78em">2A</button>
+                            <button class="chart-btn quick-date-btn" onclick="setFechasRapidas(60,this)" style="flex:1;padding:6px 0;font-size:.78em">5A</button>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <div class="input-group" style="flex:1;margin-bottom:0"><input type="date" id="ia-date-from" onchange="document.querySelectorAll('.quick-date-btn').forEach(b=>b.classList.remove('active'))" title="Desde"></div>
+                            <div class="input-group" style="flex:1;margin-bottom:0"><input type="date" id="ia-date-to" onchange="document.querySelectorAll('.quick-date-btn').forEach(b=>b.classList.remove('active'))" title="Hasta"></div>
+                        </div>
+                    </div>
+
+                    <div id="opciones-kpi-extra" style="display:none;margin-bottom:18px;padding:14px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+                        <div class="input-group" style="margin-bottom:10px">
+                            <label>Fuente de Datos</label>
+                            <select id="kpi-export-source"><option value="ambos">RIS + PACS (Completo)</option><option value="ris">Solo RIS</option><option value="pacs">Solo PACS</option></select>
+                        </div>
+                        <div class="input-group" style="margin-bottom:0">
+                            <label>Agrupación</label>
+                            <select id="kpi-export-group"><option value="total">Resumen General</option><option value="equipo">Por Equipo (AET)</option><option value="modalidad">Por Modalidad</option></select>
+                        </div>
+                    </div>
+
+                    <button id="btn-procesar-accion" class="btn-action" style="width:100%;height:42px;background:var(--green);color:#0A0A0B;border:none;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--radius);font-weight:700;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;" onclick="iniciarProcesamiento()">
+                        <svg id="icono-procesar" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        <span id="btn-procesar-texto">Configurar Reporte PDF</span>
+                    </button>
+
+                </div>
+            </div>
+
+            <!-- ── TARJETA DERECHA: historial de informes ── -->
+            <div class="rep-hist-card">
+                <div class="rep-hist-header">
+                    <div class="rep-hist-title">Historial de Informes Generados</div>
+                    <span style="font-size:11px;background:var(--blue-dim);color:var(--blue);padding:3px 10px;border-radius:20px;font-weight:600;border:1px solid rgba(74,143,255,.2)">Base de Datos Local</span>
+                </div>
+                <div class="rep-hist-scroll">
+                    <table class="table-clean" style="width:100%;border-collapse:collapse">
+                        <thead>
+                            <tr style="background:var(--surface2);position:sticky;top:0;z-index:2;">
+                                <th style="padding:10px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);border-bottom:1px solid var(--border);">ID Hospital</th>
+                                <th style="padding:10px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);border-bottom:1px solid var(--border);">Período</th>
+                                <th style="padding:10px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);border-bottom:1px solid var(--border);">Generado</th>
+                                <th style="padding:10px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);border-bottom:1px solid var(--border);">Estado</th>
+                                <th style="padding:10px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);border-bottom:1px solid var(--border);text-align:center">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-historial-body">
+                            <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted);font-size:.85em">Cargando historial...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:0;">
+
+    <!-- ══════════════════════════════════════
+         VIEW: CONFIGURACIÓN
+    ══════════════════════════════════════ -->
+    <div id="view-config" class="content">
+        <div class="conf-nav-area"></div>
+        <div class="conf-body">
+
+            <div class="conf-page-header">
+                <h2>Configuración del sistema</h2>
+                <p>Preferencias, umbrales de alerta y directorio de hospitales</p>
+                <hr>
+            </div>
+
+            <div class="conf-card">
+
+                <!-- Tabs -->
+                <div class="conf-tabs">
+                    <button class="conf-tab active" onclick="switchConfTab('tab-personal', this)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Personal
+                    </button>
+                    <button class="conf-tab" onclick="switchConfTab('tab-alertas', this)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Alertas
+                    </button>
+                    <button class="conf-tab" onclick="switchConfTab('tab-hospitales', this)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                        Hospitales
+                    </button>
+                </div>
+
+                <!-- ── TAB: PERSONAL ── -->
+                <div id="tab-personal" class="conf-tab-panel active">
+                    <div class="conf-section-block">
+                        <div class="conf-section-title">
+                            Datos del usuario
+                            <span class="badge-wip">En construcción</span>
+                        </div>
+                        <div class="grid-2-col" style="margin-bottom:16px">
+                            <div class="input-group"><label>Nombre</label><input type="text" id="conf-user-nombre" placeholder="Tu nombre"></div>
+                            <div class="input-group"><label>Apellido</label><input type="text" id="conf-user-apellido" placeholder="Tu apellido"></div>
+                        </div>
+                        <div class="grid-2-col" style="margin-bottom:20px">
+                            <div class="input-group"><label>Correo corporativo</label><input type="email" id="conf-user-email" placeholder="usuario@empresa.com"></div>
+                            <div class="input-group">
+                                <label>Visualización</label>
+                                <select id="conf-user-tema"><option value="dark">Tema oscuro</option><option value="light">Tema claro</option></select>
+                            </div>
+                        </div>
+                        <button class="btn-action" style="width:auto;border-radius:50px;padding:10px 28px;font-size:.9em;background:var(--green);color:#0A0A0B;opacity:.6;cursor:not-allowed" disabled>
+                            Guardar cambios
+                        </button>
+                    </div>
+
+                    <div class="conf-section-block" style="margin-top:8px;">
+                        <div class="conf-section-title">Cuenta y sesión</div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <button onclick="abrirModalPassword()" style="display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:50px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--amber)';this.style.color='var(--amber)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                Cambiar contraseña
+                            </button>
+                            <button onclick="logout()" style="display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:50px;border:1px solid rgba(255,92,92,.25);background:rgba(255,92,92,.07);color:var(--red);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;" onmouseover="this.style.background='rgba(255,92,92,.15)'" onmouseout="this.style.background='rgba(255,92,92,.07)'">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                                Cerrar sesión
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── TAB: ALERTAS ── -->
+                <div id="tab-alertas" class="conf-tab-panel">
+
+                    <div class="conf-section-block">
+                        <div class="conf-section-title">Infraestructura</div>
+                        <div class="grid-2-col">
+                            <div class="input-group"><label>Tiempo Máx. Offline (Min)</label><input type="number" id="conf-offline"></div>
+                            <div class="input-group"><label>Umbral Disco Lleno (%)</label><input type="number" id="conf-disk"></div>
+                            <div class="input-group"><label>Máx. Temp Ambiente (°C)</label><input type="number" id="conf-temp-amb"></div>
+                            <div class="input-group"><label>Máx. Temp CPU (°C)</label><input type="number" id="conf-temp-cpu"></div>
+                            <div class="input-group"><label>Máx. Uso CPU Host (%)</label><input type="number" id="conf-cpu-host"></div>
+                            <div class="input-group"><label>Máx. Uso RAM Host (%)</label><input type="number" id="conf-ram-host"></div>
+                            <div class="input-group"><label>Máx. Uso CPU VM (%)</label><input type="number" id="conf-cpu-vm"></div>
+                            <div class="input-group"><label>Máx. Uso RAM VM (%)</label><input type="number" id="conf-ram-vm"></div>
+                        </div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0">
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);flex:1;min-width:160px">
+                                <input type="checkbox" id="check-fans" style="transform:scale(1.2);accent-color:var(--green)"> <span style="font-weight:600;font-size:.9em">Fallo Ventiladores</span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);flex:1;min-width:160px">
+                                <input type="checkbox" id="check-power" style="transform:scale(1.2);accent-color:var(--green)"> <span style="font-weight:600;font-size:.9em">Fallo Fuentes (PSU)</span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);flex:1;min-width:160px">
+                                <input type="checkbox" id="check-raid" style="transform:scale(1.2);accent-color:var(--green)"> <span style="font-weight:600;font-size:.9em">Fallo RAID</span>
+                            </label>
+                        </div>
+                        <div class="input-group">
+                            <label>Responsables Asana (Infraestructura)</label>
+                            <div class="autocomplete-wrapper" id="global-resp-wrapper">
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);min-height:42px;align-items:center">
+                                    <div id="global-resp-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                                    <input type="text" id="global-resp-input" placeholder="Buscar usuario..." style="border:none;outline:none;background:transparent;flex-grow:1;min-width:150px;font-size:.9em;padding:0;color:var(--text)">
+                                </div>
+                                <div class="autocomplete-list" id="global-resp-list" style="display:none"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="conf-section-block">
+                        <div class="conf-section-title">KPIs de Negocio</div>
+                        <div style="background:var(--surface2);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+                            <div>
+                                <strong style="font-size:.95em">Hora de Ejecución Diaria</strong>
+                                <div style="font-size:.82em;color:var(--muted);margin-top:3px">Horario en que se evalúan las reglas de negocio.</div>
+                            </div>
+                            <div class="input-group" style="margin:0"><input type="time" id="kpi-execution-time" style="padding:9px 14px;font-weight:700;font-size:1.05em;width:auto"></div>
+                        </div>
+                        <div class="grid-2-col">
+                            <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--surface2)">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                                    <h4 style="margin:0;color:var(--purple);font-size:.9em">Inactividad Radiología</h4>
+                                    <input type="checkbox" id="kpi-rad-enabled" style="width:16px;height:16px;accent-color:var(--purple);cursor:pointer">
+                                </div>
+                                <div class="input-group" style="margin-bottom:10px"><label>Umbral (Horas)</label><input type="number" id="kpi-rad-hours" placeholder="24"></div>
+                                <div class="input-group" style="margin-bottom:0">
+                                    <label>Modalidades</label>
+                                    <div class="autocomplete-wrapper" id="kpi-rad-mods-wrapper">
+                                        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);min-height:40px;align-items:center">
+                                            <div id="kpi-rad-mods-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                                            <input type="text" id="kpi-rad-mods-input" placeholder="Buscar..." style="border:none;outline:none;background:transparent;flex-grow:1;min-width:100px;font-size:.9em;padding:0;color:var(--text)">
+                                        </div>
+                                        <div class="autocomplete-list" id="kpi-rad-mods-list" style="display:none"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--surface2)">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                                    <h4 style="margin:0;color:#e91e63;font-size:.9em">Inactividad Mamografía</h4>
+                                    <input type="checkbox" id="kpi-mamo-enabled" style="width:16px;height:16px;accent-color:#e91e63;cursor:pointer">
+                                </div>
+                                <p style="color:var(--muted);font-size:.82em;margin:0 0 12px">Alerta si no hay estudios MG/MAMO en el período.</p>
+                                <div class="input-group" style="margin-bottom:0"><label>Umbral (Días)</label><input type="number" id="kpi-mamo-days" placeholder="7"></div>
+                            </div>
+                        </div>
+                        <div class="input-group" style="margin-top:16px">
+                            <label>Responsables Asana (KPIs)</label>
+                            <div class="autocomplete-wrapper" id="kpi-rad-resp-wrapper">
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);min-height:42px;align-items:center">
+                                    <div id="kpi-rad-resp-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                                    <input type="text" id="kpi-rad-resp-input" placeholder="Buscar usuario..." style="border:none;outline:none;background:transparent;flex-grow:1;min-width:150px;font-size:.9em;padding:0;color:var(--text)">
+                                </div>
+                                <div class="autocomplete-list" id="kpi-rad-resp-list" style="display:none"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="conf-section-block">
+                        <div class="conf-section-title">Integración Mirth Connect</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                            <div>
+                                <strong style="font-size:.9em">Monitoreo de Canales Mirth</strong>
+                                <div style="font-size:.82em;color:var(--muted);margin-top:2px">Alerta ante canales detenidos o mensajes encolados.</div>
+                            </div>
+                            <input type="checkbox" id="mirth-alert-enabled" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer">
+                        </div>
+                        <div class="grid-2-col">
+                            <div class="input-group"><label>Umbral Mensajes Encolados</label><input type="number" id="mirth-queued-threshold" placeholder="100"></div>
+                        </div>
+                        <div class="input-group" style="margin-top:8px">
+                            <label>Responsables Asana (Mirth)</label>
+                            <div class="autocomplete-wrapper" id="mirth-resp-wrapper">
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);min-height:42px;align-items:center">
+                                    <div id="mirth-resp-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                                    <input type="text" id="mirth-resp-input" placeholder="Buscar usuario técnico..." style="border:none;outline:none;background:transparent;flex-grow:1;min-width:150px;font-size:.9em;padding:0;color:var(--text)">
+                                </div>
+                                <div class="autocomplete-list" id="mirth-resp-list" style="display:none"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn-action" onclick="guardarConfig()" style="width:auto;border-radius:50px;padding:10px 32px;font-size:.9em">
+                        Guardar configuración
+                    </button>
+                </div>
+
+                <!-- ── TAB: HOSPITALES ── -->
+                <div id="tab-hospitales" class="conf-tab-panel">
+                    <div class="conf-section-block">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                            <div class="conf-section-title" style="margin:0;padding:0;border:none">Directorio de hospitales</div>
+                            <div style="display:flex;gap:10px;align-items:center">
+                                <div class="hosp-search-wrap" style="width:220px;padding:6px 14px">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                    <input type="text" id="filter-config-hospital" placeholder="Buscar..." onkeyup="filtrarHospitalesConfig()" style="font-size:12px">
+                                </div>
+                                <button class="btn-action" onclick="abrirModalHospital()" style="width:auto;padding:7px 16px;font-size:.85em;border-radius:50px">
+                                    + Nuevo hospital
+                                </button>
+                            </div>
+                        </div>
+                        <table class="table-clean" style="width:100%">
+                            <thead>
+                                <tr style="background:var(--surface2)">
+                                    <th style="padding:10px 14px">ID</th>
+                                    <th style="padding:10px 14px">Nombre</th>
+                                    <th style="padding:10px 14px">Provincia</th>
+                                    <th style="padding:10px 14px">Asana ID</th>
+                                    <th style="padding:10px 14px;text-align:right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-hospitales-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div><!-- /conf-card -->
+        </div><!-- /conf-body -->
+    </div>
+
+</div><!-- /#app-container -->
+
+<!-- ══════════════════════════════════════
+     BOTTOM NAV (MOBILE)
+══════════════════════════════════════ -->
+<nav class="bottom-nav" id="bottom-nav">
+    <button class="nav-item active" onclick="navegar('view-dashboard',null,this);cargarDatos()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span>Monitor</span>
+    </button>
+    <button class="nav-item" id="btn-alert-mobile" onclick="navegar('view-alertas',null,this);cargarAlertas()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Alertas</span>
+    </button>
+    <button class="nav-item" onclick="navegar('view-ia',null,this)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14.4 7.6L20 10L14.4 12.4L12 18L9.6 12.4L4 10L9.6 7.6L12 2Z"/></svg>
+        <span>IA</span>
+    </button>
+    <button class="nav-item" onclick="navegar('view-resumen',null,this);cargarDatos()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+        <span>Resumen</span>
+    </button>
+</nav>
+
+<!-- ══════════════════════════════════════
+     MODALES
+══════════════════════════════════════ -->
+
+<!-- Modal Hospital -->
+<div id="modal-hospital" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+        <h3 id="modal-title">Nuevo Hospital</h3>
+        <div class="input-group"><label>ID Hospital (Tal cual lo envía el agente)</label><input type="text" id="hosp-id" placeholder="Ej: H06"></div>
+        <div class="input-group"><label>Nombre Completo</label><input type="text" id="hosp-nombre" placeholder="Ej: Hospital Central..."></div>
+        <div class="grid-2-col">
+            <div class="input-group"><label>Provincia</label><input type="text" id="hosp-provincia"></div>
+            <div class="input-group"><label>Asana Project ID</label><input type="text" id="hosp-asana"></div>
+        </div>
+        <div class="grid-2-col">
+            <div class="input-group"><label>Latitud</label><input type="text" id="hosp-lat"></div>
+            <div class="input-group"><label>Longitud</label><input type="text" id="hosp-lon"></div>
+        </div>
+        <div class="input-group" style="margin-top:14px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.9em">
+                <input type="checkbox" id="hosp-has-ris" style="width:auto;transform:scale(1.2);accent-color:var(--green)">
+                <span style="font-weight:600;color:var(--text)">¿Integra RIS (Radiology Information System)?</span>
+            </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+            <button class="btn-action" onclick="cerrarModalHospital()" style="background:var(--muted);width:auto;padding:10px 20px">Cancelar</button>
+            <button class="btn-action" onclick="guardarHospital()" style="width:auto;padding:10px 20px">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal KPI Config -->
+<div id="modalKPIConfig" class="modal-overlay" style="display:none;z-index:5000">
+    <div class="modal-content" style="max-width:440px">
+        <h3>Alertas Clínicas: <span id="kpiModalHospitalName" style="color:var(--blue)"></span></h3>
+        <input type="hidden" id="kpiModalHospitalId">
+        <p style="color:var(--muted);font-size:.85em;margin-bottom:18px">Selecciona qué motores de inactividad deben evaluar a este hospital de forma diaria.</p>
+        <div class="input-group" style="margin-bottom:14px">
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;background:var(--surface2);padding:14px;border-radius:var(--radius);border:1px solid var(--border);text-transform:none;letter-spacing:0;font-size:1em">
+                <input type="checkbox" id="switchKpiRad" style="width:20px;height:20px;margin-top:2px;accent-color:var(--blue)">
+                <div>
+                    <span style="font-weight:700;color:var(--text);display:block">Inactividad en Radiología (RIS)</span>
+                    <span style="font-size:.82em;color:var(--muted)">Monitorea la falta de producción en modalidades generales (DX, CR, etc).</span>
+                </div>
+            </label>
+        </div>
+        <div class="input-group" style="margin-bottom:18px">
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;background:var(--surface2);padding:14px;border-radius:var(--radius);border:1px solid var(--border);text-transform:none;letter-spacing:0;font-size:1em">
+                <input type="checkbox" id="switchKpiMamo" style="width:20px;height:20px;margin-top:2px;accent-color:#e91e63">
+                <div>
+                    <span style="font-weight:700;color:var(--text);display:block">Inactividad en Mamografía (MG)</span>
+                    <span style="font-size:.82em;color:var(--muted)">Monitorea la falta de admisiones exclusivamente en mamógrafos.</span>
+                </div>
+            </label>
+        </div>
+        <div id="kpiModalLoading" style="display:none;text-align:center;padding:10px;color:var(--blue);font-weight:700">Sincronizando...</div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+            <button class="btn-action" onclick="cerrarModalKPIConfig()" style="background:var(--muted);width:auto;padding:10px 20px">Cancelar</button>
+            <button class="btn-action" onclick="guardarKPIConfig()" style="width:auto;padding:10px 20px">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal PDF -->
+<div id="modal-pdf-options" class="modal-overlay" style="display:none;z-index:3000">
+    <div class="modal-content" style="max-width:500px">
+        <h3>Configurar Reporte PDF</h3>
+        <div style="background:var(--surface2);padding:10px 14px;border-radius:var(--radius);display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;font-size:.9em;border:1px solid var(--border)">
+            <div><strong style="color:var(--muted)">Hospital:</strong> <span id="modal-pdf-hospital" style="color:var(--text);font-weight:700;font-size:1.05em">---</span></div>
+            <div><strong style="color:var(--muted)">Periodo:</strong> <span id="modal-pdf-periodo" style="color:var(--text)">---</span></div>
+        </div>
+        <div class="input-group" style="margin-bottom:14px">
+            <label>Tipo de Reporte</label>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border)">
+                    <input type="radio" name="pdf_tipo" id="pdf-type-clinico" value="clinico" checked style="width:16px;height:16px;accent-color:var(--red);cursor:pointer;margin:0" onchange="document.getElementById('pdf-scope-container').style.display='block'">
+                    <span style="font-weight:600;color:var(--text);font-size:.9em">Reporte de Uso Clínico (RIS/PACS)</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border)">
+                    <input type="radio" name="pdf_tipo" id="pdf-type-infra" value="infra" style="width:16px;height:16px;accent-color:var(--red);cursor:pointer;margin:0" onchange="document.getElementById('pdf-scope-container').style.display='none'">
+                    <span style="font-weight:600;color:var(--text);font-size:.9em">Reporte de Salud de Infraestructura (IT)</span>
+                </label>
+            </div>
+        </div>
+        <div id="pdf-scope-container" class="input-group" style="margin-bottom:14px">
+            <label>Alcance del Reporte</label>
+            <div style="display:flex;gap:12px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);flex:1">
+                    <input type="checkbox" id="pdf-scope-ris" checked style="width:16px;height:16px;accent-color:var(--red);cursor:pointer;margin:0">
+                    <span style="font-weight:600;color:var(--text);font-size:.88em">RIS (Órdenes e Informes)</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);flex:1">
+                    <input type="checkbox" id="pdf-scope-pacs" checked style="width:16px;height:16px;accent-color:var(--red);cursor:pointer;margin:0">
+                    <span style="font-weight:600;color:var(--text);font-size:.88em">PACS (Imágenes)</span>
+                </label>
+            </div>
+        </div>
+        <div class="input-group" style="margin-bottom:18px">
+            <label>ID de Tarea en Asana (Destino)</label>
+            <input type="text" id="pdf-asana-task" placeholder="Ej: 1205248667269451" style="font-family:monospace">
+            <small style="color:var(--muted);margin-top:5px;display:block;font-size:.78em">El PDF se adjuntará automáticamente a esta tarea.</small>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+            <button class="btn-action" onclick="cerrarModalPDF()" style="background:var(--muted);width:auto;flex:1">Cancelar</button>
+            <button class="btn-action" onclick="ejecutarGeneracionPDF()" style="flex:2;background:var(--red)">Generar y Adjuntar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal IA -->
+<div id="modal-ia-options" class="modal-overlay" style="display:none;z-index:3000">
+    <div class="modal-content" style="max-width:500px">
+        <h3>Configurar Informe IA</h3>
+        <div style="background:var(--surface2);padding:10px 14px;border-radius:var(--radius);display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;font-size:.9em;border:1px solid var(--border)">
+            <div><strong style="color:var(--muted)">Hospital:</strong> <span id="modal-ia-hospital" style="color:var(--text);font-weight:700;font-size:1.05em">---</span></div>
+            <div><strong style="color:var(--muted)">Periodo:</strong> <span id="modal-ia-periodo" style="color:var(--text)">---</span></div>
+        </div>
+        <label style="font-weight:600;color:var(--muted);font-size:.82em;margin-bottom:10px;display:block;text-transform:uppercase;letter-spacing:.06em">Tipo de Informe</label>
+        <div style="display:flex;gap:12px;margin-bottom:18px">
+            <div id="opt-cliente" class="ia-option-card selected" onclick="seleccionarTipoInforme('cliente')" style="flex:1;border:1px solid var(--border);background:var(--surface2);padding:14px;border-radius:var(--radius2);cursor:pointer;text-align:center;transition:all .2s">
+                <div style="font-size:1.4em;margin-bottom:5px">👤</div>
+                <div style="font-weight:700;color:var(--text);font-size:.9em">Informe Cliente</div>
+                <div style="font-size:.75em;color:var(--muted);margin-top:4px">Resumen ejecutivo, lenguaje simple.</div>
+            </div>
+            <div id="opt-interno" class="ia-option-card" onclick="seleccionarTipoInforme('interno')" style="flex:1;border:1px solid var(--border);background:var(--surface2);padding:14px;border-radius:var(--radius2);cursor:pointer;text-align:center;transition:all .2s">
+                <div style="font-size:1.4em;margin-bottom:5px">🔧</div>
+                <div style="font-weight:700;color:var(--text);font-size:.9em">Informe Interno</div>
+                <div style="font-size:.75em;color:var(--muted);margin-top:4px">Logs técnicos y acciones correctivas.</div>
+            </div>
+        </div>
+        <div class="input-group">
+            <label>Observaciones / Particularidades</label>
+            <textarea id="ia-obs" rows="3" placeholder="Escriba aquí cualquier contexto adicional para la IA..." style="resize:none"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+            <button class="btn-action" onclick="cerrarModalIA()" style="background:var(--muted);width:auto;flex:1">Cancelar</button>
+            <button class="btn-action" onclick="ejecutarIA()" style="flex:2;background:var(--purple)">Iniciar Informe</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Password -->
+<div id="modal-password" class="modal-overlay" style="display:none;z-index:5000">
+    <div class="modal-content" style="max-width:340px">
+        <h3>Cambiar Contraseña</h3>
+        <div class="input-group"><label>Contraseña Actual</label><input type="password" id="pw-actual" placeholder="••••••••"></div>
+        <div class="input-group"><label>Nueva Contraseña</label><input type="password" id="pw-nueva" placeholder="Mínimo 6 caracteres"></div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+            <button class="btn-action" onclick="cerrarModalPassword()" style="background:var(--muted);width:auto;flex:1">Cancelar</button>
+            <button class="btn-action" onclick="ejecutarCambioPassword()" style="flex:1.5">Actualizar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Solicitud Usuario -->
+<div id="modal-solicitud" class="modal-overlay" style="display:none;z-index:5000">
+    <div class="modal-content" style="max-width:400px">
+        <h3>Solicitar Usuario</h3>
+        <div class="input-group"><label>Nombre</label><input type="text" id="req-nombre" placeholder="Ej: Juan"></div>
+        <div class="input-group"><label>Apellido</label><input type="text" id="req-apellido" placeholder="Ej: Pérez"></div>
+        <div class="input-group"><label>Correo @tecnoimagen.com.ar</label><input type="email" id="req-email" placeholder="usuario@tecnoimagen.com.ar"></div>
+        <div class="input-group"><label>Motivo del Acceso</label><textarea id="req-motivo" rows="3" style="resize:none" placeholder="Describa brevemente su función..."></textarea></div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+            <button class="btn-action" onclick="cerrarModalSolicitud()" style="background:var(--muted);width:auto;flex:1">Cancelar</button>
+            <button class="btn-action" onclick="enviarSolicitud()" style="flex:1.5">Enviar Solicitud</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── CONFIG: cambio de tabs ──
+function switchConfTab(tabId, btn) {
+    document.querySelectorAll('.conf-tab-panel').forEach(function(p){ p.classList.remove('active'); });
+    document.querySelectorAll('.conf-tab').forEach(function(b){ b.classList.remove('active'); });
+    var panel = document.getElementById(tabId);
+    if (panel) panel.classList.add('active');
+    if (btn) btn.classList.add('active');
+    // Si abre Hospitales, refrescar lista
+    if (tabId === 'tab-hospitales' && typeof listarHospitalesConfig === 'function') {
+        listarHospitalesConfig();
+    }
+}
+
+// ── ALERTAS: poblar KPIs desde el DOM que llena cargarAlertas() ──
+(function() {
+    function actualizarKpisAlertas() {
+        var activas = document.querySelectorAll('#alertas-activas-body tr:not([style*="display:none"])').length;
+        var elActivas = document.getElementById('kpi-alertas-activas');
+        if (elActivas) elActivas.textContent = activas > 0 ? activas : '0';
+
+        var sedesSet = new Set();
+        document.querySelectorAll('#alertas-activas-body tr td:first-child').forEach(function(td){
+            if (td.textContent.trim()) sedesSet.add(td.textContent.trim());
+        });
+        var elSedes = document.getElementById('kpi-alertas-sedes');
+        if (elSedes) elSedes.textContent = sedesSet.size > 0 ? sedesSet.size : '0';
+    }
+    var bodyEl = document.getElementById('alertas-activas-body');
+    if (bodyEl) new MutationObserver(actualizarKpisAlertas).observe(bodyEl, { childList:true, subtree:true });
+    actualizarKpisAlertas();
+})();
+
+// ── HOME: FONDO ANIMADO ──
+(function() {
+    var slides = document.querySelectorAll('.home-bg-slide');
+    if (!slides.length) return;
+    var cur = 0;
+    slides[0].classList.add('active');
+    setInterval(function() {
+        slides[cur].classList.remove('active');
+        cur = (cur + 1) % slides.length;
+        slides[cur].classList.add('active');
+    }, 7000);
+})();
+
+// ── HOME: SINCRONIZAR CLONES DEL CARRUSEL ──
+(function() {
+    function syncClones() {
+        document.querySelectorAll('.kpi-clone').forEach(function(el) {
+            var src = document.getElementById(el.dataset.src);
+            if (src && src.innerText !== '-') el.innerText = src.innerText;
+        });
+    }
+    ['sum-total','sum-online','sum-offline','sum-elementos','sum-estudios','sum-equipos','sum-ia'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        new MutationObserver(syncClones).observe(el, { childList:true, characterData:true, subtree:true });
+    });
+    syncClones();
+})();
+
+
+(function() {
+    var nav = document.getElementById('main-nav');
+    var navBtns = document.querySelectorAll('.nav-btn[onclick*="scrollToSection"]');
+
+    // Scroll handler: compact + active link
+    window.addEventListener('scroll', function() {
+        var homeSection = document.getElementById('view-resumen');
+        var homeBottom = homeSection ? homeSection.offsetTop + homeSection.offsetHeight : 0;
+        var onHome = window.scrollY < homeBottom - 10;
+
+        // in-section: cuando salimos del Home
+        if (onHome) {
+            nav.classList.remove('in-section');
+            // Animación compact solo en Home al hacer scroll
+            if (window.scrollY > 80) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        } else {
+            nav.classList.add('in-section');
+            nav.classList.remove('scrolled');
+        }
+
+        // Sección activa por posición
+        var fromTop = window.scrollY + 100;
+        var sections = ['view-resumen','view-dashboard','view-alertas','view-ia','view-config'];
+        var btnMap = {
+            'view-resumen':'btn-resumen','view-dashboard':'btn-dash',
+            'view-alertas':'btn-alert','view-ia':'btn-ia','view-config':'btn-conf'
+        };
+        // Hero = resumen
+        var hero = document.getElementById('hero');
+        if (hero && fromTop < hero.offsetTop + hero.offsetHeight) {
+            sections.forEach(function(s){ document.getElementById(btnMap[s])?.classList.remove('active'); });
+            document.getElementById('btn-resumen')?.classList.add('active');
+            return;
+        }
+        sections.forEach(function(s) {
+            var sec = document.getElementById(s);
+            var btn = document.getElementById(btnMap[s]);
+            if (!sec || !btn) return;
+            if (sec.offsetTop <= fromTop && sec.offsetTop + sec.offsetHeight > fromTop) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }, { passive: true });
+})();
+
+// ── SCROLL TO SECTION ──
+function scrollToSection(viewId, btnId) {
+    var el = document.getElementById(viewId);
+    if (!el) return;
+    // Para la sección Hospitales (y cualquier sección con área nav propia)
+    // scrolleamos al tope exacto del elemento, sin offset — el hosp-nav-area
+    // ya reserva el espacio interno para la pill.
+    // Para las demás secciones usamos un offset pequeño para que la pill no tape el título.
+    var sectionsNoOffset = ['view-dashboard','view-alertas','view-ia','view-config'];
+    var offset = sectionsNoOffset.indexOf(viewId) >= 0 ? 0 : 72;
+    var y = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+    document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+    document.getElementById(btnId)?.classList.add('active');
+}
+
+// ── HERO: poblar nombre de usuario ──
+document.addEventListener('DOMContentLoaded', function() {
+    var ud = sessionStorage.getItem('tecnomonitor_user');
+    if (ud) {
+        try {
+            var u = JSON.parse(ud);
+            var nameEl = document.getElementById('hero-user-name');
+            if (nameEl && u.nombre) nameEl.textContent = u.nombre.split(' ')[0];
+        } catch(e){}
+    }
+    // Sync hero KPIs desde los mismos IDs del resumen
+    function syncHeroKpis() {
+        var map = [
+            ['sum-online','hero-online'],['sum-total','hero-total'],
+            ['sum-estudios','sum-estudios-hero'],['sum-ia','sum-ia-hero']
+        ];
+        map.forEach(function(pair) {
+            var src = document.getElementById(pair[0]);
+            var dst = document.getElementById(pair[1]);
+            if (src && dst && src.innerText !== '-') dst.innerText = src.innerText;
+        });
+    }
+    // Observer para sincronizar cuando script.js popule los IDs
+    var observer = new MutationObserver(syncHeroKpis);
+    ['sum-online','sum-total','sum-estudios','sum-ia'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) observer.observe(el, { childList:true, characterData:true, subtree:true });
+    });
+    syncHeroKpis();
+});
+</script>
+<script>
+// Forzar Chart.js en modo oscuro antes de que el script principal lo inicialice
+if (typeof Chart !== 'undefined') {
+    Chart.defaults.color = '#6B6B7A';
+    Chart.defaults.borderColor = '#232327';
+    Chart.defaults.backgroundColor = 'rgba(74,143,255,0.1)';
+}
+</script>
+<!-- Stubs ANTES de script.js: elementos que el script busca pero no existen en el nuevo layout -->
+<script>
+(function() {
+    // 1. Limpiar ?hospital= del query string ANTES de que script.js lo lea en DOMContentLoaded
+    // Así evitamos que recargue el detalle automáticamente al refrescar la página
+    if (window.location.search.includes('hospital=')) {
+        var cleanUrl = window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
+    }
+
+    // 2. Stubs de elementos que script.js busca y que no existen en el nuevo layout
+    var ids = ['sidebar','toggle-sidebar','bottom-nav'];
+    ids.forEach(function(id) {
+        if (!document.getElementById(id)) {
+            var el = document.createElement(id === 'toggle-sidebar' ? 'button' : 'div');
+            el.id = id;
+            el.style.cssText = 'display:none!important;position:absolute;width:0;height:0;overflow:hidden';
+            document.body.appendChild(el);
+        }
+    });
+    // 3. Stub de view-mapa que script.js chequea en setInterval
+    if (!document.getElementById('view-mapa')) {
+        var vm = document.createElement('div');
+        vm.id = 'view-mapa';
+        vm.style.cssText = 'display:none!important;position:absolute;width:0;height:0';
+        document.body.appendChild(vm);
+    }
+})();
+
+// ── navegar() y volverAlDashboard(): se definen aquí y se RE-APLICAN después de script.js ──
+window._nuestroNavegar = function(viewId, btnId, el) {
+    var map = {
+        'view-resumen':'btn-resumen','view-dashboard':'btn-dash',
+        'view-alertas':'btn-alert','view-ia':'btn-ia','view-config':'btn-conf'
+    };
+    if (viewId === 'view-detalle') {
+        window._savedScrollY = window.scrollY;
+        var backdrop = document.getElementById('detalle-backdrop');
+        if (backdrop) backdrop.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        var _orig = window.scrollTo;
+        window.scrollTo = function(){};
+        setTimeout(function(){ window.scrollTo = _orig; }, 500);
+        return;
+    }
+    var backdrop = document.getElementById('detalle-backdrop');
+    if (backdrop && backdrop.classList.contains('active')) {
+        backdrop.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    if (typeof scrollToSection === 'function') scrollToSection(viewId, btnId || map[viewId] || '');
+};
+
+window._nuestroVolverAlDashboard = function() {
+    var backdrop = document.getElementById('detalle-backdrop');
+    if (backdrop) backdrop.classList.remove('active');
+    document.body.style.overflow = '';
+    if (window._savedScrollY !== undefined) {
+        window.scrollTo({ top: window._savedScrollY, behavior: 'instant' });
+    }
+};
+</script>
+<script src="/static/script.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // ── Aplicar nuestros overrides DESPUÉS de que script.js cargó y definió los suyos ──
+    // Ahora SÍ podemos sobreescribir con asignación simple porque script.js ya terminó.
+    window.navegar = window._nuestroNavegar;
+    window.volverAlDashboard = window._nuestroVolverAlDashboard;
+    window.toggleSidebar = function() { /* stub */ };
+
+    // Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(reg => console.log('SW registrado', reg))
+                .catch(err => console.log('SW error', err));
+        });
+    }
+
+    // Auth check
+    const userData = sessionStorage.getItem('tecnomonitor_user');
+    if (!userData) {
+        window.location.href = '/';
+    } else {
+        const user = JSON.parse(userData);
+        aplicarRestriccionesUI(user.role);
+    }
+
+    function aplicarRestriccionesUI(rol) {
+        const restricciones = {
+            'Visor':      ['btn-alert','btn-ia','btn-conf','btn-herramientas'],
+            'Comercial':  ['btn-alert','btn-mapa','btn-conf','btn-herramientas'],
+            'Ingenieria': ['btn-conf']
+        };
+        const idsAOcultar = restricciones[rol] || [];
+        idsAOcultar.forEach(id => document.getElementById(id)?.remove());
+    }
+
+    function logout() {
+        sessionStorage.clear();
+        window.location.href = '/';
+    }
+
+    // Leaflet: forzar tiles oscuros
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof L !== 'undefined') {
+            const origTileLayer = L.tileLayer;
+            L.tileLayer = function(url, options) {
+                if (url.includes('openstreetmap')) {
+                    url = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+                    options = { ...options, attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19 };
+                }
+                return origTileLayer.call(this, url, options);
+            };
+        }
+    });
+</script>
+</body>
+</html>
