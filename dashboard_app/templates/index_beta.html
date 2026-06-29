@@ -108,11 +108,28 @@ html,body{
 .top-nav.in-section .nav-btn-bottom:hover{color:var(--text);}
 .top-nav.in-section .nav-left{gap:4px;}
 .top-nav.in-section .nav-right{gap:4px;}
+
+/* ── Hover: expandir la pill mientras el cursor está encima ── */
+.top-nav.in-section:hover{
+    padding:10px 24px;
+    gap:40px;
+    background:rgba(17,17,19,0.98);
+    border-color:rgba(255,255,255,0.10);
+    box-shadow:0 8px 32px rgba(0,0,0,0.6);
+}
+.top-nav.in-section:hover .nav-logo-text{max-width:200px;opacity:1;margin:0;}
+.top-nav.in-section:hover .nav-btn{padding:7px 14px;color:rgba(255,255,255,0.65);}
+.top-nav.in-section:hover .nav-btn .nav-label{max-width:120px;opacity:1;overflow:hidden;margin:0;}
+.top-nav.in-section:hover .nav-btn:hover,
+.top-nav.in-section:hover .nav-btn.active{background:rgba(255,255,255,0.15);color:#fff;}
+.top-nav.in-section:hover .nav-btn-bottom{color:rgba(255,255,255,0.5);}
+.top-nav.in-section:hover .nav-left{gap:20px;}
+.top-nav.in-section:hover .nav-right{gap:16px;}
 .nav-left{display:flex;align-items:center;gap:20px;}
 .nav-right{display:flex;align-items:center;gap:16px;}
 .nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:#fff;}
 .nav-logo-text{white-space:nowrap;overflow:hidden;transition:all .4s;}
-.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex-shrink:0}
+.logo-icon{width:20px;height:20px;flex-shrink:0;color:var(--green);}
 .nav-links{display:flex;gap:4px;}
 .nav-btn{
     display:flex;align-items:center;gap:6px;padding:7px 14px;
@@ -317,8 +334,7 @@ html,body{
     background:var(--surface2);color:var(--text);border-color:var(--border2);
 }
 .hosp-list-scroll{
-    flex:1;overflow-y:auto;
-    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+    flex:1;overflow:hidden;
 }
 .hosp-table{width:100%;border-collapse:collapse;}
 .hosp-table thead tr{
@@ -498,18 +514,16 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 
 /* ── HOME: FONDO ANIMADO (imágenes locales) ── */
 .home-bg{
-    position:absolute;inset:0;z-index:0;overflow:hidden;
+    position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;overflow:hidden;
 }
 .home-bg-slide{
-    position:absolute;inset:0;
-    background-size:cover;background-position:center;
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    background-size:cover;background-position:center center;background-repeat:no-repeat;
     opacity:0;
-    transform:scale(1.04);
-    transition:opacity 1.6s cubic-bezier(.4,0,.2,1), transform 14s linear;
-    will-change:opacity,transform;
+    transition:opacity 1.6s cubic-bezier(.4,0,.2,1);
 }
 .home-bg-slide.active{
-    opacity:1;transform:scale(1.08);
+    opacity:1;
 }
 /* overlay gradiente sobre las imágenes */
 .home-bg-overlay{
@@ -537,9 +551,10 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 /* ── HOME SECTION ── */
 #view-resumen{
     position:relative;
+    height:100vh;
+    min-height:100vh;
     overflow:hidden;
     background:var(--bg);
-    min-height:100vh;
 }
 .home-inner{
     position:relative;
@@ -676,8 +691,8 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 
 .detalle-modal-overlay{
     position:relative;
-    width:min(1100px,96vw);
-    max-height:88vh;
+    width:80vw;
+    height:88vh;
     z-index:10001!important;
     background:var(--surface)!important;
     border:1px solid var(--border);
@@ -724,7 +739,7 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     flex:1;
     padding:20px 28px 20px;
     box-sizing:border-box;
-    max-width:1100px;width:100%;margin:0 auto;
+    width:100%;
     height:calc(100vh - 72px);
     display:flex;
     flex-direction:column;
@@ -854,8 +869,7 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 }
 .rep-hist-title{font-size:13px;font-weight:700;color:var(--text);}
 .rep-hist-scroll{
-    flex:1;overflow-y:auto;
-    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+    flex:1;overflow:hidden;
 }
 
 /* ── ALERTAS: mismo patrón que Hospitales ── */
@@ -871,14 +885,12 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     background:var(--bg);
 }
 .alert-body{
-    flex:1;
-    padding:12px 20px 20px;
+    padding:12px 20px 40px;
     box-sizing:border-box;
-    height:calc(100vh - 72px);
-    overflow:hidden;
     display:grid;
     grid-template-columns:30fr 70fr;
     gap:12px;
+    /* sin height fijo — el contenido expande y scrollea con la página */
 }
 
 /* Tarjeta izquierda — indicadores */
@@ -903,7 +915,6 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     box-shadow:0 0 0 2px var(--red-dim);
 }
 .alert-stats-body{
-    flex:1;overflow-y:auto;
     padding:16px;
     display:flex;flex-direction:column;gap:12px;
     scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
@@ -940,7 +951,7 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     background:var(--surface);
     border:1px solid var(--border);
     border-radius:var(--radius2);
-    overflow:hidden;
+    overflow:visible;
     display:flex;
     flex-direction:column;
 }
@@ -949,10 +960,10 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     border-bottom:1px solid var(--border);
     display:flex;align-items:center;justify-content:space-between;
     flex-shrink:0;
+    border-radius:var(--radius2) var(--radius2) 0 0;
 }
 .alert-table-scroll{
-    flex:1;overflow-y:auto;
-    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+    overflow:hidden;
 }
 
 /* ── INPUT GROUP ── */
@@ -1227,6 +1238,54 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 /* Texto muted en tabla activa */
 .table-clean.active-incidents td:nth-child(3){color:var(--muted);font-size:.88em}
 
+/* ── columna descripción alertas: una línea, truncar ── */
+.alert-desc-cell{
+    max-width:0;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    color:var(--muted);
+    font-size:.88em;
+    padding:10px 14px!important;
+}
+/* ── botón Asana en tabla alertas ── */
+.alert-asana-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;border-radius:6px;
+    background:rgba(74,143,255,.1);border:1px solid rgba(74,143,255,.2);
+    color:var(--blue);text-decoration:none;transition:all .2s;
+}
+.alert-asana-btn:hover{background:rgba(74,143,255,.22);border-color:var(--blue);}
+/* ocultar la celda original de detalle que genera script.js */
+.table-clean.active-incidents td.alert-original-detail{display:none;}
+
+/* ── Fix badges de alertas: override de colores inline del tema claro ── */
+.table-clean.active-incidents .status-badge,
+.table-clean.active-incidents span[class*="status-"]{
+    /* Forzar colores correctos independientemente de los inline del script.js */
+    color:inherit!important;
+}
+.table-clean.active-incidents .status-critical{
+    background:rgba(255,92,92,.12)!important;
+    color:var(--red)!important;
+    border:1px solid rgba(255,92,92,.25)!important;
+}
+.table-clean.active-incidents .status-warning{
+    background:rgba(255,169,64,.12)!important;
+    color:var(--amber)!important;
+    border:1px solid rgba(255,169,64,.25)!important;
+}
+.table-clean.active-incidents .status-notice{
+    background:rgba(74,143,255,.12)!important;
+    color:var(--blue)!important;
+    border:1px solid rgba(74,143,255,.25)!important;
+}
+.table-clean.active-incidents .status-offline{
+    background:rgba(255,92,92,.12)!important;
+    color:var(--red)!important;
+    border:1px solid rgba(255,92,92,.25)!important;
+}
+
 /* ── Historial reportes: overrides de fondos claros ── */
 [style*="background-color: white"],[style*="background-color:white"],
 [style*="background: white"],[style*="background:white"],
@@ -1344,7 +1403,11 @@ canvas{color-scheme:dark}
 <nav id="main-nav" class="top-nav">
     <div class="nav-left">
         <div class="nav-logo">
-            <div class="logo-dot"></div>
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21h8"/><path d="M12 17v4"/>
+                <path d="M9 10h6"/><path d="M12 7v6"/>
+            </svg>
             <span class="nav-logo-text">TecnoMonitor</span>
         </div>
         <div class="nav-links">
@@ -1369,7 +1432,7 @@ canvas{color-scheme:dark}
         </div>
     </div>
     <div class="nav-right">
-        <button id="btn-conf" class="nav-btn-bottom" onclick="scrollToSection('view-config','btn-conf');" title="Configuración">
+        <button id="btn-conf" class="nav-btn-bottom" onclick="scrollToSection('view-config','btn-conf');cargarPerfil();setTimeout(function(){if(typeof cargarConfigUI==='function')cargarConfigUI();},200);" title="Configuración">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <button class="nav-btn-bottom" onclick="scrollToSection('view-config','btn-conf');" title="Configuración" style="display:none"></button>
@@ -1396,14 +1459,18 @@ canvas{color-scheme:dark}
             <div class="home-header">
                 <h2>Hola, <span id="hero-user-name" style="color:var(--green)">Usuario</span> 👋</h2>
                 <p>Centro de monitoreo proactivo · Estado en tiempo real de la infraestructura en todas las sedes.</p>
-                <a href="/herramientas" target="_blank" class="home-tools-btn">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                    <span>
-                        <strong style="display:block;font-size:12px;font-weight:700;line-height:1.2">Herramientas</strong>
-                        <span style="font-size:10px;font-weight:400;opacity:.75">RIS Analytics · Sandbox HL7</span>
-                    </span>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                <a href="/ris-analytics" target="_blank" class="home-tools-btn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                    <span><strong style="display:block;font-size:12px;font-weight:700;line-height:1.2">RIS Analytics</strong><span style="font-size:10px;font-weight:400;opacity:.75">Análisis XML · Estadísticas · PDF/Excel</span></span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:.6"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </a>
+                <a href="/hl7-analytics" target="_blank" class="home-tools-btn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span><strong style="display:block;font-size:12px;font-weight:700;line-height:1.2">Sandbox HL7</strong><span style="font-size:10px;font-weight:400;opacity:.75">Validador · Simulador · Diagramas IHE</span></span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:.6"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+                </div>
             </div>
 
             <!-- KPI cards en fila con scroll automático -->
@@ -1539,6 +1606,23 @@ canvas{color-scheme:dark}
                             <tbody id="dashboard-body"></tbody>
                         </table>
                     </div>
+
+                    <!-- Paginación hospitales -->
+                    <div id="hosp-pagination" style="display:none;padding:10px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                        <span id="hosp-pagination-info" style="font-size:11px;color:var(--muted);"></span>
+                        <div style="display:flex;gap:6px;">
+                            <button id="hosp-pag-prev" onclick="hospCambiarPagina(-1)"
+                                style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                                Anterior
+                            </button>
+                            <button id="hosp-pag-next" onclick="hospCambiarPagina(1)"
+                                style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;">
+                                Siguiente
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ── PANEL DERECHO: mapa ── -->
@@ -1616,7 +1700,20 @@ canvas{color-scheme:dark}
         </div>
 
         <div id="tab-logs" class="tab-content" style="padding:20px">
-            <div id="logs-content"></div>
+            <div style="width:100%;margin-bottom:16px;">
+                <div class="chart-toggles" style="display:flex;width:100%;flex-wrap:wrap;margin-bottom:10px">
+                    <button class="chart-btn sw-time-btn active" style="flex:1;padding:7px 5px;font-size:.85em" onclick="cambiarRangoSoftware(30,this)">30 Min</button>
+                    <button class="chart-btn sw-time-btn" style="flex:1;padding:7px 5px;font-size:.85em" onclick="cambiarRangoSoftware(60,this)">1H</button>
+                    <button class="chart-btn sw-time-btn" style="flex:1;padding:7px 5px;font-size:.85em" onclick="cambiarRangoSoftware(1440,this)">24H</button>
+                    <button class="chart-btn sw-time-btn" style="flex:1;padding:7px 5px;font-size:.85em" onclick="cambiarRangoSoftware(10080,this)">7D</button>
+                    <button class="chart-btn sw-time-btn" style="flex:1;padding:7px 5px;font-size:.85em" onclick="cambiarRangoSoftware(0,this)">Total</button>
+                </div>
+                <div id="software-legend" style="text-align:center;color:var(--muted);font-size:.85em;font-weight:600;letter-spacing:.5px">
+                    Sincronizando información de integraciones...
+                </div>
+            </div>
+            <div id="logs-container"></div>
+            <div style="height:40px"></div>
         </div>
 
         <div id="tab-kpis" class="tab-content" style="padding-top:20px">
@@ -1796,10 +1893,12 @@ canvas{color-scheme:dark}
                     <table class="table-clean active-incidents" style="width:100%;border-collapse:collapse;">
                         <thead>
                             <tr style="background:var(--surface2);position:sticky;top:0;z-index:2;">
-                                <th style="width:15%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">ID Hospital</th>
-                                <th style="width:50%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">Detalle del Incidente</th>
-                                <th style="width:20%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">Inicio</th>
-                                <th style="width:15%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);">Tiempo</th>
+                                <th style="width:12%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">ID Hospital</th>
+                                <th style="width:12%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Tipo</th>
+                                <th style="width:47%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Descripción</th>
+                                <th style="width:13%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Inicio</th>
+                                <th style="width:9%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Tiempo</th>
+                                <th style="width:7%;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);padding:10px 14px;text-align:center;border-bottom:1px solid var(--border);">Asana</th>
                             </tr>
                         </thead>
                         <tbody id="alertas-activas-body"></tbody>
@@ -1809,6 +1908,24 @@ canvas{color-scheme:dark}
                         Todos los sistemas operando normalmente.
                     </div>
                 </div>
+
+                <!-- Paginación -->
+                <div id="alertas-pagination" style="display:none;padding:10px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                    <span id="alertas-pagination-info" style="font-size:11px;color:var(--muted);"></span>
+                    <div style="display:flex;gap:6px;">
+                        <button id="alertas-pag-prev" onclick="alertasCambiarPagina(-1)"
+                            style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                            Anterior
+                        </button>
+                        <button id="alertas-pag-next" onclick="alertasCambiarPagina(1)"
+                            style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;">
+                            Siguiente
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- tbody oculto del historial — requerido por script.js -->
                 <table style="display:none"><tbody id="alertas-historial-body"></tbody></table>
             </div>
@@ -1909,6 +2026,23 @@ canvas{color-scheme:dark}
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Paginación historial -->
+                <div id="hist-pagination" style="display:none;padding:10px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                    <span id="hist-pagination-info" style="font-size:11px;color:var(--muted);"></span>
+                    <div style="display:flex;gap:6px;">
+                        <button id="hist-pag-prev" onclick="histCambiarPagina(-1)"
+                            style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                            Anterior
+                        </button>
+                        <button id="hist-pag-next" onclick="histCambiarPagina(1)"
+                            style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;">
+                            Siguiente
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -1950,24 +2084,33 @@ canvas{color-scheme:dark}
                 <!-- ── TAB: PERSONAL ── -->
                 <div id="tab-personal" class="conf-tab-panel active">
                     <div class="conf-section-block">
-                        <div class="conf-section-title">
-                            Datos del usuario
-                            <span class="badge-wip">En construcción</span>
-                        </div>
+                        <div class="conf-section-title">Datos del usuario</div>
                         <div class="grid-2-col" style="margin-bottom:16px">
-                            <div class="input-group"><label>Nombre</label><input type="text" id="conf-user-nombre" placeholder="Tu nombre"></div>
-                            <div class="input-group"><label>Apellido</label><input type="text" id="conf-user-apellido" placeholder="Tu apellido"></div>
-                        </div>
-                        <div class="grid-2-col" style="margin-bottom:20px">
-                            <div class="input-group"><label>Correo corporativo</label><input type="email" id="conf-user-email" placeholder="usuario@empresa.com"></div>
                             <div class="input-group">
-                                <label>Visualización</label>
-                                <select id="conf-user-tema"><option value="dark">Tema oscuro</option><option value="light">Tema claro</option></select>
+                                <label>Nombre completo</label>
+                                <input type="text" id="conf-user-nombre" placeholder="Tu nombre completo">
+                            </div>
+                            <div class="input-group">
+                                <label>Correo corporativo</label>
+                                <input type="email" id="conf-user-email" placeholder="usuario@empresa.com" readonly
+                                    style="opacity:.6;cursor:not-allowed;">
                             </div>
                         </div>
-                        <button class="btn-action" style="width:auto;border-radius:50px;padding:10px 28px;font-size:.9em;background:var(--green);color:#0A0A0B;opacity:.6;cursor:not-allowed" disabled>
-                            Guardar cambios
-                        </button>
+                        <div class="grid-2-col" style="margin-bottom:20px">
+                            <div class="input-group">
+                                <label>Rol en el sistema</label>
+                                <input type="text" id="conf-user-rol" readonly
+                                    style="opacity:.6;cursor:not-allowed;">
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <button id="btn-guardar-perfil" onclick="guardarPerfil()"
+                                class="btn-action"
+                                style="width:auto;border-radius:50px;padding:10px 28px;font-size:.9em;background:var(--green);color:#0A0A0B;">
+                                Guardar cambios
+                            </button>
+                            <span id="perfil-msg" style="font-size:12px;display:none;"></span>
+                        </div>
                     </div>
 
                     <div class="conf-section-block" style="margin-top:8px;">
@@ -2328,6 +2471,325 @@ canvas{color-scheme:dark}
 </div>
 
 <script>
+// ── ALERTAS: reorganizar columnas de incidentes en curso ──
+(function() {
+    function reorganizarFilaAlerta(tr) {
+        if (tr.dataset.reorganized) return;
+        tr.dataset.reorganized = '1';
+
+        var cells = tr.querySelectorAll('td');
+        // script.js genera: td[0]=ID, td[1]=badge+texto+asanaBtn, td[2]=inicio, td[3]=tiempo
+        if (cells.length < 4) return;
+
+        var detailTd = cells[1];
+
+        // Extraer badge (span.status-badge)
+        var badge = detailTd.querySelector('span.status-badge, span.status-critical, span.status-warning, span.status-notice, span.status-offline');
+        var badgeHtml = badge ? badge.outerHTML : '';
+        if (badge) badge.remove();
+
+        // Extraer botón Asana (enlace con href asana)
+        var asanaLink = detailTd.querySelector('a[href*="asana.com"]');
+        var asanaHtml = '';
+        if (asanaLink) {
+            asanaHtml = '<a href="' + asanaLink.href + '" target="_blank" class="alert-asana-btn" title="Ver en Asana">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
+                '</a>';
+            asanaLink.remove();
+        }
+
+        // El texto que queda es la descripción
+        var desc = detailTd.textContent.trim();
+
+        // Marcar la celda original para ocultarla
+        detailTd.classList.add('alert-original-detail');
+
+        // Insertar badge y descripción ANTES de la celda de inicio (td[2])
+        var iniciTd = cells[2];
+
+        var tdBadge = document.createElement('td');
+        tdBadge.style.cssText = 'padding:10px 14px;white-space:nowrap;vertical-align:middle;';
+        tdBadge.innerHTML = badgeHtml || '-';
+        tr.insertBefore(tdBadge, iniciTd);
+
+        var tdDesc = document.createElement('td');
+        tdDesc.className = 'alert-desc-cell';
+        tdDesc.title = desc;
+        tdDesc.textContent = desc;
+        tr.insertBefore(tdDesc, iniciTd);
+
+        // Asana va AL FINAL (appendChild)
+        var tdAsana = document.createElement('td');
+        tdAsana.style.cssText = 'padding:10px 14px;text-align:center;vertical-align:middle;';
+        tdAsana.innerHTML = asanaHtml || '<span style="color:var(--muted2);font-size:.8em;">—</span>';
+        tr.appendChild(tdAsana);
+    }
+
+    var tbody = document.getElementById('alertas-activas-body');
+    if (!tbody) return;
+
+    new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(node) {
+                if (node.tagName === 'TR') reorganizarFilaAlerta(node);
+            });
+        });
+    }).observe(tbody, { childList: true });
+})();
+
+// ── HISTORIAL REPORTES: paginación ──
+(function() {
+    var FILAS_POR_PAGINA = 8;
+    var paginaActual = 1;
+
+    function todasLasFilas() {
+        return Array.from(document.querySelectorAll('#tabla-historial-body tr'));
+    }
+
+    function renderPagina() {
+        var filas = todasLasFilas();
+        // ignorar la fila de "Cargando..." que tiene colspan
+        var filasDatos = filas.filter(function(tr) {
+            return !tr.querySelector('td[colspan]');
+        });
+        var total = filasDatos.length;
+        var totalPags = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA));
+        if (paginaActual > totalPags) paginaActual = totalPags;
+
+        var desde = (paginaActual - 1) * FILAS_POR_PAGINA;
+        var hasta = desde + FILAS_POR_PAGINA;
+
+        filasDatos.forEach(function(tr, i) {
+            tr.style.display = (i >= desde && i < hasta) ? '' : 'none';
+        });
+
+        var pag = document.getElementById('hist-pagination');
+        if (pag) pag.style.display = total > FILAS_POR_PAGINA ? 'flex' : 'none';
+
+        var info = document.getElementById('hist-pagination-info');
+        if (info) info.textContent = 'Página ' + paginaActual + ' de ' + totalPags + ' (' + total + ' informes)';
+
+        var prev = document.getElementById('hist-pag-prev');
+        var next = document.getElementById('hist-pag-next');
+        if (prev) { prev.style.opacity = paginaActual <= 1 ? '.35' : '1'; prev.disabled = paginaActual <= 1; }
+        if (next) { next.style.opacity = paginaActual >= totalPags ? '.35' : '1'; next.disabled = paginaActual >= totalPags; }
+    }
+
+    window.histCambiarPagina = function(dir) {
+        var filas = todasLasFilas().filter(function(tr) { return !tr.querySelector('td[colspan]'); });
+        var totalPags = Math.max(1, Math.ceil(filas.length / FILAS_POR_PAGINA));
+        paginaActual = Math.max(1, Math.min(totalPags, paginaActual + dir));
+        renderPagina();
+    };
+
+    var tbody = document.getElementById('tabla-historial-body');
+    if (tbody) {
+        new MutationObserver(function() {
+            paginaActual = 1;
+            setTimeout(renderPagina, 50);
+        }).observe(tbody, { childList: true });
+    }
+})();
+
+// ── HOSPITALES: paginación de la tabla ──
+(function() {
+    var FILAS_POR_PAGINA = 12;
+    var paginaActual = 1;
+
+    function filasVisibles() {
+        // Sólo las filas que aplicarFiltros() no ocultó
+        return Array.from(document.querySelectorAll('#dashboard-body tr')).filter(function(tr) {
+            return tr.style.display !== 'none';
+        });
+    }
+
+    function todasLasFilas() {
+        return Array.from(document.querySelectorAll('#dashboard-body tr'));
+    }
+
+    function renderPagina() {
+        var visibles = filasVisibles();
+        var total = visibles.length;
+        var totalPags = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA));
+        if (paginaActual > totalPags) paginaActual = totalPags;
+
+        var desde = (paginaActual - 1) * FILAS_POR_PAGINA;
+        var hasta = desde + FILAS_POR_PAGINA;
+
+        // Primero ocultar todas las filas visibles, luego mostrar solo la página actual
+        visibles.forEach(function(tr, i) {
+            tr.style.display = (i >= desde && i < hasta) ? '' : 'none';
+        });
+
+        var pag = document.getElementById('hosp-pagination');
+        if (pag) pag.style.display = total > FILAS_POR_PAGINA ? 'flex' : 'none';
+
+        var info = document.getElementById('hosp-pagination-info');
+        if (info) info.textContent = 'Página ' + paginaActual + ' de ' + totalPags + ' (' + total + ' hospitales)';
+
+        var prev = document.getElementById('hosp-pag-prev');
+        var next = document.getElementById('hosp-pag-next');
+        if (prev) { prev.style.opacity = paginaActual <= 1 ? '.35' : '1'; prev.disabled = paginaActual <= 1; }
+        if (next) { next.style.opacity = paginaActual >= totalPags ? '.35' : '1'; next.disabled = paginaActual >= totalPags; }
+    }
+
+    window.hospCambiarPagina = function(dir) {
+        var total = filasVisibles().length;
+        var totalPags = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA));
+        paginaActual = Math.max(1, Math.min(totalPags, paginaActual + dir));
+        renderPagina();
+    };
+
+    // Interceptar aplicarFiltros para resetear página al filtrar
+    var _origAplicarFiltros = null;
+    function patchAplicarFiltros() {
+        if (typeof aplicarFiltros === 'function' && !_origAplicarFiltros) {
+            _origAplicarFiltros = aplicarFiltros;
+            window.aplicarFiltros = function() {
+                _origAplicarFiltros.apply(this, arguments);
+                paginaActual = 1;
+                setTimeout(renderPagina, 10);
+            };
+        }
+    }
+
+    // Observar el tbody para detectar cuando script.js carga los hospitales
+    var tbody = document.getElementById('dashboard-body');
+    if (tbody) {
+        new MutationObserver(function() {
+            paginaActual = 1;
+            setTimeout(function() {
+                patchAplicarFiltros();
+                renderPagina();
+            }, 50);
+        }).observe(tbody, { childList: true });
+    }
+})();
+
+// ── ALERTAS: paginación de incidentes en curso ──
+(function() {
+    var FILAS_POR_PAGINA = 8;
+    var paginaActual = 1;
+
+    function todasLasFilas() {
+        return Array.from(document.querySelectorAll('#alertas-activas-body tr'));
+    }
+
+    function renderPagina() {
+        var filas = todasLasFilas();
+        var total = filas.length;
+        var totalPags = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA));
+        if (paginaActual > totalPags) paginaActual = totalPags;
+
+        var desde = (paginaActual - 1) * FILAS_POR_PAGINA;
+        var hasta = desde + FILAS_POR_PAGINA;
+
+        filas.forEach(function(tr, i) {
+            tr.style.display = (i >= desde && i < hasta) ? '' : 'none';
+        });
+
+        // Paginación: mostrar solo si hay más de una página
+        var pag = document.getElementById('alertas-pagination');
+        if (pag) pag.style.display = total > FILAS_POR_PAGINA ? 'flex' : 'none';
+
+        var info = document.getElementById('alertas-pagination-info');
+        if (info) info.textContent = 'Página ' + paginaActual + ' de ' + totalPags + ' (' + total + ' incidentes)';
+
+        var prev = document.getElementById('alertas-pag-prev');
+        var next = document.getElementById('alertas-pag-next');
+        if (prev) prev.style.opacity = paginaActual <= 1 ? '.35' : '1';
+        if (next) next.style.opacity = paginaActual >= totalPags ? '.35' : '1';
+        if (prev) prev.disabled = paginaActual <= 1;
+        if (next) next.disabled = paginaActual >= totalPags;
+    }
+
+    // Exponer función para cambiar página desde los botones
+    window.alertasCambiarPagina = function(dir) {
+        var filas = todasLasFilas();
+        var totalPags = Math.max(1, Math.ceil(filas.length / FILAS_POR_PAGINA));
+        paginaActual = Math.max(1, Math.min(totalPags, paginaActual + dir));
+        renderPagina();
+    };
+
+    // Observar cambios en el tbody para re-paginar cuando script.js carga los datos
+    var tbody = document.getElementById('alertas-activas-body');
+    if (tbody) {
+        new MutationObserver(function() {
+            paginaActual = 1;
+            // Pequeño delay para que el observer de reorganización de columnas termine primero
+            setTimeout(renderPagina, 50);
+        }).observe(tbody, { childList: true });
+    }
+})();
+
+// ── PERFIL DE USUARIO ──
+async function cargarPerfil() {
+    try {
+        const res = await authFetch('/api/usuario/perfil');
+        if (!res.ok) return;
+        const data = await res.json();
+        var n = document.getElementById('conf-user-nombre');
+        var e = document.getElementById('conf-user-email');
+        var r = document.getElementById('conf-user-rol');
+        if (n) n.value = data.full_name || '';
+        if (e) e.value = data.email || '';
+        if (r) r.value = data.role || '';
+    } catch(err) { console.warn('Error cargando perfil:', err); }
+}
+
+async function guardarPerfil() {
+    var nombreEl = document.getElementById('conf-user-nombre');
+    var btn = document.getElementById('btn-guardar-perfil');
+    var msg = document.getElementById('perfil-msg');
+    if (!nombreEl || !btn) return;
+
+    var nombre = nombreEl.value.trim();
+    if (!nombre) {
+        mostrarMsgPerfil('El nombre no puede estar vacío.', 'var(--red)');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+    try {
+        const res = await authFetch('/api/usuario/perfil', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ full_name: nombre })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            // Actualizar sessionStorage para que el saludo en Home refleje el cambio
+            var ud = sessionStorage.getItem('tecnomonitor_user');
+            if (ud) {
+                var u = JSON.parse(ud);
+                u.nombre = data.full_name;
+                sessionStorage.setItem('tecnomonitor_user', JSON.stringify(u));
+                // Actualizar saludo en Home si está visible
+                var heroName = document.getElementById('hero-user-name');
+                if (heroName) heroName.textContent = data.full_name.split(' ')[0];
+            }
+            mostrarMsgPerfil('✓ Cambios guardados correctamente.', 'var(--green)');
+        } else {
+            mostrarMsgPerfil(data.detail || 'Error al guardar.', 'var(--red)');
+        }
+    } catch(err) {
+        mostrarMsgPerfil('Error de conexión.', 'var(--red)');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Guardar cambios';
+    }
+}
+
+function mostrarMsgPerfil(texto, color) {
+    var msg = document.getElementById('perfil-msg');
+    if (!msg) return;
+    msg.textContent = texto;
+    msg.style.color = color;
+    msg.style.display = 'block';
+    setTimeout(function() { msg.style.display = 'none'; }, 3500);
+}
+
 // ── CONFIG: cambio de tabs ──
 function switchConfTab(tabId, btn) {
     document.querySelectorAll('.conf-tab-panel').forEach(function(p){ p.classList.remove('active'); });
@@ -2335,10 +2797,14 @@ function switchConfTab(tabId, btn) {
     var panel = document.getElementById(tabId);
     if (panel) panel.classList.add('active');
     if (btn) btn.classList.add('active');
-    // Si abre Hospitales, refrescar lista
-    if (tabId === 'tab-hospitales' && typeof listarHospitalesConfig === 'function') {
-        listarHospitalesConfig();
+    if (tabId === 'tab-personal') cargarPerfil();
+    if (tabId === 'tab-alertas') {
+        // Pequeño delay para asegurar que script.js terminó de inicializar authFetch
+        setTimeout(function() {
+            if (typeof cargarConfigUI === 'function') cargarConfigUI();
+        }, 80);
     }
+    if (tabId === 'tab-hospitales' && typeof listarHospitalesConfig === 'function') listarHospitalesConfig();
 }
 
 // ── ALERTAS: poblar KPIs desde el DOM que llena cargarAlertas() ──
@@ -2434,6 +2900,24 @@ function switchConfTab(tabId, btn) {
             if (!sec || !btn) return;
             if (sec.offsetTop <= fromTop && sec.offsetTop + sec.offsetHeight > fromTop) {
                 btn.classList.add('active');
+                // Cargar perfil al llegar a configuración con tab Personal activo
+                if (s === 'view-config') {
+                    var tabPersonal = document.getElementById('tab-personal');
+                    var emailField = document.getElementById('conf-user-email');
+                    if (tabPersonal && tabPersonal.classList.contains('active') &&
+                        typeof cargarPerfil === 'function' &&
+                        emailField && !emailField.value) {
+                        cargarPerfil();
+                    }
+                    // Cargar config de alertas si ese tab está activo
+                    var tabAlertas = document.getElementById('tab-alertas');
+                    var confOffline = document.getElementById('conf-offline');
+                    if (tabAlertas && tabAlertas.classList.contains('active') &&
+                        typeof cargarConfigUI === 'function' &&
+                        confOffline && !confOffline.value) {
+                        setTimeout(function(){ cargarConfigUI(); }, 80);
+                    }
+                }
             } else {
                 btn.classList.remove('active');
             }
@@ -2459,14 +2943,39 @@ function scrollToSection(viewId, btnId) {
 
 // ── HERO: poblar nombre de usuario ──
 document.addEventListener('DOMContentLoaded', function() {
+    function setHeroName(nombre) {
+        var nameEl = document.getElementById('hero-user-name');
+        if (nameEl && nombre) nameEl.textContent = nombre.split(' ')[0];
+    }
+
+    // 1. Inmediato desde sessionStorage
     var ud = sessionStorage.getItem('tecnomonitor_user');
     if (ud) {
         try {
             var u = JSON.parse(ud);
-            var nameEl = document.getElementById('hero-user-name');
-            if (nameEl && u.nombre) nameEl.textContent = u.nombre.split(' ')[0];
+            var nombreLocal = u.nombre || u.full_name || u.name || '';
+            if (nombreLocal) setHeroName(nombreLocal);
         } catch(e){}
     }
+
+    // 2. Siempre actualizar desde el endpoint (nombre real y actualizado)
+    if (typeof authFetch === 'function') {
+        authFetch('/api/usuario/perfil').then(function(res) {
+            if (!res || !res.ok) return null;
+            return res.json();
+        }).then(function(data) {
+            if (!data || !data.full_name) return;
+            setHeroName(data.full_name);
+            try {
+                var ud2 = sessionStorage.getItem('tecnomonitor_user');
+                var u2 = ud2 ? JSON.parse(ud2) : {};
+                u2.nombre = data.full_name;
+                u2.full_name = data.full_name;
+                sessionStorage.setItem('tecnomonitor_user', JSON.stringify(u2));
+            } catch(e){}
+        }).catch(function(){});
+    }
+
     // Sync hero KPIs desde los mismos IDs del resumen
     function syncHeroKpis() {
         var map = [
@@ -2535,16 +3044,21 @@ window._nuestroNavegar = function(viewId, btnId, el) {
         window._savedScrollY = window.scrollY;
         var backdrop = document.getElementById('detalle-backdrop');
         if (backdrop) backdrop.classList.add('active');
+        // Bloquear scroll sin tocar window.scrollTo
+        document.body.style.top = '-' + window._savedScrollY + 'px';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
         document.body.style.overflow = 'hidden';
-        var _orig = window.scrollTo;
-        window.scrollTo = function(){};
-        setTimeout(function(){ window.scrollTo = _orig; }, 500);
         return;
     }
     var backdrop = document.getElementById('detalle-backdrop');
     if (backdrop && backdrop.classList.contains('active')) {
         backdrop.classList.remove('active');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
         document.body.style.overflow = '';
+        window.scrollTo(0, window._savedScrollY || 0);
     }
     if (typeof scrollToSection === 'function') scrollToSection(viewId, btnId || map[viewId] || '');
 };
@@ -2552,9 +3066,12 @@ window._nuestroNavegar = function(viewId, btnId, el) {
 window._nuestroVolverAlDashboard = function() {
     var backdrop = document.getElementById('detalle-backdrop');
     if (backdrop) backdrop.classList.remove('active');
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
     if (window._savedScrollY !== undefined) {
-        window.scrollTo({ top: window._savedScrollY, behavior: 'instant' });
+        window.scrollTo(0, window._savedScrollY);
     }
 };
 </script>

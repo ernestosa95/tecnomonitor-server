@@ -807,7 +807,7 @@ function renderizarDetalle(data, id) {
     }
 
     const cardHost = `
-        <div class="detail-card">
+        <div class="detail-card collapsed">
             <div class="detail-card-header" style="background: #3498db; cursor:pointer;" onclick="toggleCard(this.parentElement)">
                 <span>Host Físico (${hostInfo.type || 'Server'})</span>
                 <div style="display:flex; align-items:center;">
@@ -851,7 +851,7 @@ function renderizarDetalle(data, id) {
 
     const wattsCurrent = power.watts_current !== undefined ? power.watts_current : (power.watts_consumed || 0);
     const cardEnv = `
-        <div class="detail-card">
+        <div class="detail-card collapsed">
             <div class="detail-card-header" style="background: #27ae60; cursor:pointer;" onclick="toggleCard(this.parentElement)">
                 <span>Ambiente & Energía</span>
                 <div style="display:flex; align-items:center;">
@@ -897,7 +897,7 @@ function renderizarDetalle(data, id) {
             disksHtml += '</div>';
         }
 
-        cardRaid = `<div class="detail-card" style="grid-column: 1 / -1; margin-top: 10px;">
+        cardRaid = `<div class="detail-card" collapsed style="grid-column: 1 / -1; margin-top: 10px;">
             <div class="detail-card-header" style="background: #8e44ad; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="toggleCard(this.parentElement)">
                 <span>Almacenamiento Físico (RAID)</span>
                 <div style="display:flex; align-items:center;">
@@ -1010,7 +1010,7 @@ function renderizarDetalle(data, id) {
         const ramText = m.ram && m.ram.usage_percent !== undefined ? `${m.ram.usage_percent}%` : 'N/A';
 
         const card = document.createElement('div');
-        card.className = 'vm-card'; 
+        card.className = 'vm-card collapsed'; 
         card.innerHTML = `
             <div class="vm-header" style="background:${headerColor}; padding:10px 15px; color:white; display:flex; justify-content:space-between; align-items:center; font-weight:bold; cursor:pointer;" onclick="toggleCard(this.parentElement)">
                 <div style="display:flex; align-items:center; gap:8px;">

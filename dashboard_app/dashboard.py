@@ -1705,3 +1705,49 @@ def update_kpi_settings(hospital_id: str, payload: dict, db: Session = Depends(g
 @app.get("/beta")
 async def beta_dashboard(request: Request):
     return templates.TemplateResponse("index_beta.html", {"request": request})
+
+# ── PERFIL DE USUARIO ──────────────────────────────────────
+
+class PerfilUpdateRequest(BaseModel):
+    full_name: str
+
+@app.get("/api/usuario/perfil")
+def get_perfil(
+    current_user: dict = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)          # ← get_db local, no database.get_db
+):
+    user = db.query(database.UserModel).filter(
+        database.UserModel.email == current_user["email"]
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {
+        "email": user.email,
+        "full_name": user.full_name or "",
+        "role": user.role
+    }
+
+@app.put("/api/usuario/perfil")
+def update_perfil(
+    req: PerfilUpdateRequest,
+    current_user: dict = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)          # ← get_db local, no database.get_db
+):
+    if not req.full_name.strip():
+        raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+
+    user = db.query(database.UserModel).filter(
+        database.UserModel.email == current_user["email"]
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    user.full_name = req.full_name.strip()
+    db.commit()
+
+    return {
+        "ok": True,
+        "full_name": user.full_name,
+        "email": user.email,
+        "role": user.role
+    }
