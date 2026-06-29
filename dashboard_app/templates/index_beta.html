@@ -1390,6 +1390,223 @@ canvas{color-scheme:dark}
     .tab-btn{padding:5px 8px;font-size:.72em}
     .tab-toggle-bar{gap:3px}
 }
+
+/* ══════════════════════════════════════════════════════════
+   MOBILE / PANTALLA VERTICAL — max-width: 600px
+   ══════════════════════════════════════════════════════════ */
+@media(max-width:600px){
+
+    /* ── NAV: siempre colapsada, sin hover expand ── */
+    .top-nav{
+        top:12px !important;
+        padding:7px 14px !important;
+        gap:6px !important;
+    }
+    .top-nav .nav-logo-text,
+    .top-nav .nav-btn .nav-label,
+    .top-nav:hover .nav-logo-text,
+    .top-nav:hover .nav-btn .nav-label{
+        max-width:0 !important;
+        opacity:0 !important;
+        margin:0 !important;
+        padding:0 !important;
+        overflow:hidden !important;
+    }
+    .top-nav .nav-left{ gap:4px !important; }
+    .top-nav .nav-right{ gap:4px !important; }
+    .top-nav .nav-btn{ padding:8px 10px !important; }
+    /* Deshabilitar expand al hover en mobile */
+    .top-nav.in-section:hover{
+        padding:7px 14px !important;
+        gap:6px !important;
+    }
+    .top-nav.in-section:hover .nav-left{ gap:4px !important; }
+    .top-nav.in-section:hover .nav-right{ gap:4px !important; }
+    .top-nav.in-section:hover .nav-btn{ padding:8px 10px !important; }
+
+    /* ── Ocultar Configuración e Informes en nav y sección ── */
+    #btn-conf,
+    #btn-ia,
+    #view-config,
+    #view-ia,
+    .conf-body,
+    .conf-nav-area,
+    .rep-nav-area,
+    .rep-body{
+        display:none !important;
+    }
+
+    /* ── HOME: ajustes de texto y botones ── */
+    .home-header{ padding:0 20px; margin-bottom:20px; }
+    .home-header h2{ font-size:1.6rem; }
+    .home-header p{ font-size:13px; }
+    .home-tools-btn{
+        padding:7px 12px 7px 10px;
+        font-size:11px;
+    }
+
+    /* ── HOSPITALES: layout contenedor ── */
+    .hosp-body{
+        grid-template-columns:1fr !important;
+        height:auto !important;
+        padding:10px 12px !important;
+        gap:10px !important;
+    }
+    .hosp-map-panel{ display:none !important; }
+
+    /* ── MAPA MOBILE: tarjeta simple debajo de la lista ── */
+    .hosp-map-panel.mobile-visible{
+        display:flex !important;
+        flex-direction:column !important;
+        height:280px !important;
+        border-radius:var(--radius2) !important;
+        overflow:hidden !important;
+        border:1px solid var(--border) !important;
+        margin:0 0 16px !important;
+        width:100% !important;
+    }
+    .hosp-map-panel.mobile-visible .hosp-map-container{
+        flex:1 !important;
+        height:100% !important;
+    }
+    .hosp-map-panel.mobile-visible .hosp-map-toolbar{
+        padding:10px 14px !important;
+        flex-shrink:0 !important;
+    }
+    .hosp-map-panel.mobile-visible #btn-tour-dash{ display:none !important; }
+    .hosp-map-panel.mobile-visible .status-toggle-bar{ display:none !important; }
+    .hosp-list-panel{ height:auto !important; }
+    .hosp-list-scroll{ overflow:hidden !important; }
+
+    /* ── HOSPITALES: filas compactas — reset completo de tabla ── */
+    .hosp-table{ width:100% !important; display:block !important; }
+    .hosp-table thead{ display:none !important; }
+    .hosp-table tbody{ display:block !important; width:100% !important; }
+
+    /* Cada fila: flex horizontal ID ←→ fecha */
+    .hosp-table tbody tr{
+        display:flex;
+        align-items:center !important;
+        justify-content:space-between !important;
+        padding:7px 14px !important;
+        border-bottom:1px solid var(--border) !important;
+        border-radius:0 !important;
+        background:transparent !important;
+        gap:8px !important;
+        width:100% !important;
+        box-sizing:border-box !important;
+    }
+    /* Filas ocultas por filtro: none gana sobre flex */
+    .hosp-table tbody tr[style*="display: none"],
+    .hosp-table tbody tr[style*="display:none"]{
+        display:none !important;
+    }
+    /* Ocultar: Estado, Elementos, flecha */
+    .hosp-table tbody tr td:nth-child(2),
+    .hosp-table tbody tr td:nth-child(3),
+    .hosp-table tbody tr td:nth-child(5){ display:none !important; }
+    /* Todos los td: reset */
+    .hosp-table tbody tr td{
+        border:none !important;
+        padding:0 !important;
+        width:auto !important;
+        display:block !important;
+    }
+    /* ID: izquierda bold */
+    .hosp-table tbody tr td:nth-child(1){
+        flex-shrink:0 !important;
+        font-weight:700 !important;
+        font-size:.75em !important;
+    }
+    /* Último reporte: derecha muted */
+    .hosp-table tbody tr td:nth-child(4){
+        flex:1 !important;
+        text-align:right !important;
+        font-size:.68em !important;
+        color:var(--muted) !important;
+        white-space:nowrap !important;
+    }
+
+    /* ── HOSPITALES: buscador y filtros en mobile ── */
+    .hosp-list-toolbar{
+        padding:10px 12px !important;
+        flex-wrap:wrap !important;
+        gap:8px !important;
+    }
+    .hosp-search-wrap{ flex:1 !important; min-width:120px !important; }
+    .hosp-filter-btns{ display:flex !important; gap:4px !important; }
+    .filter-btn{ padding:6px 10px !important; font-size:.8em !important; }
+
+    /* ── ALERTAS: ocultar Estado Operativo, tabla ocupa todo el ancho ── */
+    .alert-stats-card{ display:none !important; }
+    .alert-body{
+        grid-template-columns:1fr !important;
+        padding:10px 12px 24px !important;
+        gap:10px !important;
+    }
+
+    /* ── INCIDENTES EN CURSO: solo ID Hospital, Tipo y Asana en mobile ── */
+    /* Ocultar: Descripción (por clase), Inicio (col3 original), Tiempo (col4 original) */
+    .table-clean.active-incidents .alert-desc-cell{ display:none !important; }
+    .table-clean.active-incidents thead tr th:nth-child(3),
+    .table-clean.active-incidents thead tr th:nth-child(4){ display:none !important; }
+    .table-clean.active-incidents tbody tr td:nth-child(3),
+    .table-clean.active-incidents tbody tr td:nth-child(4){ display:none !important; }
+    /* Asana al final */
+    .table-clean.active-incidents tbody tr td:last-child{
+        text-align:center !important; width:44px !important;
+    }
+    /* Tabla alertas: layout de tarjetas */
+    .table-clean.active-incidents thead{ display:none !important; }
+    .table-clean.active-incidents tr{
+        display:grid !important;
+        grid-template-columns:auto 1fr auto !important;
+        grid-template-rows:auto auto !important;
+        gap:4px 8px !important;
+        padding:10px 12px !important;
+        border-bottom:1px solid var(--border) !important;
+        align-items:center !important;
+    }
+    /* ocultar col Inicio y Tiempo en mobile */
+    .table-clean.active-incidents td:nth-child(5),
+    .table-clean.active-incidents td:nth-child(6){ display:none !important; }
+    .alert-desc-cell{
+        max-width:100% !important;
+        grid-column:1/-1 !important;
+    }
+
+    /* ── REPORTES ── */
+    .rep-body{
+        grid-template-columns:1fr !important;
+        height:auto !important;
+        padding:10px 12px !important;
+        gap:10px !important;
+    }
+    .rep-form-card,.rep-hist-card{ height:auto !important; }
+
+    /* ── MODAL DETALLE HOSPITAL ── */
+    .detalle-modal-overlay{
+        width:100vw !important;
+        height:100vh !important;
+        border-radius:0 !important;
+    }
+    #detalle-backdrop{ padding:0 !important; }
+
+    /* ── PAGINACIÓN: botones más compactos ── */
+    #hosp-pagination button,
+    #alertas-pagination button,
+    #hist-pagination button{
+        padding:5px 10px !important;
+        font-size:11px !important;
+    }
+
+    /* ── SECCIONES: nav-area reducida ── */
+    .hosp-nav-area,
+    .alert-nav-area,
+    .rep-nav-area{
+        min-height:56px !important;
+    }
+}
     </style>
 </head>
 <body>
@@ -2668,7 +2885,7 @@ canvas{color-scheme:dark}
 
 // ── ALERTAS: paginación de incidentes en curso ──
 (function() {
-    var FILAS_POR_PAGINA = 8;
+    var FILAS_POR_PAGINA = window.matchMedia('(max-width:600px)').matches ? 5 : 8;
     var paginaActual = 1;
 
     function todasLasFilas() {
@@ -2720,6 +2937,51 @@ canvas{color-scheme:dark}
             setTimeout(renderPagina, 50);
         }).observe(tbody, { childList: true });
     }
+})();
+
+// ── MOBILE: comportamiento específico para pantallas verticales ──
+(function() {
+    var isMobile = window.matchMedia('(max-width:600px)');
+
+    function aplicarMobile() {
+        if (!isMobile.matches) return;
+        var nav = document.getElementById('main-nav');
+        if (nav) nav.classList.remove('scrolled');
+        var viewConfig = document.getElementById('view-config');
+        if (viewConfig) viewConfig.style.display = 'none';
+        var viewIa = document.getElementById('view-ia');
+        if (viewIa) viewIa.style.display = 'none';
+    }
+
+    if (isMobile.matches) aplicarMobile();
+    isMobile.addEventListener('change', aplicarMobile);
+
+    if (!isMobile.matches) return;
+
+    window.addEventListener('load', function() {
+        // Deshabilitar paginación en mobile — no tiene sentido en pantalla chica
+        window.hospCambiarPagina = function() {};
+        var hospPag = document.getElementById('hosp-pagination');
+        if (hospPag) hospPag.style.setProperty('display', 'none', 'important');
+
+        // ── Mapa simple debajo de la lista en mobile ──
+        var mapPanel = document.querySelector('.hosp-map-panel');
+        if (mapPanel) {
+            mapPanel.classList.add('mobile-visible');
+            var hospCard = document.querySelector('.hosp-card');
+            if (hospCard && hospCard.parentNode) {
+                hospCard.parentNode.insertBefore(mapPanel, hospCard.nextSibling);
+            }
+            setTimeout(function() {
+                if (window.mapDashInstance) {
+                    window.mapDashInstance.invalidateSize();
+                    if (typeof renderizarMarcadoresDash === 'function') renderizarMarcadoresDash();
+                } else if (typeof initMapaDashboard === 'function') {
+                    initMapaDashboard();
+                }
+            }, 400);
+        }
+    });
 })();
 
 // ── PERFIL DE USUARIO ──
