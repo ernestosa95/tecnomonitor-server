@@ -41,7 +41,7 @@ import generator_report
 
 import tempfile
 from fastapi import BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from schemas import DatosRISAnalytics
 
 import csv
@@ -52,6 +52,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import permissions
 from sqlalchemy import ForeignKey, UniqueConstraint 
+import secrets, string
+from typing import List
 
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
@@ -333,7 +335,8 @@ def verificar_login(request: Request, response: Response, login_data: LoginReque
         "user": {
             "name": user.full_name,
             "email": user.email,
-            "role": user.role
+            "role": user.role,
+            "must_change_password": bool(user.must_change_password)
         }
     }
 
@@ -352,7 +355,7 @@ def logout_usuario(response: Response):
     return {"success": True}
 
 @app.get("/api/resumen-hospitales")
-def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(auth.get_current_user)):
+def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(auth.bloquear_cliente())):
     global _cache_resumen
     ahora = time.time()
 
@@ -450,7 +453,7 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
 @app.get("/api/hospital/{hospital_id}")
 def obtener_detalle_hospital(hospital_id: str,
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(auth.get_current_user)):
+                             current_user: dict = Depends(auth.require_hospital_access("infra"))):
     query = text("SELECT * FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1")
     result = db.execute(query, {"hid": hospital_id}).fetchone()
     if not result: return {"error": "Hospital no encontrado"}
@@ -465,7 +468,7 @@ def obtener_detalle_hospital(hospital_id: str,
 @app.get("/api/hospital/{hospital_id}/history")
 def obtener_historial(hospital_id: str, horas: int = 24,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(auth.get_current_user)):
+                      current_user: dict = Depends(auth.require_hospital_access("infra"))):
     flimit = datetime.now() - timedelta(hours=horas)
     
     # 🛡️ FIX: Agregamos LIMIT 15000 para evitar desbordamientos de memoria
@@ -570,7 +573,7 @@ def obtener_historial(hospital_id: str, horas: int = 24,
 @app.get("/api/hospital/{hospital_id}/kpi-history")
 def obtener_historial_kpi(hospital_id: str, horas: int = 24,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(auth.get_current_user)):
+                          current_user: dict = Depends(auth.require_hospital_access("kpis"))):
     
     fecha_limite_real = datetime.now() - timedelta(hours=horas)
     fecha_limite_sql = fecha_limite_real - timedelta(days=3)
@@ -788,7 +791,7 @@ def eliminar_hospital_metadata(hid: str,
 
 @app.get("/api/mapa-data")
 def obtener_datos_mapa(db: Session = Depends(get_db),
-                       current_user: dict = Depends(auth.get_current_user)):
+                       current_user: dict = Depends(auth.bloquear_cliente())):
     conf = db.query(database.ConfigModel).filter_by(clave="offline_minutes").first()
     limit_min = int(conf.valor) if (conf and conf.valor) else 10
     limit_delta = timedelta(minutes=limit_min)
@@ -1353,6 +1356,7 @@ def cambiar_contrasena(req: ChangePasswordRequest,
 
     # 4. Hashear la nueva clave y guardar
     user.hashed_password = auth.get_password_hash(req.new_password)
+    user.must_change_password = False
     db.commit()
     
     return {"status": "ok", "message": "Contraseña actualizada correctamente"}
@@ -1385,7 +1389,9 @@ def solicitar_acceso(req: UserAccessRequest):
         raise HTTPException(status_code=500, detail="Error al conectar con Asana")
 
 @app.get("/api/hospital/{hospital_id}/software")
-def obtener_estado_software(hospital_id: str, minutos: int = 0, db: Session = Depends(get_db), current_user: dict = Depends(auth.get_current_user)):
+def obtener_estado_software(hospital_id: str, minutos: int = 0, 
+                            db: Session = Depends(get_db), 
+                            current_user: dict = Depends(auth.require_hospital_access("software"))):
     
     # 1. Si minutos es 0, queremos el HISTÓRICO TOTAL
     if minutos == 0:
@@ -1773,3 +1779,127 @@ def get_my_permissions(db: Session = Depends(get_db),
     if base["scope"] == permissions.SCOPE_HOSPITALES:
         base["hospitales"] = auth.hospitales_de_cliente(current_user["email"], db)
     return base
+
+# ============================================================
+# PANEL DE ADMINISTRACIÓN DE CLIENTES  (solo Admin)
+# ============================================================
+class _AccesoDTO(BaseModel):
+    hospital_id: str
+    infra: bool = False
+    software: bool = False
+    kpis: bool = False
+
+class _CrearClienteDTO(BaseModel):
+    email: str
+    full_name: str
+    accesos: List[_AccesoDTO] = []
+
+class _AccesosUpdateDTO(BaseModel):
+    accesos: List[_AccesoDTO] = []
+
+def _generar_password_temporal(n: int = 14) -> str:
+    especiales = "!@#$%&*?"
+    pools = [string.ascii_uppercase, string.ascii_lowercase, string.digits, especiales]
+    chars = [secrets.choice(p) for p in pools]  # garantiza 1 de cada tipo
+    todos = string.ascii_letters + string.digits + especiales
+    chars += [secrets.choice(todos) for _ in range(n - len(chars))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+def _serializar_accesos(db, user):
+    metas = {m.hospital_id: m for m in db.query(database.HospitalMetadata).all()}
+    out = []
+    for a in db.query(database.ClienteHospitalAccess).filter_by(user_id=user.id).all():
+        m = metas.get(a.hospital_id)
+        out.append({"hospital_id": a.hospital_id,
+                    "nombre": m.nombre if m else a.hospital_id,
+                    "infra": a.ver_infra, "software": a.ver_software, "kpis": a.ver_kpis})
+    return out
+
+@app.get("/api/admin/clientes")
+def admin_listar_clientes(db: Session = Depends(get_db),
+                          current_user: dict = Depends(auth.require_roles("Admin"))):
+    out = []
+    for c in db.query(database.UserModel).filter_by(role="Cliente").all():
+        out.append({"id": c.id, "email": c.email, "full_name": c.full_name,
+                    "is_active": c.is_active,
+                    "must_change_password": bool(c.must_change_password),
+                    "cant_hospitales": db.query(database.ClienteHospitalAccess)
+                                         .filter_by(user_id=c.id).count()})
+    return out
+
+@app.post("/api/admin/clientes")
+def admin_crear_cliente(dto: _CrearClienteDTO, db: Session = Depends(get_db),
+                        current_user: dict = Depends(auth.require_roles("Admin"))):
+    email = dto.email.lower().strip()
+    if email.endswith("@tecnoimagen.com.ar"):
+        raise HTTPException(400, "Un correo interno no puede ser Cliente. Usá el correo del hospital.")
+    if db.query(database.UserModel).filter_by(email=email).first():
+        raise HTTPException(400, "Ya existe un usuario con ese correo.")
+
+    temp = _generar_password_temporal()
+    nuevo = database.UserModel(email=email, full_name=dto.full_name.strip(),
+                               hashed_password=auth.get_password_hash(temp),
+                               role="Cliente", is_active=True, must_change_password=True)
+    db.add(nuevo); db.commit(); db.refresh(nuevo)
+    for a in dto.accesos:
+        db.add(database.ClienteHospitalAccess(user_id=nuevo.id, hospital_id=a.hospital_id,
+                                              ver_infra=a.infra, ver_software=a.software, ver_kpis=a.kpis))
+    db.commit()
+    # ⚠️ La contraseña temporal se devuelve UNA sola vez (en la base solo queda el hash).
+    return {"status": "ok", "id": nuevo.id, "email": nuevo.email,
+            "password_temporal": temp, "accesos": _serializar_accesos(db, nuevo)}
+
+@app.get("/api/admin/clientes/{cliente_id}/accesos")
+def admin_ver_accesos(cliente_id: int, db: Session = Depends(get_db),
+                      current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter_by(id=cliente_id, role="Cliente").first()
+    if not u: raise HTTPException(404, "Cliente no encontrado")
+    return {"id": u.id, "email": u.email, "accesos": _serializar_accesos(db, u)}
+
+@app.put("/api/admin/clientes/{cliente_id}/accesos")
+def admin_actualizar_accesos(cliente_id: int, dto: _AccesosUpdateDTO,
+                             db: Session = Depends(get_db),
+                             current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter_by(id=cliente_id, role="Cliente").first()
+    if not u: raise HTTPException(404, "Cliente no encontrado")
+    deseados = {a.hospital_id: a for a in dto.accesos}
+    existentes = {a.hospital_id: a for a in db.query(database.ClienteHospitalAccess)
+                                              .filter_by(user_id=u.id).all()}
+    for hid, a in deseados.items():
+        if hid in existentes:
+            r = existentes[hid]; r.ver_infra, r.ver_software, r.ver_kpis = a.infra, a.software, a.kpis
+        else:
+            db.add(database.ClienteHospitalAccess(user_id=u.id, hospital_id=hid,
+                   ver_infra=a.infra, ver_software=a.software, ver_kpis=a.kpis))
+    for hid, r in existentes.items():
+        if hid not in deseados: db.delete(r)
+    db.commit()
+    return {"status": "ok", "accesos": _serializar_accesos(db, u)}
+
+@app.patch("/api/admin/clientes/{cliente_id}/toggle-active")
+def admin_toggle_active(cliente_id: int, db: Session = Depends(get_db),
+                        current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter_by(id=cliente_id, role="Cliente").first()
+    if not u: raise HTTPException(404, "Cliente no encontrado")
+    u.is_active = not u.is_active; db.commit()
+    return {"status": "ok", "is_active": u.is_active}
+
+@app.post("/api/admin/clientes/{cliente_id}/reset-password")
+def admin_reset_password(cliente_id: int, db: Session = Depends(get_db),
+                         current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter_by(id=cliente_id, role="Cliente").first()
+    if not u: raise HTTPException(404, "Cliente no encontrado")
+    temp = _generar_password_temporal()
+    u.hashed_password = auth.get_password_hash(temp); u.must_change_password = True; db.commit()
+    return {"status": "ok", "password_temporal": temp}
+
+@app.get("/cliente")
+def pagina_cliente(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = auth.get_current_user(request, db)
+    except Exception:
+        return RedirectResponse("/")
+    if user["role"] != "Cliente":
+        return RedirectResponse("/beta")   # internos van a la app interna
+    return FileResponse("dashboard_app/templates/cliente.html")

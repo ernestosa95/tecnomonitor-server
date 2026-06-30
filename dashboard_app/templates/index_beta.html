@@ -2296,6 +2296,11 @@ canvas{color-scheme:dark}
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
                         Hospitales
                     </button>
+                    <button class="conf-tab" id="conf-tab-clientes" style="display:none"
+                            onclick="switchConfTab('tab-clientes', this); cargarClientesConf();">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Clientes
+                    </button>
                 </div>
 
                 <!-- ── TAB: PERSONAL ── -->
@@ -2489,6 +2494,296 @@ canvas{color-scheme:dark}
                         </table>
                     </div>
                 </div>
+
+                <!-- ════════════════════════════════════════════════════════
+     TAB: CLIENTES  (solo Admin)  ·  pegar dentro de .conf-card,
+     después del panel #tab-hospitales
+     ════════════════════════════════════════════════════════ -->
+<style>
+/* ===== CLIENTES (cli-*) — tema oscuro beta ===== */
+.cli-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+.cli-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.cli-head-right{display:flex;gap:10px;align-items:center}
+.cli-search{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:50px;padding:6px 14px;width:200px}
+.cli-search input{background:none;border:none;color:var(--text);font-size:12px;font-family:inherit;width:100%;outline:none}
+.cli-search svg{color:var(--muted);flex-shrink:0}
+.cli-btn{border:none;border-radius:50px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:9px 18px;display:inline-flex;align-items:center;gap:7px;transition:.15s;white-space:nowrap}
+.cli-btn-primary{background:var(--green);color:#06231a}.cli-btn-primary:hover{filter:brightness(1.08)}
+.cli-btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border)}.cli-btn-ghost:hover{border-color:var(--border2)}
+.cli-btn-danger{background:rgba(255,92,92,.08);color:var(--red);border:1px solid rgba(255,92,92,.22)}.cli-btn-danger:hover{background:rgba(255,92,92,.15)}
+.cli-btn-sm{padding:6px 12px;font-size:12px}
+.cli-btn:disabled{opacity:.6;cursor:default}
+.cli-table-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.cli-table{width:100%;border-collapse:collapse}
+.cli-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted2);font-weight:700;padding:11px 16px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.cli-table td{padding:14px 16px;border-bottom:1px solid var(--border);vertical-align:middle}
+.cli-table tbody tr:last-child td{border-bottom:none}
+.cli-table tbody tr:hover td{background:rgba(255,255,255,.03)}
+.cli-email{font-weight:600;color:var(--text)}.cli-name{font-size:12px;color:var(--muted)}
+.cli-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:4px 11px;border-radius:50px}
+.cli-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.cli-pill.on{background:var(--green-dim);color:var(--green)}
+.cli-pill.off{background:rgba(107,107,122,.16);color:var(--muted)}
+.cli-hcount{font-weight:700;color:var(--text)}.cli-hcount span{font-weight:400;color:var(--muted);font-size:12px}
+.cli-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.cli-empty{padding:48px 20px;text-align:center;color:var(--muted)}
+.cli-empty b{display:block;color:var(--text);font-size:14px;margin-bottom:5px}
+.cli-spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--green);border-radius:50%;animation:cli-rot .7s linear infinite;vertical-align:middle}
+@keyframes cli-rot{to{transform:rotate(360deg)}}
+.cli-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:flex-start;justify-content:center;padding:48px 20px;z-index:10000;overflow:auto}
+.cli-overlay.show{display:flex}
+.cli-modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:560px;box-shadow:0 30px 90px rgba(0,0,0,.6)}
+.cli-modal-head{padding:20px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.cli-modal-head h3{font-size:16px;font-weight:700;color:var(--text)}
+.cli-x{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1}
+.cli-modal-body{padding:22px;max-height:60vh;overflow:auto}
+.cli-modal-foot{padding:16px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px}
+.cli-fld{margin-bottom:16px}
+.cli-fld label{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text)}
+.cli-fld input{width:100%;height:42px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0 13px;font-size:14px;font-family:inherit;color:var(--text)}
+.cli-fld input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-dim)}
+.cli-hint{font-size:12px;color:var(--muted);margin-top:6px}.cli-hint b{color:var(--text)}
+.cli-assign-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cli-assign-head label{font-size:12px;font-weight:600}
+.cli-hlist{border:1px solid var(--border);border-radius:10px;max-height:280px;overflow:auto}
+.cli-hrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border)}
+.cli-hrow:last-child{border-bottom:none}
+.cli-hrow.active{background:var(--green-dim)}
+.cli-hn{font-weight:600;font-size:13px}.cli-hid{font-size:11px;color:var(--muted);font-family:monospace}
+.cli-chktabs{display:flex;gap:13px}
+.cli-tabchk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.cli-tabchk input{width:15px;height:15px;accent-color:var(--green);cursor:pointer}
+.cli-tabchk.kpis input{accent-color:var(--purple)}
+.cli-assign-foot{font-size:12px;color:var(--muted);margin-top:9px}.cli-assign-foot b{color:var(--text)}
+.cli-pwbox{background:var(--green-dim);border:1px solid rgba(0,229,160,.25);border-radius:12px;padding:20px;text-align:center}
+.cli-pwbox .ttl{font-size:12px;font-weight:700;color:var(--green);margin-bottom:4px}
+.cli-pwbox .warn{font-size:12px;color:var(--muted);margin-bottom:14px}.cli-pwbox .warn b{color:var(--text)}
+.cli-pwbox .code{font-family:monospace;font-size:20px;font-weight:700;color:var(--text);letter-spacing:1px;background:var(--surface2);border:1px dashed rgba(0,229,160,.3);border-radius:9px;padding:13px;display:flex;align-items:center;justify-content:center;gap:12px}
+.cli-pwbox .code button{background:var(--green);border:none;color:#06231a;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.cli-pwbox .who{font-size:12px;color:var(--muted);margin-top:12px}
+#cli-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface3);color:var(--text);padding:12px 20px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;z-index:10001;border:1px solid var(--border2);border-left:3px solid var(--green)}
+#cli-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#cli-toast.err{border-left-color:var(--red)}
+</style>
+
+<!-- ── TAB: CLIENTES ── -->
+<div id="tab-clientes" class="conf-tab-panel">
+  <div class="conf-section-block">
+    <div class="cli-head">
+      <div class="cli-section-title">Clientes externos · responsables de sistemas</div>
+      <div class="cli-head-right">
+        <div class="cli-search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="cli-search-input" placeholder="Buscar cliente…" oninput="cliFiltrar(this.value)">
+        </div>
+        <button class="cli-btn cli-btn-primary" onclick="cliAbrirCrear()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nuevo cliente
+        </button>
+      </div>
+    </div>
+    <div class="cli-table-wrap">
+      <table class="cli-table">
+        <thead><tr><th>Cliente</th><th>Estado</th><th>Hospitales</th><th style="text-align:right">Acciones</th></tr></thead>
+        <tbody id="cli-tbody"><tr><td colspan="4" class="cli-empty"><span class="cli-spin"></span> Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- modal crear/editar -->
+<div class="cli-overlay" id="cli-modal">
+  <div class="cli-modal">
+    <div class="cli-modal-head"><h3 id="cli-modal-title">Nuevo cliente</h3><button class="cli-x" onclick="cliCerrar()">&times;</button></div>
+    <div class="cli-modal-body">
+      <div id="cli-form-datos">
+        <div class="cli-fld"><label>Correo del cliente</label>
+          <input id="cli-f-email" type="email" placeholder="sistemas@hospital.org.ar" autocomplete="off">
+          <div class="cli-hint">Debe ser un correo externo (no <b>@tecnoimagen.com.ar</b>).</div></div>
+        <div class="cli-fld"><label>Nombre y referencia</label>
+          <input id="cli-f-name" type="text" placeholder="Resp. de Sistemas · Hospital Italiano" autocomplete="off"></div>
+      </div>
+      <div class="cli-assign-head"><label>Hospitales y pestañas habilitadas</label></div>
+      <div class="cli-hlist" id="cli-hlist"><div class="cli-empty"><span class="cli-spin"></span></div></div>
+      <div class="cli-assign-foot"><b id="cli-assign-count">0</b> hospital(es) seleccionado(s). Marcá al menos una pestaña para asignar una sede.</div>
+    </div>
+    <div class="cli-modal-foot">
+      <button class="cli-btn cli-btn-ghost" onclick="cliCerrar()">Cancelar</button>
+      <button class="cli-btn cli-btn-primary" id="cli-btn-guardar" onclick="cliGuardar()">Crear cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal contraseña temporal -->
+<div class="cli-overlay" id="cli-modal-pw">
+  <div class="cli-modal" style="max-width:460px">
+    <div class="cli-modal-head"><h3>Contraseña temporal</h3><button class="cli-x" onclick="document.getElementById('cli-modal-pw').classList.remove('show')">&times;</button></div>
+    <div class="cli-modal-body">
+      <div class="cli-pwbox">
+        <div class="ttl">Cliente listo</div>
+        <div class="warn">Copiá esta contraseña y entregásela al cliente. <b>No se vuelve a mostrar.</b> Se le pedirá cambiarla al primer ingreso.</div>
+        <div class="code"><span id="cli-pw-code">—</span><button onclick="cliCopiarPw()">Copiar</button></div>
+        <div class="who" id="cli-pw-who"></div>
+      </div>
+    </div>
+    <div class="cli-modal-foot"><button class="cli-btn cli-btn-primary" onclick="document.getElementById('cli-modal-pw').classList.remove('show')">Entendido</button></div>
+  </div>
+</div>
+
+<div id="cli-toast"></div>
+
+<script>
+(function(){
+  // Mostrar la pestaña Clientes SOLO para Admin (la barrera real son los endpoints require_roles("Admin"))
+  try{
+    var u = JSON.parse(sessionStorage.getItem('tecnomonitor_user')||'{}');
+    if(u.role === 'Admin'){ var t=document.getElementById('conf-tab-clientes'); if(t) t.style.display=''; }
+  }catch(e){}
+})();
+
+var cliFetch = function(p,o){ o=o||{}; return fetch(p,Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}},o)); };
+var cliClientes=[], cliHospitales=[], cliAsign={}, cliModo='crear', cliEditId=null;
+function cliEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+function cliToast(msg,err){var t=document.getElementById('cli-toast');t.textContent=msg;t.className='show'+(err?' err':'');setTimeout(function(){t.className='';},3200);}
+function cliBusy(btn,on,txt){btn.disabled=on;btn.innerHTML=on?'<span class="cli-spin"></span> '+txt:txt;}
+
+function cargarClientesConf(){
+  var tb=document.getElementById('cli-tbody');
+  tb.innerHTML='<tr><td colspan="4" class="cli-empty"><span class="cli-spin"></span> Cargando…</td></tr>';
+  cliFetch('/api/admin/clientes').then(function(r){ if(!r.ok) throw new Error('No se pudo cargar la lista ('+r.status+')'); return r.json(); })
+    .then(function(data){ cliClientes=data; cliRender(); })
+    .catch(function(e){ tb.innerHTML='<tr><td colspan="4" class="cli-empty"><b>No se pudo cargar</b>'+cliEsc(e.message)+'</td></tr>'; });
+}
+window.cargarClientesConf = cargarClientesConf;
+
+function cliRender(filtro){
+  var f=(filtro||'').trim().toLowerCase();
+  var tb=document.getElementById('cli-tbody');
+  var items=cliClientes.filter(function(c){ return !f || (c.email||'').toLowerCase().indexOf(f)>=0 || (c.full_name||'').toLowerCase().indexOf(f)>=0; });
+  if(!items.length){ tb.innerHTML='<tr><td colspan="4" class="cli-empty"><b>'+(cliClientes.length?'Sin coincidencias':'Todavía no hay clientes')+'</b>'+(cliClientes.length?'':'Creá el primero con “Nuevo cliente”.')+'</td></tr>'; return; }
+  tb.innerHTML=items.map(function(c){
+    return '<tr><td><div class="cli-email">'+cliEsc(c.email)+'</div><div class="cli-name">'+cliEsc(c.full_name||'')+'</div></td>'
+      +'<td><span class="cli-pill '+(c.is_active?'on':'off')+'"><i></i>'+(c.is_active?'Activo':'Inactivo')+'</span></td>'
+      +'<td><span class="cli-hcount">'+c.cant_hospitales+'</span> <span>sede(s)</span></td>'
+      +'<td><div class="cli-actions">'
+        +'<button class="cli-btn cli-btn-ghost cli-btn-sm" onclick="cliAbrirEditar('+c.id+')">Editar accesos</button>'
+        +'<button class="cli-btn cli-btn-ghost cli-btn-sm" onclick="cliReset('+c.id+',\''+cliEsc(c.email)+'\')">Reset clave</button>'
+        +'<button class="cli-btn '+(c.is_active?'cli-btn-danger':'cli-btn-ghost')+' cli-btn-sm" onclick="cliToggle('+c.id+')">'+(c.is_active?'Desactivar':'Activar')+'</button>'
+      +'</div></td></tr>';
+  }).join('');
+}
+function cliFiltrar(v){ cliRender(v); }
+window.cliFiltrar = cliFiltrar;
+
+function cliCargarHospitales(){
+  if(cliHospitales.length) return Promise.resolve();
+  return cliFetch('/api/hospitales-metadata').then(function(r){ if(!r.ok) throw new Error('No se pudieron cargar los hospitales ('+r.status+')'); return r.json(); })
+    .then(function(d){ cliHospitales=d.map(function(h){ return {hospital_id:h.hospital_id, nombre:h.nombre}; }); });
+}
+function cliRenderHlist(){
+  var cont=document.getElementById('cli-hlist');
+  if(!cliHospitales.length){ cont.innerHTML='<div class="cli-empty">No hay hospitales cargados.</div>'; return; }
+  cont.innerHTML=cliHospitales.map(function(h){
+    var a=cliAsign[h.hospital_id]||{infra:false,software:false,kpis:false};
+    var act=a.infra||a.software||a.kpis;
+    return '<div class="cli-hrow '+(act?'active':'')+'" data-hid="'+cliEsc(h.hospital_id)+'">'
+      +'<div><div class="cli-hn">'+cliEsc(h.nombre)+'</div><div class="cli-hid">'+cliEsc(h.hospital_id)+'</div></div>'
+      +'<div class="cli-chktabs">'
+        +'<label class="cli-tabchk"><input type="checkbox" data-tab="infra" '+(a.infra?'checked':'')+'>Infra</label>'
+        +'<label class="cli-tabchk"><input type="checkbox" data-tab="software" '+(a.software?'checked':'')+'>Software</label>'
+        +'<label class="cli-tabchk kpis"><input type="checkbox" data-tab="kpis" '+(a.kpis?'checked':'')+'>KPIs</label>'
+      +'</div></div>';
+  }).join('');
+  cliContar();
+}
+function cliContar(){ var n=Object.keys(cliAsign).filter(function(k){var a=cliAsign[k];return a.infra||a.software||a.kpis;}).length; document.getElementById('cli-assign-count').textContent=n; }
+document.getElementById('cli-hlist').addEventListener('change', function(e){
+  var chk=e.target.closest('input[data-tab]'); if(!chk) return;
+  var row=chk.closest('.cli-hrow'), hid=row.dataset.hid, tab=chk.dataset.tab;
+  cliAsign[hid]=cliAsign[hid]||{infra:false,software:false,kpis:false};
+  cliAsign[hid][tab]=chk.checked;
+  row.classList.toggle('active', cliAsign[hid].infra||cliAsign[hid].software||cliAsign[hid].kpis);
+  cliContar();
+});
+
+function cliAbrirCrear(){
+  cliModo='crear'; cliEditId=null; cliAsign={};
+  document.getElementById('cli-modal-title').textContent='Nuevo cliente';
+  document.getElementById('cli-form-datos').style.display='';
+  document.getElementById('cli-f-email').value=''; document.getElementById('cli-f-name').value='';
+  var b=document.getElementById('cli-btn-guardar'); b.textContent='Crear cliente';
+  document.getElementById('cli-modal').classList.add('show');
+  cliCargarHospitales().then(cliRenderHlist).catch(function(e){ document.getElementById('cli-hlist').innerHTML='<div class="cli-empty">'+cliEsc(e.message)+'</div>'; });
+}
+window.cliAbrirCrear = cliAbrirCrear;
+
+function cliAbrirEditar(id){
+  cliModo='editar'; cliEditId=id; cliAsign={};
+  document.getElementById('cli-modal-title').textContent='Editar accesos';
+  document.getElementById('cli-form-datos').style.display='none';
+  document.getElementById('cli-btn-guardar').textContent='Guardar cambios';
+  document.getElementById('cli-modal').classList.add('show');
+  document.getElementById('cli-hlist').innerHTML='<div class="cli-empty"><span class="cli-spin"></span></div>';
+  cliCargarHospitales()
+    .then(function(){ return cliFetch('/api/admin/clientes/'+id+'/accesos'); })
+    .then(function(r){ if(!r.ok) throw new Error('No se pudieron leer los accesos ('+r.status+')'); return r.json(); })
+    .then(function(d){ (d.accesos||[]).forEach(function(a){ cliAsign[a.hospital_id]={infra:!!a.infra,software:!!a.software,kpis:!!a.kpis}; }); cliRenderHlist(); })
+    .catch(function(e){ document.getElementById('cli-hlist').innerHTML='<div class="cli-empty">'+cliEsc(e.message)+'</div>'; });
+}
+window.cliAbrirEditar = cliAbrirEditar;
+
+function cliPayload(){ return Object.keys(cliAsign).filter(function(k){var a=cliAsign[k];return a.infra||a.software||a.kpis;}).map(function(k){var a=cliAsign[k];return {hospital_id:k,infra:a.infra,software:a.software,kpis:a.kpis};}); }
+function cliCerrar(){ document.getElementById('cli-modal').classList.remove('show'); }
+window.cliCerrar = cliCerrar;
+
+function cliGuardar(){
+  var btn=document.getElementById('cli-btn-guardar'), accesos=cliPayload();
+  if(cliModo==='crear'){
+    var email=document.getElementById('cli-f-email').value.trim().toLowerCase(), full_name=document.getElementById('cli-f-name').value.trim();
+    if(!email){ cliToast('Falta el correo del cliente', true); return; }
+    if(email.indexOf('@tecnoimagen.com.ar')>=0){ cliToast('Usá un correo externo, no corporativo', true); return; }
+    if(!full_name){ cliToast('Falta el nombre/referencia', true); return; }
+    cliBusy(btn,true,'Creando…');
+    cliFetch('/api/admin/clientes',{method:'POST',body:JSON.stringify({email:email,full_name:full_name,accesos:accesos})})
+      .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo crear'); return d; }); })
+      .then(function(d){ cliCerrar(); cliMostrarPw(d.password_temporal,d.email); cargarClientesConf(); })
+      .catch(function(e){ cliToast(e.message,true); })
+      .finally(function(){ cliBusy(btn,false,'Crear cliente'); });
+  } else {
+    cliBusy(btn,true,'Guardando…');
+    cliFetch('/api/admin/clientes/'+cliEditId+'/accesos',{method:'PUT',body:JSON.stringify({accesos:accesos})})
+      .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo guardar'); return d; }); })
+      .then(function(){ cliCerrar(); cliToast('Accesos actualizados'); cargarClientesConf(); })
+      .catch(function(e){ cliToast(e.message,true); })
+      .finally(function(){ cliBusy(btn,false,'Guardar cambios'); });
+  }
+}
+window.cliGuardar = cliGuardar;
+
+function cliToggle(id){
+  cliFetch('/api/admin/clientes/'+id+'/toggle-active',{method:'PATCH'})
+    .then(function(r){ if(!r.ok) throw new Error('No se pudo cambiar el estado'); return r.json(); })
+    .then(function(){ cargarClientesConf(); })
+    .catch(function(e){ cliToast(e.message,true); });
+}
+window.cliToggle = cliToggle;
+
+function cliReset(id,email){
+  if(!confirm('¿Generar una nueva contraseña temporal para '+email+'? La actual dejará de funcionar.')) return;
+  cliFetch('/api/admin/clientes/'+id+'/reset-password',{method:'POST'})
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo resetear'); return d; }); })
+    .then(function(d){ cliMostrarPw(d.password_temporal,email); })
+    .catch(function(e){ cliToast(e.message,true); });
+}
+window.cliReset = cliReset;
+
+function cliMostrarPw(pw,email){ document.getElementById('cli-pw-code').textContent=pw; document.getElementById('cli-pw-who').textContent='Para: '+email; document.getElementById('cli-modal-pw').classList.add('show'); }
+function cliCopiarPw(){ var t=document.getElementById('cli-pw-code').textContent; if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ cliToast('Contraseña copiada'); }); }
+window.cliCopiarPw = cliCopiarPw;
+
+// cerrar modal al click en el fondo
+['cli-modal','cli-modal-pw'].forEach(function(id){ var o=document.getElementById(id); o.addEventListener('click',function(e){ if(e.target===o) o.classList.remove('show'); }); });
+</script>
 
             </div><!-- /conf-card -->
         </div><!-- /conf-body -->
@@ -3361,7 +3656,11 @@ window._nuestroVolverAlDashboard = function() {
         window.location.href = '/';
     } else {
         const user = JSON.parse(userData);
-        aplicarRestriccionesUI(user.role);
+        if (user.role === 'Cliente') {
+            window.location.href = '/cliente';
+        } else {
+            aplicarRestriccionesUI(user.role);
+        }
     }
 
     function aplicarRestriccionesUI(rol) {

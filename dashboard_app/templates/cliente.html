@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TecnoMonitor · Mi Hospital</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0A0A0B">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0A0A0B;--surface:#111113;--surface2:#18181B;--surface3:#1E1E22;--border:#232327;--border2:#2e2e34;
+  --text:#F0F0F2;--muted:#6B6B7A;--muted2:#44444F;--green:#00E5A0;--green-dim:rgba(0,229,160,0.12);
+  --red:#FF5C5C;--red-dim:rgba(255,92,92,0.12);--blue:#4A8FFF;--amber:#FFA940;--amber-dim:rgba(255,169,64,0.12);
+  --purple:#A855F7;--purple-dim:rgba(168,85,247,.12);
+}
+html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',system-ui,sans-serif;color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.cl-app{max-width:1080px;margin:0 auto;padding:0 24px 80px}
+.cl-top{display:flex;align-items:center;justify-content:space-between;padding:20px 0;position:sticky;top:0;background:linear-gradient(var(--bg),var(--bg) 70%,transparent);z-index:20}
+.cl-logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px}
+.cl-logo .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(140deg,var(--green),#00b37e);display:flex;align-items:center;justify-content:center;color:#06231a;font-weight:800;font-size:12px}
+.cl-logo small{display:block;font-size:10px;color:var(--muted);font-weight:500}
+.cl-top-right{display:flex;align-items:center;gap:10px}
+.cl-user{display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--border);border-radius:50px;padding:6px 8px 6px 14px;font-size:12px;color:var(--muted)}
+.cl-user .av{width:26px;height:26px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text)}
+.cl-iconbtn{width:34px;height:34px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.cl-iconbtn:hover{color:var(--text);border-color:var(--border2)}
+.cl-sedes{display:flex;gap:10px;margin:6px 0 22px;flex-wrap:wrap}
+.cl-sede{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 16px;cursor:pointer;transition:.18s}
+.cl-sede:hover{border-color:var(--border2)}
+.cl-sede.active{border-color:var(--green);background:var(--green-dim)}
+.cl-sede .dot{width:9px;height:9px;border-radius:50%}
+.cl-sede .nm{font-weight:600;font-size:13px}.cl-sede .st{font-size:11px;color:var(--muted)}
+.dot-green{background:var(--green)}.dot-amber{background:var(--amber)}.dot-red{background:var(--red)}.dot-muted{background:var(--muted)}
+.cl-hero{position:relative;border-radius:20px;padding:34px 32px;overflow:hidden;border:1px solid var(--border);margin-bottom:20px;background:var(--surface)}
+.cl-hero .glow{position:absolute;top:-40%;right:-10%;width:380px;height:380px;border-radius:50%;filter:blur(20px);opacity:.5}
+.cl-hero.s-ok .glow{background:radial-gradient(circle,var(--green-dim),transparent 70%)}
+.cl-hero.s-warn .glow{background:radial-gradient(circle,var(--amber-dim),transparent 70%)}
+.cl-hero.s-down .glow{background:radial-gradient(circle,var(--red-dim),transparent 70%)}
+.cl-hero.s-load .glow{background:radial-gradient(circle,rgba(74,143,255,.12),transparent 70%)}
+.cl-hero .h-name{font-size:14px;color:var(--muted);font-weight:600;position:relative}
+.cl-hero .h-status{display:flex;align-items:center;gap:14px;margin:10px 0 6px;position:relative}
+.cl-hero .h-ball{width:18px;height:18px;border-radius:50%;flex-shrink:0;background:var(--muted)}
+.cl-hero.s-ok .h-ball{background:var(--green);box-shadow:0 0 0 6px var(--green-dim)}
+.cl-hero.s-warn .h-ball{background:var(--amber);box-shadow:0 0 0 6px var(--amber-dim)}
+.cl-hero.s-down .h-ball{background:var(--red);box-shadow:0 0 0 6px var(--red-dim);animation:cl-pulse 1.4s infinite}
+@keyframes cl-pulse{0%{box-shadow:0 0 0 0 var(--red-dim)}70%{box-shadow:0 0 0 14px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.cl-hero .h-label{font-size:34px;font-weight:800;letter-spacing:-.02em;color:var(--muted)}
+.cl-hero.s-ok .h-label{color:var(--green)}.cl-hero.s-warn .h-label{color:var(--amber)}.cl-hero.s-down .h-label{color:var(--red)}
+.cl-hero .h-meta{font-size:13px;color:var(--muted);position:relative}
+.cl-hero .h-incident{margin-top:18px;display:none;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:10px;padding:12px 16px;font-size:13px;position:relative}
+.cl-hero.s-warn .h-incident,.cl-hero.s-down .h-incident{display:flex}
+.cl-hero.s-down .h-incident{border-left-color:var(--red)}
+.cl-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:24px}
+.cl-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px}
+.cl-card .c-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.cl-card .c-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted2);display:flex;align-items:center;gap:8px}
+.cl-card .c-title svg{color:var(--muted)}
+.cl-state{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px}
+.cl-state i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.cl-state.ok{background:var(--green-dim);color:var(--green)}.cl-state.warn{background:var(--amber-dim);color:var(--amber)}
+.cl-state.down{background:var(--red-dim);color:var(--red)}.cl-state.muted{background:rgba(107,107,122,.16);color:var(--muted)}
+.cl-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.cl-row:last-child{border-bottom:none}
+.cl-row .lbl{color:var(--muted)}.cl-row .val{font-weight:600}
+.cl-row .val.on{color:var(--green)}.cl-row .val.off{color:var(--red)}.cl-row .val.warn{color:var(--amber)}
+.cl-card.kpi{background:linear-gradient(160deg,var(--surface),rgba(168,85,247,.05));border-color:rgba(168,85,247,.2)}
+.cl-card.kpi .big{font-size:36px;font-weight:800;letter-spacing:-.02em}
+.cl-card.kpi .big small{font-size:13px;color:var(--muted);font-weight:500}
+.cl-detail{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;margin-top:4px}
+.cl-detail .d-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cl-detail .d-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:9px}
+.cl-detail .d-title .tag{font-size:10px;font-weight:700;background:var(--purple-dim);color:var(--purple);padding:3px 9px;border-radius:50px;letter-spacing:.05em}
+.cl-detail .d-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+.chartbox{height:240px;position:relative}
+.cl-loading{color:var(--muted);font-size:13px;padding:20px 0;display:flex;align-items:center;gap:10px}
+.cl-spin{display:inline-block;width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--green);border-radius:50%;animation:cl-rot .7s linear infinite}
+@keyframes cl-rot{to{transform:rotate(360deg)}}
+.cl-gate{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}
+.cl-gate.show{display:flex}
+.cl-gate .box{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:34px;width:100%;max-width:420px}
+.cl-gate .ico{width:54px;height:54px;border-radius:14px;background:var(--amber-dim);display:flex;align-items:center;justify-content:center;color:var(--amber);margin-bottom:18px}
+.cl-gate h2{font-size:20px;font-weight:700;margin-bottom:6px}.cl-gate p{font-size:13px;color:var(--muted);margin-bottom:22px}
+.cl-gate label{font-size:12px;font-weight:600;display:block;margin-bottom:6px}
+.cl-gate input{width:100%;height:44px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:0 14px;color:var(--text);font-size:14px;font-family:inherit;margin-bottom:14px}
+.cl-gate input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-dim)}
+.cl-gate .save{width:100%;height:46px;background:var(--green);color:#06231a;border:none;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-gate .err{color:var(--red);font-size:12px;margin-bottom:12px;display:none}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="cl-app" id="cl-app" style="visibility:hidden">
+  <div class="cl-top">
+    <div class="cl-logo"><span class="mark">TM</span><div>TecnoMonitor<small>Monitoreo de tu infraestructura</small></div></div>
+    <div class="cl-top-right">
+      <div class="cl-user"><span id="cl-username">Cliente</span><span class="av" id="cl-avatar">··</span></div>
+      <button class="cl-iconbtn" title="Cambiar contraseña" onclick="clAbrirGate(false)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+      <button class="cl-iconbtn" title="Cerrar sesión" onclick="clLogout()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+    </div>
+  </div>
+
+  <div class="cl-sedes hidden" id="cl-sedes"></div>
+
+  <div class="cl-hero s-load" id="cl-hero">
+    <div class="glow"></div>
+    <div class="h-name" id="cl-h-name">—</div>
+    <div class="h-status"><span class="h-ball"></span><span class="h-label" id="cl-h-label">Cargando…</span></div>
+    <div class="h-meta" id="cl-h-meta">Consultando el estado de tu infraestructura…</div>
+    <div class="h-incident" id="cl-h-incident">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span id="cl-h-incident-text"></span>
+    </div>
+  </div>
+
+  <div class="cl-cards" id="cl-cards"></div>
+
+  <div class="cl-detail hidden" id="cl-kpi">
+    <div class="d-head"><div class="d-title">Uso clínico <span class="tag">DETALLE</span></div></div>
+    <div class="d-sub">Estudios y órdenes registrados</div>
+    <div class="chartbox"><canvas id="cl-kpi-chart"></canvas></div>
+    <div id="cl-kpi-empty" class="cl-loading hidden">Sin datos de uso disponibles para este período.</div>
+  </div>
+</div>
+
+<!-- GATE cambio de contraseña -->
+<div class="cl-gate" id="cl-gate">
+  <div class="box">
+    <div class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+    <h2 id="cl-gate-title">Definí tu contraseña</h2>
+    <p id="cl-gate-sub">Por seguridad, en tu primer ingreso necesitás reemplazar la contraseña temporal por una propia.</p>
+    <div class="err" id="cl-gate-err"></div>
+    <div id="cl-gate-current-wrap" class="hidden"><label>Contraseña actual</label><input type="password" id="cl-gate-current" placeholder="••••••••••"></div>
+    <label>Nueva contraseña</label><input type="password" id="cl-gate-new" placeholder="••••••••••">
+    <label>Repetir contraseña</label><input type="password" id="cl-gate-rep" placeholder="••••••••••">
+    <button class="save" id="cl-gate-save" onclick="clGuardarPass()">Guardar y entrar</button>
+  </div>
+</div>
+
+<script>
+var clFetch=function(p,o){o=o||{};return fetch(p,Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}},o));};
+var clUser=null, clPerms=null, clChart=null, clForzado=false;
+function clEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+
+// ── Guard: solo Cliente ──
+(function(){
+  try{ clUser=JSON.parse(sessionStorage.getItem('tecnomonitor_user')||'null'); }catch(e){}
+  if(!clUser){ location.href='/'; return; }
+  if(clUser.role!=='Cliente'){ location.href='/beta'; return; }  // los internos van a la beta
+  var nom=clUser.full_name||clUser.nombre||clUser.name||clUser.email||'Cliente';
+  document.getElementById('cl-username').textContent=(nom.split(' ')[0]||'Cliente');
+  document.getElementById('cl-avatar').textContent=(nom.substr(0,2)).toUpperCase();
+  document.getElementById('cl-app').style.visibility='visible';
+  // ¿primer ingreso? -> gate obligatorio
+  if(clUser.must_change_password){ clAbrirGate(true); }
+  else { clCargarPerms(); }
+})();
+
+// ── Gate de contraseña ──
+function clAbrirGate(forzado){
+  clForzado=!!forzado;
+  document.getElementById('cl-gate-title').textContent = forzado ? 'Definí tu contraseña' : 'Cambiar contraseña';
+  document.getElementById('cl-gate-sub').textContent = forzado
+    ? 'Por seguridad, en tu primer ingreso necesitás reemplazar la contraseña temporal por una propia.'
+    : 'Ingresá tu contraseña actual y la nueva.';
+  document.getElementById('cl-gate-current-wrap').classList.toggle('hidden', forzado); // en cambio voluntario pedimos la actual
+  document.getElementById('cl-gate-err').style.display='none';
+  document.getElementById('cl-gate').classList.add('show');
+}
+function clGuardarPass(){
+  var err=document.getElementById('cl-gate-err');
+  var nuevo=document.getElementById('cl-gate-new').value, rep=document.getElementById('cl-gate-rep').value;
+  var actual=document.getElementById('cl-gate-current').value;
+  function fail(m){ err.textContent=m; err.style.display='block'; }
+  if(nuevo.length<8){ return fail('La contraseña debe tener al menos 8 caracteres.'); }
+  if(nuevo!==rep){ return fail('Las dos contraseñas no coinciden.'); }
+  var body={ new_password:nuevo };
+  if(!clForzado) body.current_password=actual;   // cambio voluntario
+  var btn=document.getElementById('cl-gate-save'); btn.disabled=true; btn.textContent='Guardando…';
+  clFetch('/api/user/change-password',{method:'POST',body:JSON.stringify(body)})
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||d.message||'No se pudo cambiar la contraseña'); return d; }); })
+    .then(function(){
+      try{ var u=JSON.parse(sessionStorage.getItem('tecnomonitor_user')||'{}'); u.must_change_password=false; sessionStorage.setItem('tecnomonitor_user',JSON.stringify(u)); clUser=u; }catch(e){}
+      document.getElementById('cl-gate').classList.remove('show');
+      if(!clPerms) clCargarPerms();
+    })
+    .catch(function(e){ fail(e.message); })
+    .finally(function(){ btn.disabled=false; btn.textContent='Guardar y entrar'; });
+}
+function clLogout(){ sessionStorage.clear(); location.href='/'; }
+
+// ── Permisos: qué sedes y pestañas ──
+function clCargarPerms(){
+  clFetch('/api/me/permissions').then(function(r){ if(!r.ok) throw new Error('No se pudieron cargar tus accesos'); return r.json(); })
+    .then(function(p){
+      clPerms=p;
+      var sedes=p.hospitales||[];
+      if(!sedes.length){ clHeroVacio('No tenés hospitales asignados todavía. Contactá a tu proveedor.'); return; }
+      if(sedes.length>1) clRenderSelector(sedes);
+      clCargarHospital(sedes[0]);
+    })
+    .catch(function(e){ clHeroVacio(e.message); });
+}
+function clRenderSelector(sedes){
+  var cont=document.getElementById('cl-sedes'); cont.classList.remove('hidden');
+  cont.innerHTML=sedes.map(function(s,i){
+    return '<div class="cl-sede '+(i===0?'active':'')+'" data-i="'+i+'"><span class="dot dot-muted"></span><div><div class="nm">'+clEsc(s.nombre||s.hospital_id)+'</div><div class="st">—</div></div></div>';
+  }).join('');
+  cont.querySelectorAll('.cl-sede').forEach(function(el){
+    el.addEventListener('click',function(){
+      cont.querySelectorAll('.cl-sede').forEach(function(x){x.classList.remove('active');});
+      el.classList.add('active');
+      clCargarHospital(sedes[+el.dataset.i], +el.dataset.i);
+    });
+  });
+}
+function clHeroVacio(msg){
+  var hero=document.getElementById('cl-hero'); hero.className='cl-hero s-load';
+  document.getElementById('cl-h-label').textContent='—';
+  document.getElementById('cl-h-meta').textContent=msg;
+  document.getElementById('cl-cards').innerHTML='';
+  document.getElementById('cl-kpi').classList.add('hidden');
+}
+
+// ── Cargar un hospital ──
+function clCargarHospital(sede, idx){
+  var hid=sede.hospital_id, tabs=sede.tabs||{infra:true,software:true,kpis:true};
+  var hero=document.getElementById('cl-hero'); hero.className='cl-hero s-load';
+  document.getElementById('cl-h-name').textContent=(sede.nombre||hid);
+  document.getElementById('cl-h-label').textContent='Cargando…';
+  document.getElementById('cl-h-meta').textContent='Consultando el estado…';
+  document.getElementById('cl-cards').innerHTML='';
+
+  var jobs=[ clFetch('/api/hospital/'+encodeURIComponent(hid)).then(clJson).catch(function(){return null;}) ];
+  jobs.push(tabs.software ? clFetch('/api/hospital/'+encodeURIComponent(hid)+'/software').then(clJson).catch(function(){return null;}) : Promise.resolve(null));
+
+  Promise.all(jobs).then(function(res){
+    var detalle=res[0], soft=res[1];
+    var estado=clDerivarEstado(detalle, soft);
+    clRenderHero(estado, detalle);
+    clRenderCards(tabs, detalle, soft, estado);
+    if(tabs.kpis) clCargarKpis(hid); else document.getElementById('cl-kpi').classList.add('hidden');
+    // semáforo en selector
+    if(typeof idx==='number'){ var d=document.querySelectorAll('#cl-sedes .cl-sede')[idx]; if(d){ var dot=d.querySelector('.dot'); var st=d.querySelector('.st'); dot.className='dot '+({ok:'dot-green',warn:'dot-amber',down:'dot-red'}[estado.nivel]||'dot-muted'); st.textContent=estado.label; } }
+  });
+}
+function clJson(r){ if(!r||!r.ok) throw new Error('http '+(r&&r.status)); return r.json(); }
+
+// ── Derivación del estado (defensiva) ──
+function clDerivarEstado(d, soft){
+  if(!d || d.error){ return {nivel:'down', label:'Fuera de servicio', detalle:'No estamos recibiendo datos del hospital.'}; }
+  var problemas=[];
+  // VMs / servicios
+  var vms = d.virtual_layer || d.vms || {};
+  var lista = Array.isArray(vms) ? vms : Object.keys(vms).map(function(k){ return Object.assign({id:k}, vms[k]); });
+  lista.forEach(function(vm){
+    var st=(vm.state||vm.status||'').toString().toLowerCase();
+    if(st && ['running','online','ok','started','up'].indexOf(st)<0){ problemas.push('Servicio '+(vm.id||'VM')+' detenido'); }
+    var servicios=(vm.metrics&&vm.metrics.servicios)|| (vm.telemetry&&vm.telemetry.servicios) || {};
+    Object.keys(servicios||{}).forEach(function(sn){
+      var sv=servicios[sn]; var ss=(typeof sv==='string'?sv:(sv&&sv.status)||'').toString().toLowerCase();
+      if(ss && ['running','ok','started','up','online'].indexOf(ss)<0){ problemas.push('Servicio '+sn+' detenido'); }
+    });
+  });
+  // Mirth
+  if(soft){
+    var canales = soft.channels || soft.canales || (Array.isArray(soft)?soft:[]);
+    var arr = Array.isArray(canales) ? canales : Object.values(canales||{});
+    arr.forEach(function(c){
+      var cs=(c&&(c.state||c.estado)||'').toString().toLowerCase();
+      if(cs && cs!=='started' && cs!=='running'){ problemas.push('Integración con un canal '+(c.state||c.estado)); }
+    });
+  }
+  if(problemas.length) return {nivel:'warn', label:'Con incidencias', detalle:problemas[0]};
+  return {nivel:'ok', label:'Operativo', detalle:'Todos los sistemas funcionando.'};
+}
+
+function clRenderHero(estado, d){
+  var hero=document.getElementById('cl-hero');
+  hero.className='cl-hero s-'+(estado.nivel==='ok'?'ok':estado.nivel==='warn'?'warn':'down');
+  document.getElementById('cl-h-label').textContent=estado.label;
+  var ts = d && (d.db_timestamp || d.timestamp);
+  var metaTxt = estado.nivel==='ok' ? 'Todos los sistemas funcionando' : estado.detalle;
+  if(ts) metaTxt += ' · último reporte: '+clEsc(ts);
+  document.getElementById('cl-h-meta').textContent=metaTxt;
+  if(estado.nivel!=='ok'){ document.getElementById('cl-h-incident-text').textContent=estado.detalle; }
+}
+
+function clRenderCards(tabs, d, soft, estado){
+  var cont=document.getElementById('cl-cards'); var html='';
+  if(tabs.infra){
+    var infraSt = estado.nivel==='down' ? {c:'down',t:'Sin datos'} : (estado.nivel==='warn' ? {c:'ok',t:'Operativa'} : {c:'ok',t:'Operativa'});
+    html+='<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('infra')+'Infraestructura</div><span class="cl-state '+infraSt.c+'"><i></i>'+infraSt.t+'</span></div>'
+      +clRowVal('Servidores', d&&!d.error ? 'En línea':'Sin datos', d&&!d.error?'on':'off')
+      +clRowVal('Almacenamiento', 'OK', '')
+      +clRowVal('Energía / clima', d&&!d.error?'Normal':'Sin datos', d&&!d.error?'on':'')
+      +'</div>';
+  }
+  if(tabs.software){
+    var integ='Sin datos', cls='off', soState={c:'muted',t:'Sin datos'};
+    if(soft){
+      var canales=soft.channels||soft.canales||(Array.isArray(soft)?soft:[]);
+      var arr=Array.isArray(canales)?canales:Object.values(canales||{});
+      var caidos=arr.filter(function(c){var cs=(c&&(c.state||c.estado)||'').toString().toLowerCase();return cs && cs!=='started' && cs!=='running';}).length;
+      if(arr.length===0){ integ='Sin datos'; cls='off'; soState={c:'muted',t:'Sin datos'}; }
+      else if(caidos>0){ integ='Offline'; cls='off'; soState={c:'warn',t:'Atención'}; }
+      else { integ='Online'; cls='on'; soState={c:'ok',t:'Operativos'}; }
+    }
+    html+='<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('soft')+'Sistemas</div><span class="cl-state '+soState.c+'"><i></i>'+soState.t+'</span></div>'
+      +clRowVal('Integración (Mirth)', integ, cls)
+      +clRowVal('Estado general', estado.nivel==='ok'?'Normal':(estado.nivel==='warn'?'Con alertas':'Sin datos'), estado.nivel==='ok'?'on':(estado.nivel==='warn'?'warn':'off'))
+      +'</div>';
+  }
+  if(tabs.kpis){
+    html+='<div class="cl-card kpi"><div class="c-head"><div class="c-title">'+clIco('kpi')+'Uso clínico</div></div>'
+      +'<div class="big" id="cl-kpi-hoy">—<small> estudios (período)</small></div>'
+      +'<div class="cl-loading" id="cl-kpi-cardloading"><span class="cl-spin"></span> cargando…</div></div>';
+  }
+  cont.innerHTML=html;
+}
+function clRowVal(lbl,val,cls){ return '<div class="cl-row"><span class="lbl">'+clEsc(lbl)+'</span><span class="val '+(cls||'')+'">'+clEsc(val)+'</span></div>'; }
+function clIco(t){
+  if(t==='infra') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>';
+  if(t==='soft') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
+}
+
+// ── KPIs (defensivo: arma una serie temporal de lo que encuentre) ──
+function clCargarKpis(hid){
+  document.getElementById('cl-kpi').classList.remove('hidden');
+  clFetch('/api/hospital/'+encodeURIComponent(hid)+'/kpi-history')
+    .then(function(r){ if(!r.ok) throw new Error('http'); return r.json(); })
+    .then(function(data){ clRenderKpis(data); })
+    .catch(function(){ clKpiVacio(); });
+}
+function clKpiVacio(){
+  var card=document.getElementById('cl-kpi-cardloading'); if(card){ card.textContent='Sin datos disponibles'; }
+  var hoy=document.getElementById('cl-kpi-hoy'); if(hoy){ hoy.innerHTML='—<small> sin datos</small>'; }
+  document.getElementById('cl-kpi-empty').classList.remove('hidden');
+}
+function clRenderKpis(data){
+  // Buscamos una serie {label,total} de forma tolerante a distintas formas de respuesta.
+  var serie=[];
+  try{
+    var rows = Array.isArray(data) ? data : (data.history || data.data || data.series || []);
+    if(Array.isArray(rows) && rows.length){
+      serie = rows.map(function(r){
+        var label = r.fecha || r.date || r.periodo || r.label || '';
+        var total = r.total!=null ? r.total :
+                    (r.estudios!=null ? r.estudios :
+                    (r.ejecutados!=null ? r.ejecutados :
+                    (typeof r==='number'? r : 0)));
+        if(total && typeof total==='object'){ total=Object.values(total).reduce(function(a,b){return a+(+b||0);},0); }
+        return {label:String(label), total:+total||0};
+      });
+    }
+  }catch(e){ serie=[]; }
+  if(!serie.length){ clKpiVacio(); return; }
+  var totalPeriodo=serie.reduce(function(a,b){return a+b.total;},0);
+  var card=document.getElementById('cl-kpi-cardloading'); if(card) card.remove();
+  var hoy=document.getElementById('cl-kpi-hoy'); if(hoy){ hoy.innerHTML=totalPeriodo.toLocaleString('es-AR')+'<small> estudios (período)</small>'; }
+  document.getElementById('cl-kpi-empty').classList.add('hidden');
+  var ctx=document.getElementById('cl-kpi-chart');
+  if(clChart){ clChart.destroy(); }
+  if(typeof Chart==='undefined') return;
+  clChart=new Chart(ctx,{type:'bar',data:{labels:serie.map(function(x){return x.label;}),datasets:[{data:serie.map(function(x){return x.total;}),backgroundColor:'#A855F7',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#6B6B7A',maxTicksLimit:12}},y:{grid:{color:'#232327'},ticks:{color:'#6B6B7A'}}}}});
+}
+</script>
+</body>
+</html>

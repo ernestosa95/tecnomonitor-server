@@ -142,6 +142,7 @@ class UserModel(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
     asana_id = Column(String(255), nullable=True)
+    must_change_password = Column(Boolean, default=False)
 
 class ClienteHospitalAccess(Base):
     """
