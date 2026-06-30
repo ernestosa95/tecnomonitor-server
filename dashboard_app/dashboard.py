@@ -50,6 +50,8 @@ from fastapi import FastAPI, Request, Form, APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import permissions
+from sqlalchemy import ForeignKey, UniqueConstraint 
 
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
@@ -283,14 +285,25 @@ def verificar_login(request: Request, response: Response, login_data: LoginReque
     if ip_cliente not in login_attempts_db:
         login_attempts_db[ip_cliente] = {'intentos': 0, 'bloqueado_hasta': 0}
 
-    # 2. Filtro de dominio obligatorio
-    if not login_data.email.lower().endswith("@tecnoimagen.com.ar"):
-        _registrar_intento_fallido(ip_cliente, ahora)
-        return {"success": False, "message": "Dominio no autorizado"}
+    # --- DESPUÉS ---
+    email_norm = login_data.email.lower().strip()
 
-    # 3. Búsqueda de usuario y validación de clave
-    user = db.query(database.UserModel).filter(database.UserModel.email == login_data.email.lower()).first()
-    
+    # Buscamos primero al usuario (lo necesitamos para decidir la política de dominio)
+    user = db.query(database.UserModel).filter(
+        database.UserModel.email == email_norm
+    ).first()
+
+    # --- Política de dominio (paso 3) ---
+    # Interno (@tecnoimagen.com.ar): siempre habilitado.
+    # Externo: SOLO si es una cuenta Cliente provisionada por un Admin.
+    es_interno = email_norm.endswith("@tecnoimagen.com.ar")
+    es_cliente = bool(user and user.role == "Cliente")
+
+    if not es_interno and not es_cliente:
+        _registrar_intento_fallido(ip_cliente, ahora)
+        return {"success": False, "message": "Credenciales inválidas"}
+
+    # Validación de clave (igual que antes)
     if not user or not auth.verify_password(login_data.password, user.hashed_password):
         bloqueado = _registrar_intento_fallido(ip_cliente, ahora)
         msg = "Demasiados intentos. Cuenta bloqueada." if bloqueado else "Credenciales inválidas"
@@ -604,7 +617,7 @@ def obtener_historial_kpi(hospital_id: str, horas: int = 24,
 @app.get("/api/alertas")
 def obtener_alertas(db: Session = Depends(get_db),
                     # CORRECCIÓN: Solo roles autorizados pueden ver alertas
-                    current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria", "Comercial"))):
+                    current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     activas = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1).order_by(database.AlertaModel.start_time.desc()).all()
     historial = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 0).order_by(database.AlertaModel.end_time.desc()).limit(50).all()
     return {"activas": activas, "historial": historial}
@@ -1751,3 +1764,12 @@ def update_perfil(
         "email": user.email,
         "role": user.role
     }
+
+@app.get("/api/me/permissions")
+def get_my_permissions(db: Session = Depends(get_db),
+                       current_user: dict = Depends(auth.get_current_user)):
+    base = permissions.permisos_de_usuario(current_user["role"])
+    # Si el usuario tiene scope acotado por hospital (Cliente), sumamos su lista.
+    if base["scope"] == permissions.SCOPE_HOSPITALES:
+        base["hospitales"] = auth.hospitales_de_cliente(current_user["email"], db)
+    return base

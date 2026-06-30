@@ -1,5 +1,5 @@
 # database.py
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Boolean, Text, Index
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Boolean, Text, Index, ForeignKey, UniqueConstraint
 from sqlalchemy import event  # <-- 1. NUEVO: Importamos event para configurar SQLite
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -142,5 +142,30 @@ class UserModel(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
     asana_id = Column(String(255), nullable=True)
+
+class ClienteHospitalAccess(Base):
+    """
+    Acceso de un usuario rol 'Cliente' a un hospital puntual, con las
+    pestañas habilitadas para ESE usuario en ESE hospital.
+    Un Cliente puede tener varias filas (varios hospitales).
+    """
+    __tablename__ = "cliente_hospital_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    hospital_id = Column(String, ForeignKey("hospitales_metadata.hospital_id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+
+    # Pestañas habilitadas (por usuario+hospital)
+    ver_infra    = Column(Boolean, default=False, nullable=False)
+    ver_software = Column(Boolean, default=False, nullable=False)
+    ver_kpis     = Column(Boolean, default=False, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "hospital_id", name="uq_cliente_hospital"),
+    )
 
 Base.metadata.create_all(bind=engine)
