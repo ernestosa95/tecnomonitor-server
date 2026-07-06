@@ -163,15 +163,29 @@ def _nivel_disco(valor):
     if valor >= 80: return "NOTICE"
     return "OK"
 
-# --- MOTOR DE REGLAS V3 ---
+# =====================================================================
+# PARCHE para alerts_engine.py
+# Reemplazar la función _evaluar_reglas_v3 completa por esta versión.
+# =====================================================================
+
+# =====================================================================
+# RECORDATORIO: agregar esta clave en cargar_config() del archivo real
+# (si no la agregás, va a usar el default 95 hardcodeado, que también
+# está OK, pero así queda ajustable desde el panel sin tocar código):
+#
+#   "ram_host_max": g("ram_host_max", 95),
+#
+# =====================================================================
+
+# --- MOTOR DE REGLAS V3 (CORREGIDO) ---
 def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
-    hallazgos = {} 
+    hallazgos = {}
     phy = data.get('physical_layer') or {}
     tele_host = phy.get('telemetry') or {}
     sensors = phy.get('sensors') or {}
     storage_layer = phy.get('storage_layer') or {}
-    host_info = phy.get('host_info') or {} # <-- Para el uptime
-    net_health = phy.get('network_health') or {} # <-- Para la red
+    host_info = phy.get('host_info') or {}
+    net_health = phy.get('network_health') or {}
     v_layer = data.get('virtual_layer') or []
 
     # =========================================================
@@ -180,6 +194,9 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
     cpu_usage = (tele_host.get('cpu') or {}).get('usage_percent', 0) or 0
     hallazgos["HOST_CPU"] = (_nivel_cpu_ram(cpu_usage), f"Uso CPU: {cpu_usage}%")
 
+    ram_host = (tele_host.get('ram') or {}).get('usage_percent', 0) or 0
+    hallazgos["HOST_RAM"] = (_nivel_ram_host(ram_host, config.get('ram_host_max', 95)), f"Uso RAM: {ram_host}%")
+
     temp_list = sensors.get('temperatures') or []
     for t in temp_list:
         val = t.get('value', 0)
@@ -187,16 +204,14 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
         nivel_t = _nivel_temp(val, config['temp_cpu_max'])
         hallazgos[f"TEMP_{name}"] = (nivel_t, f"Temperatura {name}: {val}°C")
 
-    # 🚨 NUEVA ALERTA: Reinicios abruptos del Host Físico
     uptime_host = host_info.get('uptime_seconds') or tele_host.get('uptime_seconds', -1)
     if uptime_host is not None and uptime_host >= 0:
         dias_uptime = uptime_host / 86400.0
-        if uptime_host < 600: # Menos de 10 minutos (600 segs)
+        if uptime_host < 600:
             hallazgos["HOST_UPTIME"] = ("WARNING", f"Reinicio reciente/abrupto detectado. Uptime: {int(uptime_host/60)} min")
         else:
             hallazgos["HOST_UPTIME"] = ("OK", f"Uptime estable: {int(dias_uptime)} días")
 
-    # 🚨 NUEVA ALERTA: Latencia de Red (Saturación)
     latencia_ms = net_health.get('cloud_latency_ms', -1)
     if latencia_ms is not None and latencia_ms >= 0:
         if latencia_ms >= 500:
@@ -225,7 +240,96 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
         for ld in storage_layer.get('logical_volumes', []):
             st = ld.get('status', 'OK')
             nivel = "OK" if st in ['OK', 'Online'] else "CRITICAL"
-            hallazgos
+            # 🛠️ FIX: faltaba asignar el hallazgo (antes era una línea "hallazgos" suelta, un no-op)
+            hallazgos[f"RAID_VOL_{ld.get('name')}"] = (nivel, f"Volumen RAID '{ld.get('name')}': {st}")
+
+        for pd in storage_layer.get('physical_drives', []):
+            st = pd.get('status', 'OK')
+            nivel = "OK" if st in ['OK', 'Online'] else "CRITICAL"
+            hallazgos[f"RAID_DISK_{pd.get('slot')}"] = (nivel, f"Disco físico (Slot {pd.get('slot')}): {st}")
+
+    # =========================================================
+    # 🟢 3. CAPA VIRTUAL (VMs) — 🛠️ FIX: este bloque no existía
+    # =========================================================
+    cpu_vm_max = config.get('cpu_vm_max', 90)
+    ram_vm_max = config.get('ram_vm_max', 90)
+    disk_threshold = config.get('disk_threshold', 90)
+
+    for vm in v_layer:
+        vm_id = vm.get('id', 'unknown')
+        vm_tele = vm.get('telemetry') or {}
+
+        cpu_vm = (vm_tele.get('cpu') or {}).get('usage_percent', 0) or 0
+        hallazgos[f"VM_CPU_{vm_id}"] = (
+            _nivel_cpu_ram_configurable(cpu_vm, cpu_vm_max),
+            f"[{vm_id}] Uso CPU VM: {cpu_vm}%"
+        )
+
+        ram_vm = (vm_tele.get('ram') or {}).get('usage_percent', 0) or 0
+        hallazgos[f"VM_RAM_{vm_id}"] = (
+            _nivel_cpu_ram_configurable(ram_vm, ram_vm_max),
+            f"[{vm_id}] Uso RAM VM: {ram_vm}%"
+        )
+
+        for disco in (vm.get('storage') or []):
+            mount = disco.get('mount_point', 'unknown')
+            pct = disco.get('usage_percent', 0) or 0
+            hallazgos[f"DISK_{vm_id}_{mount}"] = (
+                _nivel_disco(pct, disk_threshold),
+                f"[{vm_id}] Disco '{mount}' al {pct}% de uso"
+            )
+
+    # =========================================================
+    # 🟢 4. PERSISTENCIA — 🛠️ FIX: este bucle no existía, nada se guardaba
+    # =========================================================
+    contador = 0
+    for tipo_unico, (nivel, mensaje) in hallazgos.items():
+        actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id, asana_followers)
+        if nivel != "OK":
+            contador += 1
+
+    return contador
+
+
+# --- HELPERS ACTUALIZADOS ---
+
+def _nivel_ram_host(valor, umbral_critical=95):
+    """
+    Umbral ÚNICO (no escalonado) para RAM de host físico.
+    Motivo: la mayoría de los hospitales opera con RAM alta de forma normal
+    (cache de SO), así que el escalonado 75/85/90 generaba falsos positivos
+    constantes. Solo alertamos CRITICAL al superar el umbral configurado
+    (default 95%). No hay WARNING/NOTICE intermedios a propósito.
+    """
+    if valor >= umbral_critical:
+        return "CRITICAL"
+    return "OK"
+
+
+def _nivel_cpu_ram_configurable(valor, umbral_max):
+    """Igual que _nivel_cpu_ram pero usando el umbral configurado en vez de 90 fijo."""
+    if valor >= umbral_max:
+        return "CRITICAL"
+    if valor >= umbral_max - 5:
+        return "WARNING"
+    if valor >= umbral_max - 10:
+        return "NOTICE"
+    return "OK"
+
+
+def _nivel_disco(valor, umbral_critical=90):
+    """
+    🛠️ FIX: ahora acepta el umbral configurado (config['disk_threshold'])
+    en vez de tener 90/85/80 hardcodeado sin relación con lo que el usuario
+    configura en el panel (input 'conf-disk').
+    """
+    if valor >= umbral_critical:
+        return "CRITICAL"
+    if valor >= umbral_critical - 5:
+        return "WARNING"
+    if valor >= umbral_critical - 10:
+        return "NOTICE"
+    return "OK"
 
 # --- GESTOR INTELIGENTE DE INCIDENTES V3 ---
 def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None, asana_followers=None):

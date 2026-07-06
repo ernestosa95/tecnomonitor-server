@@ -14,12 +14,23 @@
   --text:#F0F0F2;--muted:#6B6B7A;--muted2:#44444F;--green:#00E5A0;--green-dim:rgba(0,229,160,0.12);
   --red:#FF5C5C;--red-dim:rgba(255,92,92,0.12);--blue:#4A8FFF;--amber:#FFA940;--amber-dim:rgba(255,169,64,0.12);
   --purple:#A855F7;--purple-dim:rgba(168,85,247,.12);
+  /* ── Marca Tecnoimagen SA ── */
+  --ti-blue:#0070f3;--ti-blue-deep:#0066cc;--ti-blue-light:#66b2ff;--ti-blue-soft:rgba(0,112,243,.08);
 }
 html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',system-ui,sans-serif;color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-.cl-app{max-width:1080px;margin:0 auto;padding:0 24px 80px}
+/* Halo azul de marca (sutil) para dar profundidad y personalidad */
+body{
+  background:
+    radial-gradient(circle at 12% 6%, rgba(0,112,243,.10), transparent 30%),
+    radial-gradient(circle at 90% 0%, rgba(0,112,243,.05), transparent 28%),
+    var(--bg);
+  background-attachment:fixed;
+  min-height:100vh;
+}
+.cl-app{max-width:1080px;margin:0 auto;padding:0 24px 40px}
 .cl-top{display:flex;align-items:center;justify-content:space-between;padding:20px 0;position:sticky;top:0;background:linear-gradient(var(--bg),var(--bg) 70%,transparent);z-index:20}
 .cl-logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px}
-.cl-logo .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(140deg,var(--green),#00b37e);display:flex;align-items:center;justify-content:center;color:#06231a;font-weight:800;font-size:12px}
+.cl-logo .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(140deg,var(--ti-blue),var(--ti-blue-deep));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px}
 .cl-logo small{display:block;font-size:10px;color:var(--muted);font-weight:500}
 .cl-top-right{display:flex;align-items:center;gap:10px}
 .cl-user{display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--border);border-radius:50px;padding:6px 8px 6px 14px;font-size:12px;color:var(--muted)}
@@ -29,7 +40,7 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
 .cl-sedes{display:flex;gap:10px;margin:6px 0 22px;flex-wrap:wrap}
 .cl-sede{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 16px;cursor:pointer;transition:.18s}
 .cl-sede:hover{border-color:var(--border2)}
-.cl-sede.active{border-color:var(--green);background:var(--green-dim)}
+.cl-sede.active{border-color:var(--ti-blue);background:var(--ti-blue-soft)}
 .cl-sede .dot{width:9px;height:9px;border-radius:50%}
 .cl-sede .nm{font-weight:600;font-size:13px}.cl-sede .st{font-size:11px;color:var(--muted)}
 .dot-green{background:var(--green)}.dot-amber{background:var(--amber)}.dot-red{background:var(--red)}.dot-muted{background:var(--muted)}
@@ -39,6 +50,8 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
 .cl-hero.s-warn .glow{background:radial-gradient(circle,var(--amber-dim),transparent 70%)}
 .cl-hero.s-down .glow{background:radial-gradient(circle,var(--red-dim),transparent 70%)}
 .cl-hero.s-load .glow{background:radial-gradient(circle,rgba(74,143,255,.12),transparent 70%)}
+/* Marca de agua sutil de Tecnoimagen en el hero */
+.cl-hero .wm{position:absolute;bottom:-24px;right:18px;font-size:120px;font-weight:800;letter-spacing:-.04em;line-height:1;color:rgba(0,112,243,.05);pointer-events:none;user-select:none;font-style:italic}
 .cl-hero .h-name{font-size:14px;color:var(--muted);font-weight:600;position:relative}
 .cl-hero .h-status{display:flex;align-items:center;gap:14px;margin:10px 0 6px;position:relative}
 .cl-hero .h-ball{width:18px;height:18px;border-radius:50%;flex-shrink:0;background:var(--muted)}
@@ -65,18 +78,46 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
 .cl-row:last-child{border-bottom:none}
 .cl-row .lbl{color:var(--muted)}.cl-row .val{font-weight:600}
 .cl-row .val.on{color:var(--green)}.cl-row .val.off{color:var(--red)}.cl-row .val.warn{color:var(--amber)}
-.cl-card.kpi{background:linear-gradient(160deg,var(--surface),rgba(168,85,247,.05));border-color:rgba(168,85,247,.2)}
+/* Tarjeta de uso clínico: acento azul de marca */
+.cl-card.kpi{background:linear-gradient(160deg,var(--surface),rgba(0,112,243,.06));border-color:rgba(0,112,243,.22)}
+.cl-card.kpi .c-title svg{color:var(--ti-blue-light)}
 .cl-card.kpi .big{font-size:36px;font-weight:800;letter-spacing:-.02em}
 .cl-card.kpi .big small{font-size:13px;color:var(--muted);font-weight:500}
 .cl-detail{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;margin-top:4px}
 .cl-detail .d-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .cl-detail .d-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:9px}
-.cl-detail .d-title .tag{font-size:10px;font-weight:700;background:var(--purple-dim);color:var(--purple);padding:3px 9px;border-radius:50px;letter-spacing:.05em}
+.cl-detail .d-title .tag{font-size:10px;font-weight:700;background:var(--ti-blue-soft);color:var(--ti-blue-light);padding:3px 9px;border-radius:50px;letter-spacing:.05em}
 .cl-detail .d-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
 .chartbox{height:240px;position:relative}
 .cl-loading{color:var(--muted);font-size:13px;padding:20px 0;display:flex;align-items:center;gap:10px}
-.cl-spin{display:inline-block;width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--green);border-radius:50%;animation:cl-rot .7s linear infinite}
+.cl-spin{display:inline-block;width:15px;height:15px;border:2px solid var(--border2);border-top-color:var(--ti-blue);border-radius:50%;animation:cl-rot .7s linear infinite}
 @keyframes cl-rot{to{transform:rotate(360deg)}}
+/* ── Footer de marca Tecnoimagen SA ── */
+.cl-foot{display:flex;align-items:center;gap:14px;margin-top:44px;padding:20px 22px;background:var(--surface);border:1px solid var(--border);border-radius:16px;border-left:3px solid var(--ti-blue)}
+.cl-foot-mark{width:38px;height:38px;border-radius:9px;background:linear-gradient(140deg,var(--ti-blue),var(--ti-blue-deep));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;flex-shrink:0;letter-spacing:-.02em}
+.cl-foot-logo{height:34px;width:auto;opacity:.92;flex-shrink:0}
+.cl-foot-txt{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
+.cl-foot-txt b{color:var(--text);font-weight:700}
+.cl-foot-txt small{font-size:11px;color:var(--muted2)}
+/* ── Controles del gráfico de KPIs (estilo producción) ── */
+.cl-kpi-ctrls{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.cl-kpi-ctrls-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.cl-seg{display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px}
+.cl-seg.full{width:100%}
+.cl-seg-btn{flex:1;border:none;background:none;color:var(--muted);font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:.15s}
+.cl-seg-btn:hover{color:var(--text)}
+.cl-seg-btn.active{background:var(--ti-blue);color:#fff}
+.cl-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:12px;border-radius:9px;padding:0 12px;height:36px;min-width:180px;cursor:pointer;flex:1}
+.cl-select:disabled{opacity:.5;cursor:not-allowed}
+.cl-select:focus{outline:none;border-color:var(--ti-blue)}
+#cl-kpi-chartbox{height:300px}
+.cl-kpi-loader{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(10,10,11,.45);z-index:5;border-radius:10px}
+.cl-kpi-loader.show{display:flex}
+/* ── Botón descargar gráfico ── */
+.cl-dl{display:inline-flex;align-items:center;gap:7px;background:var(--ti-blue-soft);border:1px solid rgba(0,112,243,.28);color:var(--ti-blue-light);font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:50px;cursor:pointer;transition:.15s}
+.cl-dl:hover{background:rgba(0,112,243,.16);color:#fff}
+.cl-dl:disabled{opacity:.4;cursor:not-allowed}
+.cl-dl svg{flex-shrink:0}
 .cl-gate{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}
 .cl-gate.show{display:flex}
 .cl-gate .box{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:34px;width:100%;max-width:420px}
@@ -84,8 +125,9 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
 .cl-gate h2{font-size:20px;font-weight:700;margin-bottom:6px}.cl-gate p{font-size:13px;color:var(--muted);margin-bottom:22px}
 .cl-gate label{font-size:12px;font-weight:600;display:block;margin-bottom:6px}
 .cl-gate input{width:100%;height:44px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:0 14px;color:var(--text);font-size:14px;font-family:inherit;margin-bottom:14px}
-.cl-gate input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-dim)}
-.cl-gate .save{width:100%;height:46px;background:var(--green);color:#06231a;border:none;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-gate input:focus{outline:none;border-color:var(--ti-blue);box-shadow:0 0 0 3px var(--ti-blue-soft)}
+.cl-gate .save{width:100%;height:46px;background:var(--ti-blue);color:#fff;border:none;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-gate .save:hover{background:var(--ti-blue-deep)}
 .cl-gate .err{color:var(--red);font-size:12px;margin-bottom:12px;display:none}
 .hidden{display:none!important}
 </style>
@@ -93,7 +135,7 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
 <body>
 <div class="cl-app" id="cl-app" style="visibility:hidden">
   <div class="cl-top">
-    <div class="cl-logo"><span class="mark">TM</span><div>TecnoMonitor<small>Monitoreo de tu infraestructura</small></div></div>
+    <div class="cl-logo"><span class="mark">TM</span><div>TecnoMonitor<small>por Tecnoimagen SA</small></div></div>
     <div class="cl-top-right">
       <div class="cl-user"><span id="cl-username">Cliente</span><span class="av" id="cl-avatar">··</span></div>
       <button class="cl-iconbtn" title="Cambiar contraseña" onclick="clAbrirGate(false)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
@@ -105,6 +147,7 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
 
   <div class="cl-hero s-load" id="cl-hero">
     <div class="glow"></div>
+    <div class="wm">TI</div>
     <div class="h-name" id="cl-h-name">—</div>
     <div class="h-status"><span class="h-ball"></span><span class="h-label" id="cl-h-label">Cargando…</span></div>
     <div class="h-meta" id="cl-h-meta">Consultando el estado de tu infraestructura…</div>
@@ -117,11 +160,52 @@ html,body{background:var(--bg);font-family:'Inter',-apple-system,'Segoe UI',syst
   <div class="cl-cards" id="cl-cards"></div>
 
   <div class="cl-detail hidden" id="cl-kpi">
-    <div class="d-head"><div class="d-title">Uso clínico <span class="tag">DETALLE</span></div></div>
-    <div class="d-sub">Estudios y órdenes registrados</div>
-    <div class="chartbox"><canvas id="cl-kpi-chart"></canvas></div>
+    <div class="d-head">
+      <div class="d-title">Uso clínico <span class="tag">DETALLE</span></div>
+      <button class="cl-dl" id="cl-kpi-dl" onclick="clKpiDescargar()" title="Descargar el gráfico visible (PNG)" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Descargar
+      </button>
+    </div>
+    <div class="d-sub">Evolución de órdenes (RIS) y estudios almacenados (PACS)</div>
+
+    <div class="cl-kpi-ctrls">
+      <div class="cl-seg full" id="cl-kpi-range">
+        <button class="cl-seg-btn active" onclick="clKpiSetRango(168,this)">7D</button>
+        <button class="cl-seg-btn" onclick="clKpiSetRango(720,this)">1M</button>
+        <button class="cl-seg-btn" onclick="clKpiSetRango(2160,this)">3M</button>
+        <button class="cl-seg-btn" onclick="clKpiSetRango(8760,this)">1A</button>
+        <button class="cl-seg-btn" onclick="clKpiSetRango(43800,this)">5A</button>
+      </div>
+      <div class="cl-kpi-ctrls-row">
+        <div class="cl-seg" id="cl-kpi-modo-seg">
+          <button class="cl-seg-btn active" onclick="clKpiSetModo('ris',this)">RIS</button>
+          <button class="cl-seg-btn" onclick="clKpiSetModo('pacs',this)">PACS</button>
+        </div>
+        <div class="cl-seg" id="cl-kpi-agrup-seg">
+          <button class="cl-seg-btn" onclick="clKpiSetAgrup('equipo',this)">Equipos</button>
+          <button class="cl-seg-btn" onclick="clKpiSetAgrup('modalidad',this)">Modalidad</button>
+          <button class="cl-seg-btn active" onclick="clKpiSetAgrup('total',this)">Total</button>
+        </div>
+        <select id="cl-kpi-nodo" class="cl-select" onchange="clKpiRender()"></select>
+      </div>
+    </div>
+
+    <div class="chartbox" id="cl-kpi-chartbox">
+      <div class="cl-kpi-loader" id="cl-kpi-loader"><span class="cl-spin"></span></div>
+      <canvas id="cl-kpi-chart"></canvas>
+    </div>
     <div id="cl-kpi-empty" class="cl-loading hidden">Sin datos de uso disponibles para este período.</div>
   </div>
+
+  <footer class="cl-foot">
+    <img src="/static/img/logo-tecnoimagen.png" alt="Tecnoimagen SA" class="cl-foot-logo" onerror="this.style.display='none';var m=document.getElementById('cl-foot-mark');if(m)m.style.display='flex';">
+    <span class="cl-foot-mark" id="cl-foot-mark" style="display:none">TI</span>
+    <div class="cl-foot-txt">
+      <span><b>TecnoMonitor</b> · una plataforma de <b>Tecnoimagen&nbsp;SA</b></span>
+      <small>Monitoreo y continuidad operativa de su infraestructura clínica</small>
+    </div>
+  </footer>
 </div>
 
 <!-- GATE cambio de contraseña -->
@@ -240,7 +324,7 @@ function clCargarHospital(sede, idx){
     var estado=clDerivarEstado(detalle, soft);
     clRenderHero(estado, detalle);
     clRenderCards(tabs, detalle, soft, estado);
-    if(tabs.kpis) clCargarKpis(hid); else document.getElementById('cl-kpi').classList.add('hidden');
+    if(tabs.kpis){ document.getElementById('cl-kpi').classList.remove('hidden'); clKpiInit(hid); } else { document.getElementById('cl-kpi').classList.add('hidden'); }
     // semáforo en selector
     if(typeof idx==='number'){ var d=document.querySelectorAll('#cl-sedes .cl-sede')[idx]; if(d){ var dot=d.querySelector('.dot'); var st=d.querySelector('.st'); dot.className='dot '+({ok:'dot-green',warn:'dot-amber',down:'dot-red'}[estado.nivel]||'dot-muted'); st.textContent=estado.label; } }
   });
@@ -248,6 +332,26 @@ function clCargarHospital(sede, idx){
 function clJson(r){ if(!r||!r.ok) throw new Error('http '+(r&&r.status)); return r.json(); }
 
 // ── Derivación del estado (defensiva) ──
+// Aplana los canales de Mirth: soft.mirth = { Instancia: [ {channel,status,...} ] }
+function clMirthCanales(soft){
+  if(!soft) return [];
+  var out=[], m=soft.mirth;
+  if(m && typeof m==='object' && !Array.isArray(m)){
+    Object.keys(m).forEach(function(inst){ if(Array.isArray(m[inst])) m[inst].forEach(function(c){ out.push(c); }); });
+  } else if(Array.isArray(m)){ out=m.slice(); }
+  // fallback a formatos antiguos
+  if(!out.length){
+    var alt=soft.channels||soft.canales;
+    if(Array.isArray(alt)) out=alt;
+    else if(alt && typeof alt==='object') out=Object.values(alt);
+  }
+  return out;
+}
+function clCanalCaido(c){
+  var cs=(c&&(c.status||c.state||c.estado)||'').toString().toLowerCase();
+  return !!cs && cs!=='started' && cs!=='running';
+}
+
 function clDerivarEstado(d, soft){
   if(!d || d.error){ return {nivel:'down', label:'Fuera de servicio', detalle:'No estamos recibiendo datos del hospital.'}; }
   var problemas=[];
@@ -265,11 +369,8 @@ function clDerivarEstado(d, soft){
   });
   // Mirth
   if(soft){
-    var canales = soft.channels || soft.canales || (Array.isArray(soft)?soft:[]);
-    var arr = Array.isArray(canales) ? canales : Object.values(canales||{});
-    arr.forEach(function(c){
-      var cs=(c&&(c.state||c.estado)||'').toString().toLowerCase();
-      if(cs && cs!=='started' && cs!=='running'){ problemas.push('Integración con un canal '+(c.state||c.estado)); }
+    clMirthCanales(soft).forEach(function(c){
+      if(clCanalCaido(c)){ problemas.push('Canal de integración '+(c.channel||'')+' '+(c.status||c.state||c.estado)); }
     });
   }
   if(problemas.length) return {nivel:'warn', label:'Con incidencias', detalle:problemas[0]};
@@ -300,12 +401,12 @@ function clRenderCards(tabs, d, soft, estado){
   if(tabs.software){
     var integ='Sin datos', cls='off', soState={c:'muted',t:'Sin datos'};
     if(soft){
-      var canales=soft.channels||soft.canales||(Array.isArray(soft)?soft:[]);
-      var arr=Array.isArray(canales)?canales:Object.values(canales||{});
-      var caidos=arr.filter(function(c){var cs=(c&&(c.state||c.estado)||'').toString().toLowerCase();return cs && cs!=='started' && cs!=='running';}).length;
-      if(arr.length===0){ integ='Sin datos'; cls='off'; soState={c:'muted',t:'Sin datos'}; }
-      else if(caidos>0){ integ='Offline'; cls='off'; soState={c:'warn',t:'Atención'}; }
-      else { integ='Online'; cls='on'; soState={c:'ok',t:'Operativos'}; }
+      var canales=clMirthCanales(soft);
+      var caidos=canales.filter(clCanalCaido).length;
+      var activos=canales.length-caidos;
+      if(canales.length===0){ integ='Sin datos'; cls='off'; soState={c:'muted',t:'Sin datos'}; }
+      else if(caidos>0){ integ=activos+' de '+canales.length+' activos'; cls='warn'; soState={c:'warn',t:'Atención'}; }
+      else { integ='Online · '+canales.length+' canales'; cls='on'; soState={c:'ok',t:'Operativos'}; }
     }
     html+='<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('soft')+'Sistemas</div><span class="cl-state '+soState.c+'"><i></i>'+soState.t+'</span></div>'
       +clRowVal('Integración (Mirth)', integ, cls)
@@ -326,47 +427,228 @@ function clIco(t){
   return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
 }
 
-// ── KPIs (defensivo: arma una serie temporal de lo que encuentre) ──
-function clCargarKpis(hid){
-  document.getElementById('cl-kpi').classList.remove('hidden');
-  clFetch('/api/hospital/'+encodeURIComponent(hid)+'/kpi-history')
+// ══════════════════════════════════════════════════════════════
+//  MOTOR DE KPIs (paridad con producción)
+//  Rango temporal (7D/1M/3M/1A/5A) · RIS/PACS · Equipos/Modalidad/Total
+// ══════════════════════════════════════════════════════════════
+var CL_EXCLUDED_AETS=['CLIENT','WADO','PACS'], CL_EXCLUDED_MODS=['DOC'];
+var clKpiHid=null, clKpiData=[], clKpiRange=168, clKpiModo='ris', clKpiAgrup='total';
+
+// Se llama al cargar un hospital. Resetea controles a defaults y trae el rango 7D.
+function clKpiInit(hid){
+  clKpiHid=hid;
+  clKpiRange=168; clKpiModo='ris'; clKpiAgrup='total';
+  clSegActivar('cl-kpi-range',0);      // 7D
+  clSegActivar('cl-kpi-modo-seg',0);   // RIS
+  clSegActivar('cl-kpi-agrup-seg',2);  // Total
+  clKpiCargar();
+}
+function clSegActivar(segId,idx){
+  var seg=document.getElementById(segId); if(!seg) return;
+  var btns=seg.querySelectorAll('.cl-seg-btn');
+  btns.forEach(function(b){ b.classList.remove('active'); });
+  if(btns[idx]) btns[idx].classList.add('active');
+}
+function clSegMarcar(btn){ var seg=btn.parentNode; seg.querySelectorAll('.cl-seg-btn').forEach(function(b){b.classList.remove('active');}); btn.classList.add('active'); }
+
+function clKpiSetRango(horas,btn){ clKpiRange=horas; clSegMarcar(btn); clKpiCargar(); }
+function clKpiSetModo(modo,btn){ clKpiModo=modo; clSegMarcar(btn); clKpiLlenarNodos(); clKpiRender(); }
+function clKpiSetAgrup(agr,btn){ clKpiAgrup=agr; clSegMarcar(btn); clKpiLlenarNodos(); clKpiRender(); }
+
+function clKpiCargar(){
+  var hid=clKpiHid; if(!hid) return;
+  var loader=document.getElementById('cl-kpi-loader'); if(loader) loader.classList.add('show');
+  clFetch('/api/hospital/'+encodeURIComponent(hid)+'/kpi-history?horas='+clKpiRange)
     .then(function(r){ if(!r.ok) throw new Error('http'); return r.json(); })
-    .then(function(data){ clRenderKpis(data); })
-    .catch(function(){ clKpiVacio(); });
+    .then(function(data){
+      if(clKpiHid!==hid) return;            // el usuario cambió de sede mientras cargaba
+      clKpiData=Array.isArray(data)?data:[];
+      clKpiActualizarTotalCard();
+      clKpiLlenarNodos();
+      clKpiRender();
+    })
+    .catch(function(){ clKpiData=[]; clKpiActualizarTotalCard(); clKpiLlenarNodos(); clKpiRender(); })
+    .finally(function(){ if(clKpiHid===hid && loader) loader.classList.remove('show'); });
 }
-function clKpiVacio(){
-  var card=document.getElementById('cl-kpi-cardloading'); if(card){ card.textContent='Sin datos disponibles'; }
-  var hoy=document.getElementById('cl-kpi-hoy'); if(hoy){ hoy.innerHTML='—<small> sin datos</small>'; }
-  document.getElementById('cl-kpi-empty').classList.remove('hidden');
+
+// Tarjeta-resumen del grid (total del período)
+function clKpiActualizarTotalCard(){
+  var card=document.getElementById('cl-kpi-cardloading'); if(card) card.remove();
+  var total=0;
+  clKpiData.forEach(function(d){
+    var m=d.application_metrics||{};
+    (m.ris ||[]).forEach(function(it){ if(CL_EXCLUDED_AETS.indexOf(it.aet||it.equipo)>=0||CL_EXCLUDED_MODS.indexOf(it.mod)>=0) return; total+=(+it.ejecutados||0); });
+    (m.pacs||[]).forEach(function(it){ if(CL_EXCLUDED_AETS.indexOf(it.aet)>=0||CL_EXCLUDED_MODS.indexOf(it.mod)>=0) return; total+=(+it.almacenados||0); });
+  });
+  var hoy=document.getElementById('cl-kpi-hoy');
+  if(hoy){ hoy.innerHTML = total>0 ? total.toLocaleString('es-AR')+'<small> estudios (período)</small>' : '—<small> sin datos</small>'; }
 }
-function clRenderKpis(data){
-  // Buscamos una serie {label,total} de forma tolerante a distintas formas de respuesta.
-  var serie=[];
-  try{
-    var rows = Array.isArray(data) ? data : (data.history || data.data || data.series || []);
-    if(Array.isArray(rows) && rows.length){
-      serie = rows.map(function(r){
-        var label = r.fecha || r.date || r.periodo || r.label || '';
-        var total = r.total!=null ? r.total :
-                    (r.estudios!=null ? r.estudios :
-                    (r.ejecutados!=null ? r.ejecutados :
-                    (typeof r==='number'? r : 0)));
-        if(total && typeof total==='object'){ total=Object.values(total).reduce(function(a,b){return a+(+b||0);},0); }
-        return {label:String(label), total:+total||0};
+
+// Poblar el selector de nodo según modo + agrupación (con caso especial "Total")
+function clKpiLlenarNodos(){
+  var sel=document.getElementById('cl-kpi-nodo'); if(!sel) return;
+  if(clKpiAgrup==='total'){
+    sel.innerHTML='<option value="todos">Resumen general (todos)</option>';
+    sel.disabled=true; return;
+  }
+  sel.disabled=false;
+  var prev=sel.value; sel.innerHTML='';
+  var opciones=new Set();
+  clKpiData.forEach(function(d){
+    var m=d.application_metrics; if(!m) return;
+    var list=(clKpiModo==='ris')?m.ris:m.pacs;
+    if(!Array.isArray(list)) return;
+    list.forEach(function(it){
+      if(CL_EXCLUDED_AETS.indexOf(it.aet||it.equipo)>=0||CL_EXCLUDED_MODS.indexOf(it.mod)>=0) return;
+      if(clKpiAgrup==='equipo'){ var k=(clKpiModo==='ris')?it.equipo:it.aet; if(k) opciones.add(k); }
+      else if(clKpiAgrup==='modalidad' && it.mod){ opciones.add(it.mod); }
+    });
+  });
+  if(opciones.size===0){ sel.add(new Option('Sin datos','')); sel.disabled=true; return; }
+  opciones.forEach(function(o){ sel.add(new Option(o,o)); });
+  var has=false; for(var i=0;i<sel.options.length;i++){ if(sel.options[i].value===prev){ has=true; break; } }
+  if(has) sel.value=prev; else sel.selectedIndex=0;
+}
+
+// Motor de agregación + dibujo (time bucketing según rango)
+function clKpiRender(){
+  var canvas=document.getElementById('cl-kpi-chart'); if(!canvas) return;
+  var modo=clKpiModo, agr=clKpiAgrup;
+  var selNodo=document.getElementById('cl-kpi-nodo');
+  var nodo=selNodo?selNodo.value:'todos';
+  var empty=document.getElementById('cl-kpi-empty');
+
+  if(!nodo || !clKpiData.length){
+    if(clChart){ clChart.destroy(); clChart=null; }
+    if(empty) empty.classList.remove('hidden');
+    clDlToggle(false);
+    return;
+  }
+
+  var agg=new Map();
+  clKpiData.forEach(function(d){
+    var m=d.application_metrics||{};
+    var raw=m.start_time_extraction||d.timestamp||d.created_at;
+    var dt=new Date(raw||new Date());
+    var key='', label='';
+    if(clKpiRange<=168){                    // 7D → sin agrupar (hora)
+      key=dt.getTime().toString();
+      var t=dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      var ds=dt.toLocaleDateString([],{day:'2-digit',month:'2-digit'});
+      label=(clKpiRange>24)?(ds+' '+t):t;
+    } else if(clKpiRange<=2160){            // 1M/3M → por día
+      var d0=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate());
+      key=d0.getTime().toString(); label=d0.toLocaleDateString([],{day:'2-digit',month:'2-digit'});
+    } else if(clKpiRange<=8760){            // 1A → por semana (lunes)
+      var day=dt.getDay()||7; var mon=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()-day+1);
+      key=mon.getTime().toString(); label=mon.toLocaleDateString([],{day:'2-digit',month:'2-digit',year:'2-digit'});
+    } else {                                // 5A → por mes
+      var ms=new Date(dt.getFullYear(),dt.getMonth(),1);
+      key=ms.getTime().toString(); label=ms.toLocaleDateString([],{month:'short',year:'numeric'}).toUpperCase();
+    }
+    if(!agg.has(key)) agg.set(key,{label:label,ts:parseInt(key),sCit:0,sAdm:0,sEje:0,sImg:0,sBor:0,sDef:0,sSus:0,sAlm:0,hasData:false});
+    var b=agg.get(key);
+    var list=(modo==='ris')?m.ris:m.pacs;
+    if(Array.isArray(list)){
+      list.forEach(function(it){
+        if(CL_EXCLUDED_AETS.indexOf(it.aet||it.equipo)>=0||CL_EXCLUDED_MODS.indexOf(it.mod)>=0) return;
+        var match=(agr==='total')||(agr==='equipo'&&(it.equipo===nodo||it.aet===nodo))||(agr==='modalidad'&&it.mod===nodo);
+        if(!match) return;
+        if(modo==='ris'){
+          b.sCit+=(+it.citados||0); b.sAdm+=(+it.admitidos||0); b.sEje+=(+it.ejecutados||0);
+          b.sImg+=(+it.con_imagen||0); b.sBor+=(+it.borradores||0); b.sDef+=(+it.definitivos||0); b.sSus+=(+it.suspendidos||0);
+        } else { b.sAlm+=(+it.almacenados||0); }
+        b.hasData=true;
       });
     }
-  }catch(e){ serie=[]; }
-  if(!serie.length){ clKpiVacio(); return; }
-  var totalPeriodo=serie.reduce(function(a,b){return a+b.total;},0);
-  var card=document.getElementById('cl-kpi-cardloading'); if(card) card.remove();
-  var hoy=document.getElementById('cl-kpi-hoy'); if(hoy){ hoy.innerHTML=totalPeriodo.toLocaleString('es-AR')+'<small> estudios (período)</small>'; }
-  document.getElementById('cl-kpi-empty').classList.add('hidden');
-  var ctx=document.getElementById('cl-kpi-chart');
+  });
+
+  var buckets=Array.from(agg.values()).sort(function(a,b){return a.ts-b.ts;});
+  var labels=[],dCit=[],dAdm=[],dEje=[],dImg=[],dBor=[],dDef=[],dSus=[],dAlm=[];
+  buckets.forEach(function(b){
+    labels.push(b.label);
+    dCit.push(b.hasData?b.sCit:0); dAdm.push(b.hasData?b.sAdm:0); dEje.push(b.hasData?b.sEje:0);
+    dImg.push(b.hasData?b.sImg:0); dBor.push(b.hasData?b.sBor:0); dDef.push(b.hasData?b.sDef:0);
+    dSus.push(b.hasData?b.sSus:0); dAlm.push(b.hasData?b.sAlm:0);
+  });
+
+  var totalPeriodo=[].concat(dCit,dAdm,dEje,dImg,dBor,dDef,dSus,dAlm).reduce(function(a,b){return a+b;},0);
+  if(!labels.length || totalPeriodo===0){
+    if(clChart){ clChart.destroy(); clChart=null; }
+    if(empty) empty.classList.remove('hidden');
+    clDlToggle(false);
+    return;
+  }
+  if(empty) empty.classList.add('hidden');
+
+  var datasets=(modo==='ris')?[
+    {label:'Citados',    data:dCit,backgroundColor:'#cce5ff',stack:'s0'},
+    {label:'Admitidos',  data:dAdm,backgroundColor:'#99ccff',stack:'s0'},
+    {label:'Ejecutados', data:dEje,backgroundColor:'#66b2ff',stack:'s0'},
+    {label:'Asociados',  data:dImg,backgroundColor:'#3399ff',stack:'s0'},
+    {label:'Borradores', data:dBor,backgroundColor:'#0080ff',stack:'s0'},
+    {label:'Definitivos',data:dDef,backgroundColor:'#0066cc',stack:'s0'},
+    {label:'Suspendidos',data:dSus,backgroundColor:'#004c99',stack:'s0'}
+  ]:[
+    {label:'Almacenados',data:dAlm,backgroundColor:'#3399ff',borderRadius:4}
+  ];
+
+  // Plugin: marca con un "0" sutil las columnas sin actividad
+  var zeroPlugin={
+    id:'clZero',
+    afterDatasetsDraw:function(chart){
+      var ctx=chart.ctx, y=chart.scales.y;
+      ctx.save(); ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillStyle='rgba(107,107,122,0.7)'; ctx.font='bold 11px sans-serif';
+      var meta=chart.getDatasetMeta(0); if(!meta||!meta.data){ ctx.restore(); return; }
+      for(var i=0;i<chart.data.labels.length;i++){
+        var tot=0; for(var j=0;j<chart.data.datasets.length;j++){ tot+=chart.data.datasets[j].data[i]||0; }
+        if(tot===0 && meta.data[i]){ ctx.fillText('0', meta.data[i].x, y.getPixelForValue(0)-2); }
+      }
+      ctx.restore();
+    }
+  };
+
+  var ctx=canvas.getContext('2d');
   if(clChart){ clChart.destroy(); }
   if(typeof Chart==='undefined') return;
-  clChart=new Chart(ctx,{type:'bar',data:{labels:serie.map(function(x){return x.label;}),datasets:[{data:serie.map(function(x){return x.total;}),backgroundColor:'#A855F7',borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#6B6B7A',maxTicksLimit:12}},y:{grid:{color:'#232327'},ticks:{color:'#6B6B7A'}}}}});
+  clChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels:labels,datasets:datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{intersect:false,mode:'index'},
+      scales:{
+        x:{stacked:true,grid:{display:false},ticks:{color:'#6B6B7A',maxTicksLimit:14}},
+        y:{stacked:true,beginAtZero:true,grid:{color:'#232327'},ticks:{color:'#6B6B7A',precision:0}}
+      },
+      plugins:{legend:{position:'top',labels:{color:'#9B9BA8',boxWidth:12,usePointStyle:true,font:{size:11}}}},
+      animation:{duration:400}
+    },
+    plugins:[zeroPlugin]
+  });
+  clDlToggle(true);
 }
+
+// ── Descarga del gráfico visible como PNG ──
+function clDlToggle(on){ var b=document.getElementById('cl-kpi-dl'); if(b) b.disabled=!on; }
+function clKpiDescargar(){
+  if(!clChart) return;
+  var canvas=document.getElementById('cl-kpi-chart'); if(!canvas) return;
+  // El canvas de Chart.js es transparente: lo componemos sobre fondo oscuro para que sea legible
+  var tmp=document.createElement('canvas');
+  tmp.width=canvas.width; tmp.height=canvas.height;
+  var tctx=tmp.getContext('2d');
+  tctx.fillStyle='#0A0A0B'; tctx.fillRect(0,0,tmp.width,tmp.height);
+  tctx.drawImage(canvas,0,0);
+  var rangoTxt={168:'7D',720:'1M',2160:'3M',8760:'1A',43800:'5A'}[clKpiRange]||(clKpiRange+'h');
+  var nombre='uso-clinico_'+(clKpiHid||'hospital')+'_'+clKpiModo.toUpperCase()+'_'+rangoTxt+'.png';
+  var link=document.createElement('a');
+  link.href=tmp.toDataURL('image/png');
+  link.download=nombre;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+}
+
 </script>
 </body>
 </html>

@@ -176,6 +176,7 @@ class ConfigRequest(BaseModel):
     enable_fans: bool      
     enable_power: bool     
     enable_raid: bool     
+    enable_network_latency: bool
 
     global_alert_responsible_email: str 
 
@@ -657,6 +658,7 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "enable_power": g("enable_power", True, is_bool=True),
         "enable_raid": g("enable_raid", True, is_bool=True),
         "global_alert_responsible_email": g("global_alert_responsible_email", ""),
+        "enable_network_latency": g("enable_network_latency", True, is_bool=True),
         
         # --- PARÁMETROS KPI ---
         "kpi_execution_time": g("kpi_execution_time", "08:00"),
@@ -695,6 +697,7 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("enable_fans", cfg.enable_fans)
     s("enable_power", cfg.enable_power)
     s("enable_raid", cfg.enable_raid)
+    s("enable_network_latency", cfg.enable_network_latency)
     s("kpi_execution_time", cfg.kpi_execution_time)
     s("kpi_rad_alert_enabled", cfg.kpi_rad_alert_enabled)
     s("kpi_rad_threshold_hours", cfg.kpi_rad_threshold_hours)
