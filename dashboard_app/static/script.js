@@ -375,6 +375,7 @@ async function cargarConfigUI() {
         document.getElementById('check-fans').checked = data.enable_fans;
         document.getElementById('check-power').checked = data.enable_power;
         document.getElementById('check-raid').checked = data.enable_raid;
+        document.getElementById('check-network-latency').checked = data.enable_network_latency;
 
         // --- CAMPOS KPI ---
         const elTime = document.getElementById('kpi-execution-time');
@@ -431,6 +432,7 @@ async function guardarConfig() {
         enable_fans: document.getElementById('check-fans').checked,
         enable_power: document.getElementById('check-power').checked,
         enable_raid: document.getElementById('check-raid').checked,
+        enable_network_latency: document.getElementById('check-network-latency').checked, 
 
         kpi_execution_time: document.getElementById('kpi-execution-time').value || "08:00",
         kpi_rad_alert_enabled: document.getElementById('kpi-rad-enabled').checked,
