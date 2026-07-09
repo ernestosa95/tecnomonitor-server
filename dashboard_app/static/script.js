@@ -1731,45 +1731,43 @@ const historialIAMock = [
 
 let tipoInformeSeleccionado = 'cliente'; // Estado local del modal
 
+// ============================================================
+// INFORMES IA — unificación del historial (reemplaza renderizarHistorial)
+// ============================================================
+
 async function renderizarHistorial() {
     const tbody = document.getElementById('tabla-historial-body');
     if (!tbody) return;
-    
+
     try {
-        const response = await authFetch('/api/informes/historial');
-        const historial = await response.json();
-        
-        if (historial.length === 0) {
+        const [resPdf, resIA] = await Promise.all([
+            authFetch('/api/informes/historial'),
+            authFetch('/api/informes-ia/reportes'),
+        ]);
+
+        const historialPdf = resPdf.ok ? await resPdf.json() : [];
+        const historialIA = resIA.ok ? await resIA.json() : [];
+
+        const filasPdf = historialPdf.map(rep => ({
+            _sortTs: _parseFechaDDMMYYYY(rep.fecha_generacion),
+            html: _renderFilaPdf(rep),
+        }));
+
+        const filasIA = historialIA.map(rep => ({
+            _sortTs: new Date(rep.creado_en).getTime() || 0,
+            html: _renderFilaIA(rep),
+        }));
+
+        const filas = filasPdf.concat(filasIA)
+            .sort((a, b) => b._sortTs - a._sortTs)
+            .slice(0, 30); // tope razonable, igual criterio que el límite de 15 del backend clásico
+
+        if (filas.length === 0) {
             tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px; color: #95a5a6;">No hay reportes generados recientemente.</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = historial.map(rep => {
-            let colorEstado = rep.estado === 'Completado' ? '#2ecc71' : (rep.estado === 'Error' ? '#e74c3c' : '#f39c12');
-            let bgEstado = rep.estado === 'Completado' ? '#eafaf1' : (rep.estado === 'Error' ? '#fdedec' : '#fef5e7');
-            
-            let botonAccion = rep.asana_url 
-                ? `<a href="${rep.asana_url}" target="_blank" style="background: #3498db; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9em; display: inline-block;">📄 Ver</a>`
-                : `<span style="background: #bdc3c7; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; display: inline-block; cursor: not-allowed;">⬇️ Local</span>`;
-
-            return `
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 15px 10px;">
-                    <span style="background: #ecf0f1; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #2c3e50;">${rep.hospital_id}</span>
-                </td>
-                <td style="padding: 15px 10px; color: #34495e;">📄 ${rep.tipo_reporte}<br><small style="color: #7f8c8d;">${rep.periodo}</small></td>
-                <td style="padding: 15px 10px; color: #7f8c8d;">${rep.fecha_generacion}</td>
-                <td style="padding: 15px 10px;">
-                    <span style="background: ${bgEstado}; color: ${colorEstado}; padding: 4px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
-                        ${rep.estado}
-                    </span>
-                </td>
-                <td style="padding: 15px 10px; text-align: center;">
-                    ${botonAccion}
-                </td>
-            </tr>
-            `;
-        }).join('');
+        tbody.innerHTML = filas.map(f => f.html).join('');
     } catch (error) {
         console.error("Error al cargar historial:", error);
     }
@@ -1777,6 +1775,118 @@ async function renderizarHistorial() {
 
 // Ejecutar al cargar la página
 document.addEventListener('DOMContentLoaded', renderizarHistorial);
+
+// --- Helpers de formato ---
+
+function _parseFechaDDMMYYYY(s) {
+    // Entrada tipo "08/07/2026 10:44" (formato que ya devuelve el backend clásico)
+    if (!s) return 0;
+    const [datePart, timePart] = s.split(' ');
+    const [d, m, y] = (datePart || '').split('/');
+    if (!d || !m || !y) return 0;
+    return new Date(`${y}-${m}-${d}T${timePart || '00:00'}`).getTime() || 0;
+}
+
+function _formatearFechaISO(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// --- Fila: flujo PDF clásico (idéntica a la lógica original, sin cambios) ---
+
+function _renderFilaPdf(rep) {
+    let colorEstado = rep.estado === 'Completado' ? '#2ecc71' : (rep.estado === 'Error' ? '#e74c3c' : '#f39c12');
+    let bgEstado = rep.estado === 'Completado' ? '#eafaf1' : (rep.estado === 'Error' ? '#fdedec' : '#fef5e7');
+
+    let botonAccion = rep.asana_url
+        ? `<a href="${rep.asana_url}" target="_blank" style="background: #3498db; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9em; display: inline-block;">📄 Ver</a>`
+        : `<span style="background: #bdc3c7; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; display: inline-block; cursor: not-allowed;">⬇️ Local</span>`;
+
+    return `
+    <tr style="border-bottom: 1px solid #eee;">
+        <td style="padding: 15px 10px;">
+            <span style="background: #ecf0f1; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #2c3e50;">${rep.hospital_id}</span>
+        </td>
+        <td style="padding: 15px 10px; color: #34495e;">📄 ${rep.tipo_reporte}<br><small style="color: #7f8c8d;">${rep.periodo}</small></td>
+        <td style="padding: 15px 10px; color: #7f8c8d;">${rep.fecha_generacion}</td>
+        <td style="padding: 15px 10px;">
+            <span style="background: ${bgEstado}; color: ${colorEstado}; padding: 4px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                ${rep.estado}
+            </span>
+        </td>
+        <td style="padding: 15px 10px; text-align: center;">
+            ${botonAccion}
+        </td>
+    </tr>`;
+}
+
+// --- Fila: informes IA (nuevo) ---
+
+const IA_ESTADO_META = {
+    iniciado:     { label: 'Encolado',        color: '#f39c12', bg: '#fef5e7' },
+    en_espera:    { label: 'Encolado',        color: '#f39c12', bg: '#fef5e7' },
+    en_proceso:   { label: 'Procesando...',   color: '#3498db', bg: '#ebf5fb' },
+    reintentando: { label: 'Reintentando...', color: '#3498db', bg: '#ebf5fb' },
+    finalizado:   { label: 'Borrador listo',  color: '#f39c12', bg: '#fef5e7' },
+    aprobado:     { label: 'Aprobado',        color: '#2ecc71', bg: '#eafaf1' },
+    error:        { label: 'Error',           color: '#e74c3c', bg: '#fdedec' },
+};
+
+function _renderFilaIA(rep) {
+    const meta = IA_ESTADO_META[rep.estado] || { label: rep.estado, color: '#7f8c8d', bg: '#f8f9fa' };
+    const p = rep.peticion || {};
+    const periodoLabel = `${(p.fecha_inicio || '').slice(0, 10)} → ${(p.fecha_fin || '').slice(0, 10)}`;
+    const tipoLabel = p.tipo_reporte === 'cliente' ? 'Análisis IA (Cliente)' : 'Análisis IA (Interno)';
+    const fechaGenLabel = _formatearFechaISO(rep.creado_en);
+    const hid = p.hospital_id || '—';
+
+    // Escapamos comillas simples para poder pasarlas como argumento de string en el onclick
+    const hidAttr = hid.replace(/'/g, "\\'");
+    const periodoAttr = periodoLabel.replace(/'/g, "\\'");
+
+    let botonAccion;
+    if (rep.estado === 'aprobado') {
+        botonAccion = `<a href="/api/informes-ia/reportes/${rep.report_id}/pdf" style="background: #3498db; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9em; display: inline-block;">📄 Descargar</a>`;
+    } else if (rep.estado === 'finalizado') {
+        botonAccion = `<button onclick="reabrirSeguimientoIA('${rep.report_id}','${hidAttr}','${periodoAttr}')" style="background: #9b59b6; color: white; border:none; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; cursor:pointer;">✍️ Revisar</button>`;
+    } else if (rep.estado === 'error') {
+        botonAccion = `<button onclick="reabrirSeguimientoIA('${rep.report_id}','${hidAttr}','${periodoAttr}')" style="background: #e74c3c; color: white; border:none; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; cursor:pointer;">Ver error</button>`;
+    } else {
+        botonAccion = `<button onclick="reabrirSeguimientoIA('${rep.report_id}','${hidAttr}','${periodoAttr}')" style="background: #bdc3c7; color: white; border:none; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; cursor:pointer;">Ver estado</button>`;
+    }
+
+    return `
+    <tr style="border-bottom: 1px solid #eee;">
+        <td style="padding: 15px 10px;">
+            <span style="background: #ecf0f1; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #2c3e50;">${hid}</span>
+        </td>
+        <td style="padding: 15px 10px; color: #34495e;">✨ ${tipoLabel}<br><small style="color: #7f8c8d;">${periodoLabel}</small></td>
+        <td style="padding: 15px 10px; color: #7f8c8d;">${fechaGenLabel}</td>
+        <td style="padding: 15px 10px;">
+            <span style="background: ${meta.bg}; color: ${meta.color}; padding: 4px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                ${meta.label}
+            </span>
+        </td>
+        <td style="padding: 15px 10px; text-align: center;">
+            ${botonAccion}
+        </td>
+    </tr>`;
+}
+
+// Reabrir el modal de seguimiento desde el historial, para un reporte YA EXISTENTE
+// (a diferencia de abrirModalSeguimientoIA, que es para uno recién creado).
+function reabrirSeguimientoIA(reportId, hospitalId, periodoLabel) {
+    iaSeguimiento.reportId = reportId;
+    iaSeguimiento.ultimoJson = null;
+    document.getElementById('seg-ia-hospital').innerText = hospitalId || '---';
+    document.getElementById('seg-ia-periodo').innerText = periodoLabel || '---';
+    renderEstadoSeguimientoIA('en_espera', null);
+    document.getElementById('modal-ia-seguimiento').style.display = 'flex';
+    pollEstadoIA();
+}
 
 // --- AGREGAR ESTA NUEVA FUNCIÓN ---
 function abrirReporteDemo(idHospital) {
@@ -2204,13 +2314,346 @@ function cerrarModalIA() {
     document.getElementById('modal-ia-options').style.display = 'none';
 }
 
-// 3. EJECUCIÓN FINAL
-function ejecutarIA() {
-    // Aquí iría la llamada al backend real
-    alert("🚧 Funcionalidad en desarrollo\n\nEl motor de IA está procesando los parámetros seleccionados.");
-    
-    // Simular cierre
-    cerrarModalIA();
+// ============================================================
+// INFORMES IA — Fase 3: cableado real (reemplaza el mockup de ejecutarIA)
+// ============================================================
+
+// Estado en memoria del informe que se está siguiendo en el modal de seguimiento
+let iaSeguimiento = {
+    reportId: null,
+    pollTimer: null,
+    ultimoJson: null,
+};
+
+// 3. EJECUCIÓN FINAL (REEMPLAZA al alert() de mockup)
+async function ejecutarIA() {
+    const rawIdInput = document.getElementById('ia-input-id').value.trim();
+    const id = rawIdInput.split(' - ')[0].toUpperCase();
+    const f1 = document.getElementById('ia-date-from').value; // yyyy-mm-dd
+    const f2 = document.getElementById('ia-date-to').value;
+
+    if (!id || !f1 || !f2) {
+        alert("⚠️ Faltan datos de hospital o período.");
+        return;
+    }
+
+    const payload = {
+        hospital_id: id,
+        fecha_inicio: `${f1} 00:00:00`,
+        fecha_fin: `${f2} 00:00:00`,
+        tipo_reporte: tipoInformeSeleccionado, // 'cliente' | 'interno', seteado por seleccionarTipoInforme()
+    };
+
+    const btn = document.querySelector('#modal-ia-options .btn-action:last-child');
+    const btnTextoOriginal = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Enviando...'; }
+
+    try {
+        const res = await authFetch('/api/informes-ia/reportes', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert("Error al solicitar el informe: " + (err.detail || `HTTP ${res.status}`));
+            return;
+        }
+
+        const data = await res.json();
+        cerrarModalIA();
+        abrirModalSeguimientoIA(data.report_id, id, f1, f2);
+        renderizarHistorial();
+
+    } catch (e) {
+        console.error("Error solicitando informe IA:", e);
+        alert("Error de conexión al solicitar el informe.");
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = btnTextoOriginal; }
+    }
+}
+
+// ============================================================
+// MODAL DE SEGUIMIENTO (nuevo — no existía antes)
+// ============================================================
+
+function abrirModalSeguimientoIA(reportId, hospitalId, f1, f2) {
+    iaSeguimiento.reportId = reportId;
+    iaSeguimiento.ultimoJson = null;
+
+    document.getElementById('seg-ia-hospital').innerText = hospitalId;
+    document.getElementById('seg-ia-periodo').innerText = `${formatoFechaSimple(f1)} al ${formatoFechaSimple(f2)}`;
+    renderEstadoSeguimientoIA('en_espera', null);
+    document.getElementById('modal-ia-seguimiento').style.display = 'flex';
+
+    pollEstadoIA();
+}
+
+function cerrarModalSeguimientoIA() {
+    if (iaSeguimiento.pollTimer) {
+        clearTimeout(iaSeguimiento.pollTimer);
+        iaSeguimiento.pollTimer = null;
+    }
+    document.getElementById('modal-ia-seguimiento').style.display = 'none';
+    iaSeguimiento.reportId = null;
+    iaSeguimiento.ultimoJson = null;
+    // Refresca la tabla de historial si existe (mismo patrón que el flujo PDF clásico)
+    if (typeof renderizarHistorial === 'function') renderizarHistorial();
+}
+
+async function pollEstadoIA() {
+    if (!iaSeguimiento.reportId) return;
+
+    try {
+        const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/estado`);
+        if (!res.ok) {
+            renderEstadoSeguimientoIA('error', null, `No se pudo consultar el estado (HTTP ${res.status})`);
+            return;
+        }
+        const data = await res.json();
+        const estado = data.estado;
+
+        if (estado === 'finalizado') {
+            const jsonRes = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/json`);
+            if (jsonRes.ok) {
+                const jsonData = await jsonRes.json();
+                iaSeguimiento.ultimoJson = jsonData;
+                renderEstadoSeguimientoIA('finalizado', jsonData);
+            } else {
+                renderEstadoSeguimientoIA('error', null, 'El informe terminó pero no se pudo cargar el borrador.');
+            }
+            return; // No seguimos poloneando: finalizado no es terminal, pero espera acción humana
+        }
+
+        if (estado === 'aprobado') {
+            renderEstadoSeguimientoIA('aprobado', iaSeguimiento.ultimoJson);
+            return;
+        }
+
+        if (estado === 'error') {
+            renderEstadoSeguimientoIA('error', null, data.error_mensaje || 'El informe falló durante el procesamiento.');
+            return;
+        }
+
+        // iniciado / en_espera / en_proceso / reintentando → seguir esperando
+        renderEstadoSeguimientoIA(estado, null);
+        iaSeguimiento.pollTimer = setTimeout(pollEstadoIA, 7000);
+
+    } catch (e) {
+        console.error("Error consultando estado IA:", e);
+        renderEstadoSeguimientoIA('error', null, 'Error de conexión consultando el estado.');
+    }
+}
+
+const ESTADO_IA_LABELS = {
+    iniciado: 'Encolado',
+    en_espera: 'Encolado',
+    en_proceso: 'La IA está procesando el informe...',
+    reintentando: 'Reintentando tras un error temporal...',
+};
+
+function renderEstadoSeguimientoIA(estado, jsonData, errorMsg) {
+    const cont = document.getElementById('seg-ia-body');
+    if (!cont) return;
+
+    if (['iniciado', 'en_espera', 'en_proceso', 'reintentando'].includes(estado)) {
+        cont.innerHTML = `
+            <div style="text-align:center;padding:30px 10px">
+                <div class="loader" style="margin:0 auto 16px"></div>
+                <div style="color:var(--text);font-weight:600">${ESTADO_IA_LABELS[estado] || estado}</div>
+                <div style="color:var(--muted);font-size:.85em;margin-top:6px">Esto puede tardar entre 1 y 5 minutos. No hace falta que dejes esta ventana abierta.</div>
+            </div>`;
+        return;
+    }
+
+    if (estado === 'error') {
+        cont.innerHTML = `
+            <div style="text-align:center;padding:20px 10px">
+                <div style="font-size:2.2em;margin-bottom:10px">⚠️</div>
+                <div style="color:var(--red);font-weight:700;margin-bottom:8px">No se pudo generar el informe</div>
+                <div style="color:var(--muted);font-size:.85em;background:var(--surface2);padding:10px;border-radius:var(--radius);text-align:left">${(errorMsg||'').replace(/</g,'&lt;')}</div>
+                <button class="btn-action" style="margin-top:16px;background:var(--purple)" onclick="reintentarSolicitudIA()">Reintentar</button>
+            </div>`;
+        return;
+    }
+
+    if (estado === 'finalizado') {
+        cont.innerHTML = renderBorradorIA(jsonData);
+        return;
+    }
+
+    if (estado === 'aprobado') {
+        cont.innerHTML = `
+            <div style="text-align:center;padding:20px 10px">
+                <div style="font-size:2.2em;margin-bottom:10px">✅</div>
+                <div style="color:var(--text);font-weight:700;margin-bottom:14px">Informe aprobado</div>
+                <button class="btn-action" style="background:var(--purple)" onclick="descargarPdfIA()">Descargar PDF</button>
+            </div>`;
+        return;
+    }
+}
+
+function reintentarSolicitudIA() {
+    // El reporte fallido queda guardado; volvemos a abrir el modal de configuración
+    // con los mismos datos para que el usuario re-solicite (ver guía, sección 5).
+    cerrarModalSeguimientoIA();
+    document.getElementById('modal-ia-options').style.display = 'flex';
+}
+
+// --- RENDER DEL BORRADOR EDITABLE ---
+// Textos editables (según la guía): resumen.texto, infraestructura.mensaje,
+// incidencias.analisis, calidad.caso_destacado, recomendacion.
+// Datos duros (solo lectura): resumen.uptime, incidencias.externas/internas,
+// infraestructura.energia/termica, calidad.estabilidad.
+function renderBorradorIA(data) {
+    const g = (obj, path, def) => path.split('.').reduce((o,k)=> (o||{})[k], obj) ?? def;
+    const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+    return `
+    <div style="max-height:420px;overflow-y:auto;padding-right:6px">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:.85em">
+            <span style="color:var(--muted)">Este es un BORRADOR generado por IA.</span> Revisá y editá los textos antes de aprobar. Los datos numéricos vienen calculados de la telemetría y no son editables.
+        </div>
+
+        <div class="input-group" style="margin-bottom:12px">
+            <label>Uptime <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
+            <input type="text" value="${esc(g(data,'resumen.uptime',''))}" disabled style="opacity:.7">
+        </div>
+        <div class="input-group" style="margin-bottom:16px">
+            <label>Resumen</label>
+            <textarea id="ia-edit-resumen-texto" rows="3">${esc(g(data,'resumen.texto',''))}</textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-bottom:12px">
+            <div class="input-group" style="flex:1">
+                <label>Incidencias externas <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
+                <input type="text" value="${esc(g(data,'incidencias.externas',''))}" disabled style="opacity:.7">
+            </div>
+            <div class="input-group" style="flex:1">
+                <label>Incidencias internas <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
+                <input type="text" value="${esc(g(data,'incidencias.internas',''))}" disabled style="opacity:.7">
+            </div>
+        </div>
+        <div class="input-group" style="margin-bottom:16px">
+            <label>Análisis de incidencias</label>
+            <textarea id="ia-edit-incidencias-analisis" rows="3">${esc(g(data,'incidencias.analisis',''))}</textarea>
+        </div>
+
+        <div class="input-group" style="margin-bottom:16px">
+            <label>Infraestructura — mensaje</label>
+            <textarea id="ia-edit-infra-mensaje" rows="2">${esc(g(data,'infraestructura.mensaje',''))}</textarea>
+        </div>
+
+        <div class="input-group" style="margin-bottom:16px">
+            <label>Caso destacado (calidad)</label>
+            <textarea id="ia-edit-calidad-caso" rows="2">${esc(g(data,'calidad.caso_destacado',''))}</textarea>
+        </div>
+
+        <div class="input-group" style="margin-bottom:6px">
+            <label>Recomendación</label>
+            <textarea id="ia-edit-recomendacion" rows="3">${esc(g(data,'recomendacion',''))}</textarea>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn-action" style="background:var(--muted);width:auto;flex:1" onclick="guardarBorradorIA()">Guardar cambios</button>
+        <button class="btn-action" style="flex:2;background:var(--purple)" onclick="aprobarInformeIA()">✅ Aprobar (irreversible)</button>
+    </div>`;
+}
+
+function _leerEdicionesBorradorIA() {
+    // Parte del último JSON conocido y solo pisa los campos de texto editados,
+    // para no perder ninguna clave que no mostramos en el formulario.
+    const data = JSON.parse(JSON.stringify(iaSeguimiento.ultimoJson || {}));
+    data.resumen = data.resumen || {};
+    data.infraestructura = data.infraestructura || {};
+    data.incidencias = data.incidencias || {};
+    data.calidad = data.calidad || {};
+
+    data.resumen.texto = document.getElementById('ia-edit-resumen-texto').value;
+    data.incidencias.analisis = document.getElementById('ia-edit-incidencias-analisis').value;
+    data.infraestructura.mensaje = document.getElementById('ia-edit-infra-mensaje').value;
+    data.calidad.caso_destacado = document.getElementById('ia-edit-calidad-caso').value;
+    data.recomendacion = document.getElementById('ia-edit-recomendacion').value;
+    return data;
+}
+
+async function guardarBorradorIA() {
+    if (!iaSeguimiento.reportId) return;
+    const dataEditada = _leerEdicionesBorradorIA();
+
+    try {
+        const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/json`, {
+            method: 'PUT',
+            body: JSON.stringify({ data: dataEditada }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(()=>({}));
+            alert("Error al guardar: " + (err.detail || `HTTP ${res.status}`));
+            return;
+        }
+        iaSeguimiento.ultimoJson = dataEditada;
+        alert("✓ Cambios guardados.");
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión al guardar.");
+    }
+}
+
+async function aprobarInformeIA() {
+    if (!iaSeguimiento.reportId) return;
+    if (!confirm("Aprobar es IRREVERSIBLE: no se podrá volver a editar este informe. ¿Confirmás?")) return;
+
+    // Guardamos cualquier edición pendiente antes de aprobar, para no perderla.
+    const dataEditada = _leerEdicionesBorradorIA();
+    try {
+        const saveRes = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/json`, {
+            method: 'PUT',
+            body: JSON.stringify({ data: dataEditada }),
+        });
+        if (!saveRes.ok) {
+            const err = await saveRes.json().catch(()=>({}));
+            alert("No se pudo guardar antes de aprobar: " + (err.detail || `HTTP ${saveRes.status}`));
+            return;
+        }
+        iaSeguimiento.ultimoJson = dataEditada;
+
+        const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/aprobar`, {
+            method: 'POST',
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(()=>({}));
+            alert("Error al aprobar: " + (err.detail || `HTTP ${res.status}`));
+            return;
+        }
+        renderEstadoSeguimientoIA('aprobado', iaSeguimiento.ultimoJson);
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión al aprobar.");
+    }
+}
+
+async function descargarPdfIA() {
+    if (!iaSeguimiento.reportId) return;
+    try {
+        const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/pdf`);
+        if (!res.ok) {
+            const err = await res.json().catch(()=>({}));
+            alert("Error al descargar el PDF: " + (err.detail || `HTTP ${res.status}`));
+            return;
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Informe_IA_${iaSeguimiento.reportId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión al descargar el PDF.");
+    }
 }
 
 // ==========================================
