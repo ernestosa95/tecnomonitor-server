@@ -40,7 +40,35 @@ try:
     import asana_conector
 except ImportError:
     from dashboard_app import asana_conector
- 
+
+# ============================================================
+# INFORMES IA — módulo nuevo, montaje aislado. Si falla, no tumba el resto.
+# ============================================================
+from pathlib import Path
+from dotenv import load_dotenv as _load_dotenv_informes_ia
+
+# OJO: esto tiene que ejecutarse ANTES de cualquier "from informes_ia import...",
+# porque informes_ia.config hace su propio load_dotenv() al importarse, y si
+# no encuentra el .env correcto, revienta con ConfigError.
+_INFORMES_IA_ENV_PATH = "/home/tecnoxaas/Documents/informes_ia_proyectos/.env"
+_load_dotenv_informes_ia(_INFORMES_IA_ENV_PATH)
+
+informes_ia_disponible = True
+try:
+    from informes_ia.config import get_settings as get_settings_ia
+    from informes_ia.historial.almacen import AlmacenReportes
+    from informes_ia.historial.servicio import ServicioReportes
+    from informes_ia.pipeline_real import PipelineReal
+    from informes_ia.worker import WorkerReportes
+    try:
+        import informes_ia_router as _informes_ia_router_mod
+    except ImportError:
+        from dashboard_app import informes_ia_router as _informes_ia_router_mod
+    informes_ia_api_router = _informes_ia_router_mod.router
+except Exception as e:
+    print(f"⚠️ informes_ia no se pudo importar, el módulo queda desactivado: {repr(e)}")
+    informes_ia_disponible = False
+
 # --- BACKGROUND SERVICE ---
 async def ciclo_vigilancia():
     print("🔄 Iniciando Hilo de Vigilancia (Background Service)...")
@@ -97,9 +125,44 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️ No se pudo verificar Asana al inicio: {repr(e)}")
     vigilancia_task = asyncio.create_task(ciclo_vigilancia())
+
+    # --- INFORMES IA: montaje aislado (no debe poder tumbar el resto de la app) ---
+    app.state.servicio_reportes_ia = None
+    app.state.almacen_reportes_ia = None
+    app.state.worker_reportes_ia = None
+
+    if informes_ia_disponible:
+        try:
+            settings_ia = get_settings_ia()
+            pipeline_ia = PipelineReal(settings_ia)
+            almacen_ia = AlmacenReportes(Path(current_dir) / "informes_ia_historial.sqlite")
+            servicio_ia = ServicioReportes(
+                almacen_ia,
+                generador_ia=pipeline_ia.generador_ia,
+                render_pdf=pipeline_ia.render_pdf,
+                generar_grafico=pipeline_ia.generar_grafico_png,
+                preparar_contexto=pipeline_ia.preparar_contexto,
+                backoff_base_s=2.0,
+            )
+            worker_ia = WorkerReportes(servicio_ia)
+            worker_ia.iniciar_en_thread()
+
+            app.state.servicio_reportes_ia = servicio_ia
+            app.state.almacen_reportes_ia = almacen_ia
+            app.state.worker_reportes_ia = worker_ia
+            print("✅ Módulo informes_ia montado, worker corriendo en background.")
+        except Exception as e:
+            print(f"⚠️ informes_ia no pudo inicializarse (queda en 503): {repr(e)}")
+
     yield 
     print("🛑 Apagando servidor, cancelando hilo de vigilancia...")
     vigilancia_task.cancel()
+
+    # --- INFORMES IA: apagado limpio del worker, si llegó a levantar ---
+    worker_ia_obj = getattr(app.state, "worker_reportes_ia", None)
+    if worker_ia_obj:
+        print("🛑 Deteniendo worker de informes_ia...")
+        worker_ia_obj.detener()
 
 # --- CREAR APP MAESTRA ---
 master_app = FastAPI(title="TecnoMonitor Unificado", lifespan=lifespan)
@@ -143,6 +206,8 @@ async def trigger_websocket_update():
 
 # --- FUSIÓN DE RUTAS ---
 master_app.include_router(listener_app.router)
+if informes_ia_disponible:
+    master_app.include_router(informes_ia_api_router)   # ← NUEVO, antes del mount
 master_app.mount("/", dashboard_app)
  
 # --- EJECUTAR ---

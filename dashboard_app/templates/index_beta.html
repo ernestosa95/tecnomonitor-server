@@ -370,6 +370,9 @@ html,body{
 .hosp-name-cell{font-size:13px;font-weight:600;color:var(--text);}
 .hosp-chevron{color:var(--muted2);flex-shrink:0;}
 
+/* Toggle Lista/Mapa — solo aparece en mobile (ver @media max-width:600px) */
+.hosp-mobile-tabs{ display:none; }
+
 /* Panel derecho — mapa */
 .hosp-map-panel{
     display:flex;
@@ -965,6 +968,8 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 .alert-table-scroll{
     overflow:hidden;
 }
+/* Lista de incidentes para mobile — oculta en desktop, ver @media max-width:600px */
+.tm-malert-list{ display:none; }
 
 /* ── INPUT GROUP ── */
 .input-group{margin-bottom:10px}
@@ -1444,30 +1449,80 @@ canvas{color-scheme:dark}
         padding:7px 12px 7px 10px;
         font-size:11px;
     }
+    /* ── HOME: usar dvh (viewport dinámico) para que la fila de KPIs no quede
+       tapada por la barra de navegación del browser en mobile ── */
+    #view-resumen{
+        height:100vh !important;
+        height:100dvh !important;
+        min-height:100dvh !important;
+    }
+    .home-inner{
+        min-height:100vh !important;
+        min-height:100dvh !important;
+        padding-bottom:28px !important;
+    }
+    .kpi-scroll-inner{
+        padding-bottom:24px !important;
+    }
 
-    /* ── HOSPITALES: layout contenedor ── */
+    /* En mobile, .content ya tiene padding:14px (ver @media max-width:768px),
+       que se suma arriba del espacio reservado para el nav flotante. Achicamos
+       ese espacio reservado para que no quede un hueco extra antes de los tabs. */
+    .hosp-nav-area{ height:50px !important; }
+
+    /* ── HOSPITALES: layout contenedor — flex column real, sin números mágicos ── */
     .hosp-body{
-        grid-template-columns:1fr !important;
-        height:auto !important;
+        display:flex !important;
+        flex-direction:column !important;
+        height:calc(100dvh - 50px) !important; /* debe matchear el height de .hosp-nav-area de arriba */
         padding:10px 12px !important;
-        gap:10px !important;
+        gap:8px !important;
+        overflow:hidden !important;
     }
     .hosp-map-panel{ display:none !important; }
 
-    /* ── MAPA MOBILE: tarjeta simple debajo de la lista ── */
+    /* ── HOSPITALES MOBILE: toggle Lista / Mapa, cada uno a pantalla completa ── */
+    .hosp-mobile-tabs{
+        display:flex !important;
+        flex-shrink:0 !important;
+        gap:8px;
+        padding:0 !important;
+        margin:0 !important;
+    }
+    .hosp-mobile-tab{
+        flex:1;padding:8px;border-radius:50px;
+        border:1px solid var(--border);background:var(--surface2);
+        color:var(--muted);font-weight:600;font-size:12px;
+        font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;
+    }
+    .hosp-mobile-tab.active{
+        background:var(--green-dim);color:var(--green);border-color:var(--green);
+    }
+    /* Por defecto mostramos la lista y el mapa queda oculto */
+    body.hosp-view-mapa .hosp-card{ display:none !important; }
+    body:not(.hosp-view-mapa) .hosp-map-panel.mobile-visible{ display:none !important; }
+
+    /* La lista y el mapa son ambos hijos flex de .hosp-body: el que esté
+       visible ocupa TODO el espacio restante debajo de los tabs (flex:1),
+       calculado por el navegador — no por un cálculo manual que puede
+       quedar corto o largo. */
+    .hosp-card{ flex:1 !important; min-height:0 !important; }
     .hosp-map-panel.mobile-visible{
         display:flex !important;
         flex-direction:column !important;
-        height:280px !important;
+        flex:1 !important;
+        min-height:0 !important;
+        height:auto !important;
         border-radius:var(--radius2) !important;
         overflow:hidden !important;
         border:1px solid var(--border) !important;
-        margin:0 0 16px !important;
+        margin:0 !important;
         width:100% !important;
     }
     .hosp-map-panel.mobile-visible .hosp-map-container{
         flex:1 !important;
         height:100% !important;
+        min-height:0 !important;
     }
     .hosp-map-panel.mobile-visible .hosp-map-toolbar{
         padding:10px 14px !important;
@@ -1475,7 +1530,7 @@ canvas{color-scheme:dark}
     }
     .hosp-map-panel.mobile-visible #btn-tour-dash{ display:none !important; }
     .hosp-map-panel.mobile-visible .status-toggle-bar{ display:none !important; }
-    .hosp-list-panel{ height:auto !important; }
+    .hosp-list-panel{ height:100% !important; }
     .hosp-list-scroll{ overflow:hidden !important; }
 
     /* ── HOSPITALES: filas compactas — reset completo de tabla ── */
@@ -1540,40 +1595,62 @@ canvas{color-scheme:dark}
     /* ── ALERTAS: ocultar Estado Operativo, tabla ocupa todo el ancho ── */
     .alert-stats-card{ display:none !important; }
     .alert-body{
-        grid-template-columns:1fr !important;
+        grid-template-columns:minmax(0,1fr) !important; /* minmax(0,..) evita que el grid
+            se estire para "abrazar" el contenido interno (grid blowout) */
         padding:10px 12px 24px !important;
         gap:10px !important;
     }
+    /* .alert-table-card tiene overflow:visible en desktop (a propósito, para
+       dropdowns/tooltips). En mobile eso impide que el grid lo encoja por
+       debajo de su contenido, aunque el texto interno ya trunque con ellipsis.
+       Lo cambiamos a hidden acá para que el ancho real se respete. */
+    .alert-table-card{ overflow:hidden !important; min-width:0 !important; }
+    .alert-table-scroll{ min-width:0 !important; }
 
-    /* ── INCIDENTES EN CURSO: solo ID Hospital, Tipo y Asana en mobile ── */
-    /* Ocultar: Descripción (por clase), Inicio (col3 original), Tiempo (col4 original) */
-    .table-clean.active-incidents .alert-desc-cell{ display:none !important; }
-    .table-clean.active-incidents thead tr th:nth-child(3),
-    .table-clean.active-incidents thead tr th:nth-child(4){ display:none !important; }
-    .table-clean.active-incidents tbody tr td:nth-child(3),
-    .table-clean.active-incidents tbody tr td:nth-child(4){ display:none !important; }
-    /* Asana al final */
-    .table-clean.active-incidents tbody tr td:last-child{
-        text-align:center !important; width:44px !important;
+    /* ── INCIDENTES EN CURSO: en mobile ocultamos la tabla real y mostramos
+       la lista de <div> planos (tm-malert-*) armada en paralelo por
+       reorganizarFilaAlerta(). Evitamos así los quirks de display:flex sobre
+       elementos de tabla (tr/td), que son inconsistentes entre navegadores. ── */
+    .table-clean.active-incidents{ display:none !important; }
+    .tm-malert-list{ display:block !important; width:100%; }
+    .tm-malert-row{
+        display:flex;
+        align-items:center;
+        padding:9px 14px;
+        border-bottom:1px solid var(--border);
+        gap:8px;
+        width:100%;
+        box-sizing:border-box;
     }
-    /* Tabla alertas: layout de tarjetas */
-    .table-clean.active-incidents thead{ display:none !important; }
-    .table-clean.active-incidents tr{
-        display:grid !important;
-        grid-template-columns:auto 1fr auto !important;
-        grid-template-rows:auto auto !important;
-        gap:4px 8px !important;
-        padding:10px 12px !important;
-        border-bottom:1px solid var(--border) !important;
-        align-items:center !important;
+    /* ID hospital: chip fijo a la izquierda, igual que en Hospitales */
+    .tm-malert-id{
+        flex-shrink:0;
+        font-size:.72em;
+        font-weight:700;
+        color:var(--text);
     }
-    /* ocultar col Inicio y Tiempo en mobile */
-    .table-clean.active-incidents td:nth-child(5),
-    .table-clean.active-incidents td:nth-child(6){ display:none !important; }
-    .alert-desc-cell{
-        max-width:100% !important;
-        grid-column:1/-1 !important;
+    /* Badge de severidad: lo reducimos a un punto de color */
+    .tm-malert-dot-wrap{ flex-shrink:0;display:flex;align-items:center; }
+    .tm-malert-dot-wrap .status-badge{
+        width:8px !important;height:8px !important;
+        padding:0 !important;font-size:0 !important;
+        border-radius:50% !important;display:inline-block !important;border:none !important;
     }
+    .tm-malert-dot-wrap .status-critical{ background:var(--red) !important; }
+    .tm-malert-dot-wrap .status-warning{ background:var(--amber) !important; }
+    .tm-malert-dot-wrap .status-notice{ background:var(--blue) !important; }
+    .tm-malert-dot-wrap .status-offline{ background:var(--red) !important; }
+    /* Descripción: una sola línea truncada, ocupa el espacio central */
+    .tm-malert-desc{
+        flex:1;min-width:0;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        font-size:.76em;color:var(--muted);
+    }
+    /* Asana: ícono chico a la derecha */
+    .tm-malert-row .alert-asana-btn{
+        flex-shrink:0;width:22px !important;height:22px !important;
+    }
+
 
     /* ── REPORTES ── */
     .rep-body{
@@ -1794,6 +1871,11 @@ canvas{color-scheme:dark}
         <div class="hosp-nav-area"></div>
 
         <div class="hosp-body">
+            <!-- Toggle Lista/Mapa — sólo visible en mobile -->
+            <div class="hosp-mobile-tabs">
+                <button class="hosp-mobile-tab active" data-target="lista" onclick="tmToggleHospMobile('lista',this)">Lista</button>
+                <button class="hosp-mobile-tab" data-target="mapa" onclick="tmToggleHospMobile('mapa',this)">Mapa</button>
+            </div>
             <div class="hosp-card">
 
                 <!-- ── PANEL IZQUIERDO: lista de hospitales ── -->
@@ -2120,6 +2202,11 @@ canvas{color-scheme:dark}
                         </thead>
                         <tbody id="alertas-activas-body"></tbody>
                     </table>
+                    <!-- Lista mobile: divs planos, hermanos de la tabla (no dentro del
+                         tbody, que sólo admite <tr> por spec y renderiza distinto según
+                         el navegador si se le mete un <div>). Se puebla desde el mismo
+                         reorganizarFilaAlerta() y sólo se muestra en @media max-width:600px. -->
+                    <div id="alertas-activas-mobile" class="tm-malert-list"></div>
                     <div id="no-activas" style="padding:40px;text-align:center;color:var(--muted);display:none;font-size:.9em;">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:10px;"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
                         Todos los sistemas operando normalmente.
@@ -3038,6 +3125,24 @@ window.cliCopiarPw = cliCopiarPw;
         tdAsana.style.cssText = 'padding:10px 14px;text-align:center;vertical-align:middle;';
         tdAsana.innerHTML = asanaHtml || '<span style="color:var(--muted2);font-size:.8em;">—</span>';
         tr.appendChild(tdAsana);
+
+        // ── Fila alternativa para mobile: <div> plano en vez de <tr>/<td> ──
+        // display:flex sobre elementos de tabla (tr/td) es inconsistente entre
+        // navegadores. Para evitar ese problema de raíz, construimos también
+        // una fila compacta con divs comunes, que se muestra SOLO en mobile
+        // (@media max-width:600px) vía CSS — en desktop queda oculta y se ve
+        // la tabla normal de siempre.
+        var idText = cells[0].textContent.trim();
+        var descEscaped = desc.replace(/"/g, '&quot;');
+        var mobileRow = document.createElement('div');
+        mobileRow.className = 'tm-malert-row';
+        mobileRow.innerHTML =
+            '<span class="tm-malert-id">' + idText + '</span>' +
+            '<span class="tm-malert-dot-wrap">' + (badgeHtml || '') + '</span>' +
+            '<span class="tm-malert-desc" title="' + descEscaped + '">' + desc + '</span>' +
+            (asanaHtml || '');
+        var mobileList = document.getElementById('alertas-activas-mobile');
+        if (mobileList) mobileList.appendChild(mobileRow);
     }
 
     var tbody = document.getElementById('alertas-activas-body');
@@ -3045,6 +3150,15 @@ window.cliCopiarPw = cliCopiarPw;
 
     new MutationObserver(function(mutations) {
         mutations.forEach(function(m) {
+            m.removedNodes.forEach(function(node) {
+                // Cuando script.js limpia el tbody (tbodyA.innerHTML = '') para
+                // repintar las alertas, hay que vaciar también la lista mobile
+                // en paralelo — si no, quedan filas mobile huérfanas duplicadas.
+                if (node.tagName === 'TR') {
+                    var mobileList = document.getElementById('alertas-activas-mobile');
+                    if (mobileList) mobileList.innerHTML = '';
+                }
+            });
             m.addedNodes.forEach(function(node) {
                 if (node.tagName === 'TR') reorganizarFilaAlerta(node);
             });
@@ -3240,6 +3354,7 @@ window.cliCopiarPw = cliCopiarPw;
 // ── MOBILE: comportamiento específico para pantallas verticales ──
 (function() {
     var isMobile = window.matchMedia('(max-width:600px)');
+    var mobileSetupDone = false;
 
     function aplicarMobile() {
         if (!isMobile.matches) return;
@@ -3249,20 +3364,22 @@ window.cliCopiarPw = cliCopiarPw;
         if (viewConfig) viewConfig.style.display = 'none';
         var viewIa = document.getElementById('view-ia');
         if (viewIa) viewIa.style.display = 'none';
+        aplicarMobileSetup();
     }
 
-    if (isMobile.matches) aplicarMobile();
-    isMobile.addEventListener('change', aplicarMobile);
+    // Preparación del mapa/paginación — se ejecuta UNA sola vez, sin importar
+    // si el modo mobile estaba activo desde el load inicial o si se activó
+    // después (ej. resize de ventana o device toolbar de DevTools).
+    function aplicarMobileSetup() {
+        if (mobileSetupDone || !isMobile.matches) return;
+        mobileSetupDone = true;
 
-    if (!isMobile.matches) return;
-
-    window.addEventListener('load', function() {
         // Deshabilitar paginación en mobile — no tiene sentido en pantalla chica
         window.hospCambiarPagina = function() {};
         var hospPag = document.getElementById('hosp-pagination');
         if (hospPag) hospPag.style.setProperty('display', 'none', 'important');
 
-        // ── Mapa simple debajo de la lista en mobile ──
+        // ── Mapa: marcarlo como mobile-visible y reubicarlo después de la lista ──
         var mapPanel = document.querySelector('.hosp-map-panel');
         if (mapPanel) {
             mapPanel.classList.add('mobile-visible');
@@ -3270,6 +3387,43 @@ window.cliCopiarPw = cliCopiarPw;
             if (hospCard && hospCard.parentNode) {
                 hospCard.parentNode.insertBefore(mapPanel, hospCard.nextSibling);
             }
+        }
+    }
+
+    // Toggle Lista/Mapa en Hospitales (mobile) — se define SIEMPRE, sin importar
+    // el ancho de pantalla al momento de cargar el script.
+    window.tmToggleHospMobile = function(target, btn) {
+        document.querySelectorAll('.hosp-mobile-tab').forEach(function(b){ b.classList.remove('active'); });
+        if (btn) btn.classList.add('active');
+        aplicarMobileSetup(); // por si el setup nunca corrió (llegamos a mobile recién ahora)
+        document.body.classList.toggle('hosp-view-mapa', target === 'mapa');
+        if (target === 'mapa') {
+            // El mapa se inicializó mientras su contenedor estaba oculto, así que
+            // su centro interno quedó corrupto (por eso aparecía en Malvinas en
+            // vez de Argentina). En vez de restaurar ese centro roto con
+            // getCenter(), forzamos las coordenadas fijas de Argentina — las
+            // mismas que usa initMapaDashboard() al crear el mapa.
+            requestAnimationFrame(function() {
+                setTimeout(function() {
+                    if (window.mapDashInstance) {
+                        var m = window.mapDashInstance;
+                        m.invalidateSize({animate:false, pan:false});
+                        m.setView([-38.4161, -63.6167], 4, {animate:false, reset:true});
+                        if (typeof renderizarMarcadoresDash === 'function') renderizarMarcadoresDash();
+                    } else if (typeof initMapaDashboard === 'function') {
+                        initMapaDashboard();
+                    }
+                }, 200);
+            });
+        }
+    };
+
+    if (isMobile.matches) aplicarMobile();
+    isMobile.addEventListener('change', aplicarMobile);
+
+    window.addEventListener('load', function() {
+        aplicarMobileSetup();
+        if (isMobile.matches) {
             setTimeout(function() {
                 if (window.mapDashInstance) {
                     window.mapDashInstance.invalidateSize();
@@ -3663,6 +3817,13 @@ window._nuestroVolverAlDashboard = function() {
             window.location.href = '/cliente';
         } else {
             aplicarRestriccionesUI(user.role);
+            // Cargar alertas de una vez: en index_beta todas las secciones están
+            // visibles en un scroll continuo (no son tabs), así que la tabla de
+            // incidentes no debe depender de que el usuario haga click en "Alertas".
+            // Sólo si el rol tiene acceso a esa sección (el botón no fue removido).
+            if (document.getElementById('btn-alert') && typeof cargarAlertas === 'function') {
+                cargarAlertas();
+            }
         }
     }
 

@@ -2900,12 +2900,14 @@ function actualizarResumenDashboard(data) {
 
 function initMapaDashboard() {
     if (mapDashInstance) {
+        window.mapDashInstance = mapDashInstance;
         cargarDatosMapaDashboard();
         return;
     }
 
     // Inicializar mapa (Vista Argentina)
     mapDashInstance = L.map('map-dashboard-container', { zoomControl: true }).setView([-38.4161, -63.6167], 4);
+    window.mapDashInstance = mapDashInstance;
     
     // Capa visual
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -4051,4 +4053,3 @@ function guardarKPIConfig() {
         alert("Ocurrió un error al intentar guardar la configuración.");
     });
 }
-
