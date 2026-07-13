@@ -2100,7 +2100,7 @@ async function ejecutarGeneracionPDF() {
         fecha_desde: f1,
         fecha_hasta: f2,
         alcance: scopeValue,
-        tipo_reporte: tipoReporte, // Nuevo parámetro para el backend
+        tipo_reporte: tipoReporte,
         asana_task_id: taskId
     };
 
@@ -2152,6 +2152,9 @@ async function ejecutarGeneracionPDF() {
                     </div>
                 `;
             }
+        } else if (response.status === 429) {
+            const err = await response.json().catch(function(){ return {}; });
+            alert("⏳ " + (err.detail || "Estás generando reportes muy rápido. Esperá un minuto e intentá de nuevo."));
         } else {
             const err = await response.json();
             alert("Error del servidor: " + (err.detail || "Desconocido"));

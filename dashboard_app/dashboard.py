@@ -54,6 +54,9 @@ import permissions
 from sqlalchemy import ForeignKey, UniqueConstraint 
 import secrets, string
 from typing import List
+import re as _re
+
+USERNAME_REGEX = _re.compile(r"^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])?$")
 
 ESTADOS_COLORS = {
     'Citados': '#cce5ff',
@@ -79,6 +82,7 @@ import database
 from database import HospitalMetadata 
 import alerts_engine 
 from dotenv import load_dotenv
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 
@@ -95,7 +99,12 @@ templates = Jinja2Templates(directory=templates_dir)
 # ==========================================
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+@app.exception_handler(RateLimitExceeded)
+async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Estás generando reportes demasiado rápido. Esperá un minuto e intentá de nuevo."}
+    )
 
 # ==========================================
 # 🛡️ 1. CONFIGURACIÓN DE CORS
@@ -152,7 +161,7 @@ async def add_security_headers(request: Request, call_next):
 
 # --- CONTROL DE SEGURIDAD EN MEMORIA ---
 # Estructura: {"ip_cliente": {"intentos": int, "bloqueado_hasta": float}}
-login_attempts_db = {}
+
 MAX_INTENTOS_LOGIN = 5
 TIEMPO_BLOQUEO_SEG = 300  # 5 minutos
 
@@ -274,49 +283,52 @@ def verificar_login(request: Request, response: Response, login_data: LoginReque
     ip_cliente = request.client.host
     ahora = time.time()
 
-    # 1. Verificar si la IP está bloqueada temporalmente
-    estado_ip = login_attempts_db.get(ip_cliente)
-    if estado_ip:
-        if estado_ip['bloqueado_hasta'] > ahora:
-            tiempo_restante = int((estado_ip['bloqueado_hasta'] - ahora) / 60)
+    # 1. Verificar si la IP está bloqueada temporalmente (persistido en DB)
+    attempt = db.query(database.LoginAttempt).filter_by(ip=ip_cliente).first()
+    if attempt:
+        if attempt.bloqueado_hasta > ahora:
+            tiempo_restante = int((attempt.bloqueado_hasta - ahora) / 60)
             return {"success": False, "message": f"Demasiados intentos fallidos. Cuenta bloqueada por {tiempo_restante or 1} minuto(s) por seguridad."}
-        elif estado_ip['bloqueado_hasta'] <= ahora and estado_ip['intentos'] >= MAX_INTENTOS_LOGIN:
+        elif attempt.bloqueado_hasta <= ahora and attempt.intentos >= MAX_INTENTOS_LOGIN:
             # El tiempo de castigo ya pasó, reseteamos el contador
-            login_attempts_db[ip_cliente] = {'intentos': 0, 'bloqueado_hasta': 0}
+            attempt.intentos = 0
+            attempt.bloqueado_hasta = 0
+            db.commit()
 
-    # Inicializar registro si la IP es nueva
-    if ip_cliente not in login_attempts_db:
-        login_attempts_db[ip_cliente] = {'intentos': 0, 'bloqueado_hasta': 0}
+    # --- Identificador: puede ser email o username ---
+    identificador = login_data.email.lower().strip()
 
-    # --- DESPUÉS ---
-    email_norm = login_data.email.lower().strip()
-
-    # Buscamos primero al usuario (lo necesitamos para decidir la política de dominio)
+    # Buscamos al usuario por email O por username
     user = db.query(database.UserModel).filter(
-        database.UserModel.email == email_norm
+        (database.UserModel.email == identificador) | (database.UserModel.username == identificador)
     ).first()
 
-    # --- Política de dominio (paso 3) ---
+    # --- Política de dominio ---
+    # Si encontramos al usuario, usamos SU email real (no el identificador que
+    # pudo haber sido un username) para decidir si es interno.
     # Interno (@tecnoimagen.com.ar): siempre habilitado.
     # Externo: SOLO si es una cuenta Cliente provisionada por un Admin.
-    es_interno = email_norm.endswith("@tecnoimagen.com.ar")
+    email_real = user.email if user else identificador
+    es_interno = email_real.endswith("@tecnoimagen.com.ar")
     es_cliente = bool(user and user.role == "Cliente")
 
     if not es_interno and not es_cliente:
-        _registrar_intento_fallido(ip_cliente, ahora)
+        _registrar_intento_fallido(db, ip_cliente, ahora)
         return {"success": False, "message": "Credenciales inválidas"}
 
-    # Validación de clave (igual que antes)
+    # Validación de clave
     if not user or not auth.verify_password(login_data.password, user.hashed_password):
-        bloqueado = _registrar_intento_fallido(ip_cliente, ahora)
+        bloqueado = _registrar_intento_fallido(db, ip_cliente, ahora)
         msg = "Demasiados intentos. Cuenta bloqueada." if bloqueado else "Credenciales inválidas"
         return {"success": False, "message": msg}
 
     if not user.is_active:
         return {"success": False, "message": "Usuario inactivo"}
 
-    # 4. ¡Login Exitoso! Resetear los intentos de la IP
-    login_attempts_db.pop(ip_cliente, None)
+    # 4. ¡Login Exitoso! Limpiar el registro de intentos de esa IP
+    if attempt:
+        db.delete(attempt)
+        db.commit()
 
     # Generar token con el Rol incluido
     token = auth.create_access_token(data={"sub": user.email, "role": user.role})
@@ -325,9 +337,9 @@ def verificar_login(request: Request, response: Response, login_data: LoginReque
         key="tecnomonitor_token",
         value=token,
         httponly=True,     # JS no puede leerla (Previene XSS)
-        secure=True,      # Ponelo en True si ya estás usando HTTPS en producción
-        samesite="Lax",    # Protege contra ataques CSRF
-        max_age=28800      # Expira en 8 horas (en segundos)
+        secure=True,        # Ponelo en True si ya estás usando HTTPS en producción
+        samesite="Lax",     # Protege contra ataques CSRF
+        max_age=28800       # Expira en 8 horas (en segundos)
     )
 
     return {
@@ -341,13 +353,21 @@ def verificar_login(request: Request, response: Response, login_data: LoginReque
         }
     }
 
-def _registrar_intento_fallido(ip_cliente: str, ahora: float) -> bool:
+def _registrar_intento_fallido(db: Session, ip_cliente: str, ahora: float) -> bool:
     """Suma un intento fallido y bloquea si es necesario. Devuelve True si se bloqueó."""
-    login_attempts_db[ip_cliente]['intentos'] += 1
-    if login_attempts_db[ip_cliente]['intentos'] >= MAX_INTENTOS_LOGIN:
-        login_attempts_db[ip_cliente]['bloqueado_hasta'] = ahora + TIEMPO_BLOQUEO_SEG
-        return True
-    return False
+    attempt = db.query(database.LoginAttempt).filter_by(ip=ip_cliente).first()
+    if not attempt:
+        attempt = database.LoginAttempt(ip=ip_cliente, intentos=0, bloqueado_hasta=0)
+        db.add(attempt)
+
+    attempt.intentos += 1
+    bloqueado = False
+    if attempt.intentos >= MAX_INTENTOS_LOGIN:
+        attempt.bloqueado_hasta = ahora + TIEMPO_BLOQUEO_SEG
+        bloqueado = True
+
+    db.commit()
+    return bloqueado
 
 @app.post("/api/logout")
 def logout_usuario(response: Response):
@@ -1314,7 +1334,7 @@ async def handle_form(
 # --- DTO para cambio de clave ---
 class ChangePasswordRequest(BaseModel):
     email: str
-    current_password: str
+    current_password: str | None = None
     new_password: str
 
 # --- FUNCIÓN DE VALIDACIÓN DE CONTRASEÑAS ---
@@ -1333,35 +1353,35 @@ def validar_password(pw: str):
 def cambiar_contrasena(req: ChangePasswordRequest,
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(auth.get_current_user)):
-    
-    # Seguridad: el usuario solo puede cambiar su propia contraseña.
+
     if current_user["email"].lower() != req.email.lower():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No podés modificar la contraseña de otro usuario."
         )
 
-    # 1. Buscar al usuario
     user = db.query(database.UserModel).filter(database.UserModel.email == req.email.lower()).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    # 2. Verificar que la clave actual sea correcta
-    if not auth.verify_password(req.current_password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
+    # Si NO es un primer cambio forzado, exigimos y verificamos la clave actual.
+    # Si SÍ lo es, el usuario ya se autenticó con la clave temporal para llegar
+    # hasta acá (tiene cookie de sesión válida), así que no hace falta repetirla.
+    if not user.must_change_password:
+        if not req.current_password:
+            raise HTTPException(status_code=400, detail="Falta la contraseña actual")
+        if not auth.verify_password(req.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
 
-    # 3. VERIFICAR COMPLEJIDAD DE LA NUEVA CLAVE
     try:
         validar_password(req.new_password)
     except ValueError as e:
-        # Si la contraseña no cumple las reglas, devolvemos el error al frontend
         raise HTTPException(status_code=400, detail=str(e))
 
-    # 4. Hashear la nueva clave y guardar
     user.hashed_password = auth.get_password_hash(req.new_password)
     user.must_change_password = False
     db.commit()
-    
+
     return {"status": "ok", "message": "Contraseña actualizada correctamente"}
 
 # --- DTO para Solicitud de Acceso ---
@@ -1906,3 +1926,259 @@ def pagina_cliente(request: Request, db: Session = Depends(get_db)):
     if user["role"] != "Cliente":
         return RedirectResponse("/beta")   # internos van a la app interna
     return FileResponse("dashboard_app/templates/cliente.html")
+
+# ============================================================
+# PANEL DE ADMINISTRACIÓN DE USUARIOS INTERNOS (solo Admin)
+# ============================================================
+ROLES_INTERNOS_VALIDOS = ["Admin", "Ingenieria", "Comercial", "Visor"]
+
+class _CrearUsuarioDTO(BaseModel):
+    email: str
+    username: str 
+    full_name: str
+    role: str
+    asana_id: str | None = None
+
+class _EditarUsuarioDTO(BaseModel):
+    username: str 
+    full_name: str
+    role: str
+    asana_id: str | None = None
+
+@app.get("/api/admin/usuarios")
+def admin_listar_usuarios(db: Session = Depends(get_db),
+                          current_user: dict = Depends(auth.require_roles("Admin"))):
+    out = []
+    for u in db.query(database.UserModel).filter(database.UserModel.role != "Cliente").order_by(database.UserModel.role, database.UserModel.full_name).all():
+        out.append({
+            "id": u.id, "email": u.email, "username": u.username, "full_name": u.full_name,
+            "role": u.role, "is_active": u.is_active,
+            "must_change_password": bool(u.must_change_password),
+            "asana_id": u.asana_id
+        })
+    return out
+
+@app.post("/api/admin/usuarios")
+def admin_crear_usuario(dto: _CrearUsuarioDTO, db: Session = Depends(get_db),
+                        current_user: dict = Depends(auth.require_roles("Admin"))):
+    email = dto.email.lower().strip()
+    username = dto.username.lower().strip()
+
+    if not email.endswith("@tecnoimagen.com.ar"):
+        raise HTTPException(400, "El correo debe ser @tecnoimagen.com.ar")
+    if dto.role not in ROLES_INTERNOS_VALIDOS:
+        raise HTTPException(400, f"Rol inválido. Debe ser uno de: {', '.join(ROLES_INTERNOS_VALIDOS)}")
+    try:
+        validar_username(username)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if db.query(database.UserModel).filter_by(email=email).first():
+        raise HTTPException(400, "Ya existe un usuario con ese correo.")
+    if db.query(database.UserModel).filter_by(username=username).first():
+        raise HTTPException(400, "Ese username ya está en uso.")
+
+    temp = _generar_password_temporal()
+    nuevo = database.UserModel(
+        email=email, username=username, full_name=dto.full_name.strip(),
+        hashed_password=auth.get_password_hash(temp),
+        role=dto.role, is_active=True, must_change_password=True,
+        asana_id=dto.asana_id or None
+    )
+    db.add(nuevo); db.commit(); db.refresh(nuevo)
+    return {"status": "ok", "id": nuevo.id, "email": nuevo.email, "username": nuevo.username, "password_temporal": temp}
+
+@app.put("/api/admin/usuarios/{user_id}")
+def admin_editar_usuario(user_id: int, dto: _EditarUsuarioDTO, db: Session = Depends(get_db),
+                         current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter(database.UserModel.id == user_id,
+                                             database.UserModel.role != "Cliente").first()
+    if not u: raise HTTPException(404, "Usuario no encontrado")
+    if dto.role not in ROLES_INTERNOS_VALIDOS:
+        raise HTTPException(400, f"Rol inválido. Debe ser uno de: {', '.join(ROLES_INTERNOS_VALIDOS)}")
+
+    username = dto.username.lower().strip()
+    try:
+        validar_username(username)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    existente = db.query(database.UserModel).filter_by(username=username).first()
+    if existente and existente.id != u.id:
+        raise HTTPException(400, "Ese username ya está en uso por otro usuario.")
+
+    u.full_name = dto.full_name.strip()
+    u.role = dto.role
+    u.username = username
+    u.asana_id = dto.asana_id or None
+    db.commit()
+    return {"status": "ok"}
+
+@app.patch("/api/admin/usuarios/{user_id}/toggle-active")
+def admin_toggle_usuario(user_id: int, db: Session = Depends(get_db),
+                         current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter(database.UserModel.id == user_id,
+                                             database.UserModel.role != "Cliente").first()
+    if not u: raise HTTPException(404, "Usuario no encontrado")
+    # Protección: un Admin no puede desactivarse a sí mismo por error
+    if u.email == current_user["email"] and u.is_active:
+        raise HTTPException(400, "No podés desactivar tu propia cuenta.")
+    u.is_active = not u.is_active; db.commit()
+    return {"status": "ok", "is_active": u.is_active}
+
+@app.post("/api/admin/usuarios/{user_id}/reset-password")
+def admin_reset_password_usuario(user_id: int, db: Session = Depends(get_db),
+                                 current_user: dict = Depends(auth.require_roles("Admin"))):
+    u = db.query(database.UserModel).filter(database.UserModel.id == user_id,
+                                             database.UserModel.role != "Cliente").first()
+    if not u: raise HTTPException(404, "Usuario no encontrado")
+    temp = _generar_password_temporal()
+    u.hashed_password = auth.get_password_hash(temp); u.must_change_password = True; db.commit()
+    return {"status": "ok", "password_temporal": temp}
+
+def validar_username(username: str):
+    if not USERNAME_REGEX.match(username):
+        raise ValueError(
+            "El username debe tener 3-32 caracteres, minúsculas, números, "
+            "puntos, guiones o guiones bajos, y no puede empezar ni terminar con símbolo."
+        )
+
+class AccessRequestDTO(BaseModel):
+    tipo: str                      # "interno" | "cliente"
+    email: str
+    nombre: str
+    apellido: str | None = None
+    full_name_cliente: str | None = None
+    motivo: str | None = None
+    hospital_ids: List[str] = []
+
+@app.get("/api/hospitales-publico")
+def listar_hospitales_publico(db: Session = Depends(get_db)):
+    """Lista mínima (id + nombre) para el formulario de solicitud de acceso, sin auth."""
+    hospitales = db.query(database.HospitalMetadata).filter(
+        database.HospitalMetadata.is_visible == True
+    ).order_by(database.HospitalMetadata.nombre).all()
+    return [{"hospital_id": h.hospital_id, "nombre": h.nombre} for h in hospitales]
+
+@app.post("/api/access-requests")
+def crear_solicitud_acceso(dto: AccessRequestDTO, db: Session = Depends(get_db)):
+    email = dto.email.lower().strip()
+
+    if dto.tipo == "interno":
+        if not email.endswith("@tecnoimagen.com.ar"):
+            raise HTTPException(400, "El correo debe ser @tecnoimagen.com.ar")
+        if not dto.apellido:
+            raise HTTPException(400, "Falta el apellido")
+    elif dto.tipo == "cliente":
+        if email.endswith("@tecnoimagen.com.ar"):
+            raise HTTPException(400, "Usá un correo externo para solicitudes de cliente")
+        if not dto.full_name_cliente:
+            raise HTTPException(400, "Falta el nombre/referencia")
+        if not dto.hospital_ids:
+            raise HTTPException(400, "Seleccioná al menos un hospital")
+    else:
+        raise HTTPException(400, "Tipo de solicitud inválido")
+
+    if db.query(database.UserModel).filter_by(email=email).first():
+        raise HTTPException(400, "Ya existe una cuenta con ese correo.")
+    if db.query(database.AccessRequestModel).filter_by(email=email, estado="pendiente").first():
+        raise HTTPException(400, "Ya hay una solicitud pendiente con ese correo.")
+
+    nueva = database.AccessRequestModel(
+        tipo=dto.tipo, email=email, nombre=dto.nombre.strip(),
+        apellido=(dto.apellido or "").strip() or None,
+        full_name_cliente=(dto.full_name_cliente or "").strip() or None,
+        motivo=(dto.motivo or "").strip() or None,
+        hospitales_solicitados=json.dumps(dto.hospital_ids) if dto.hospital_ids else None,
+        estado="pendiente"
+    )
+    db.add(nueva); db.commit()
+    return {"status": "ok", "message": "Solicitud enviada correctamente"}
+
+@app.get("/api/admin/access-requests")
+def admin_listar_solicitudes(estado: str = "pendiente", db: Session = Depends(get_db),
+                             current_user: dict = Depends(auth.require_roles("Admin"))):
+    q = db.query(database.AccessRequestModel)
+    if estado != "todas":
+        q = q.filter_by(estado=estado)
+    out = []
+    for r in q.order_by(database.AccessRequestModel.creado_en.desc()).all():
+        out.append({
+            "id": r.id, "tipo": r.tipo, "email": r.email,
+            "nombre": r.nombre, "apellido": r.apellido,
+            "full_name_cliente": r.full_name_cliente, "motivo": r.motivo,
+            "hospitales_solicitados": json.loads(r.hospitales_solicitados) if r.hospitales_solicitados else [],
+            "estado": r.estado, "creado_en": r.creado_en.strftime("%d/%m/%Y %H:%M"),
+            "revisado_por": r.revisado_por
+        })
+    return out
+
+class _AprobarInternoDTO(BaseModel):
+    role: str
+    asana_id: str | None = None
+
+class _AprobarClienteDTO(BaseModel):
+    accesos: List[_AccesoDTO] = []   # reutiliza el DTO ya definido para Clientes
+
+@app.post("/api/admin/access-requests/{req_id}/aprobar-interno")
+def aprobar_solicitud_interna(req_id: int, dto: _AprobarInternoDTO, db: Session = Depends(get_db),
+                              current_user: dict = Depends(auth.require_roles("Admin"))):
+    r = db.query(database.AccessRequestModel).filter_by(id=req_id, tipo="interno", estado="pendiente").first()
+    if not r: raise HTTPException(404, "Solicitud no encontrada o ya procesada")
+    if dto.role not in ROLES_INTERNOS_VALIDOS:
+        raise HTTPException(400, f"Rol inválido. Debe ser uno de: {', '.join(ROLES_INTERNOS_VALIDOS)}")
+
+    temp = _generar_password_temporal()
+    nuevo = database.UserModel(
+        email=r.email, full_name=f"{r.nombre} {r.apellido or ''}".strip(),
+        hashed_password=auth.get_password_hash(temp),
+        role=dto.role, is_active=True, must_change_password=True,
+        asana_id=dto.asana_id or None
+    )
+    db.add(nuevo)
+    r.estado = "aprobado"; r.revisado_por = current_user["email"]; r.revisado_en = datetime.now()
+    db.commit()
+    return {"status": "ok", "email": nuevo.email, "password_temporal": temp}
+
+@app.post("/api/admin/access-requests/{req_id}/aprobar-cliente")
+def aprobar_solicitud_cliente(req_id: int, dto: _AprobarClienteDTO, db: Session = Depends(get_db),
+                              current_user: dict = Depends(auth.require_roles("Admin"))):
+    r = db.query(database.AccessRequestModel).filter_by(id=req_id, tipo="cliente", estado="pendiente").first()
+    if not r: raise HTTPException(404, "Solicitud no encontrada o ya procesada")
+
+    temp = _generar_password_temporal()
+    nuevo = database.UserModel(
+        email=r.email, full_name=r.full_name_cliente,
+        hashed_password=auth.get_password_hash(temp),
+        role="Cliente", is_active=True, must_change_password=True
+    )
+    db.add(nuevo); db.commit(); db.refresh(nuevo)
+    for a in dto.accesos:
+        db.add(database.ClienteHospitalAccess(user_id=nuevo.id, hospital_id=a.hospital_id,
+                                              ver_infra=a.infra, ver_software=a.software, ver_kpis=a.kpis))
+    r.estado = "aprobado"; r.revisado_por = current_user["email"]; r.revisado_en = datetime.now()
+    db.commit()
+    return {"status": "ok", "email": nuevo.email, "password_temporal": temp}
+
+@app.post("/api/admin/access-requests/{req_id}/rechazar")
+def rechazar_solicitud(req_id: int, db: Session = Depends(get_db),
+                       current_user: dict = Depends(auth.require_roles("Admin"))):
+    r = db.query(database.AccessRequestModel).filter_by(id=req_id, estado="pendiente").first()
+    if not r: raise HTTPException(404, "Solicitud no encontrada o ya procesada")
+    r.estado = "rechazado"; r.revisado_por = current_user["email"]; r.revisado_en = datetime.now()
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/api/cliente/casos/{hospital_id}")
+def listar_casos_cliente(hospital_id: str, db: Session = Depends(get_db),
+                         current_user: dict = Depends(auth.get_current_user)):
+    if current_user["role"] != "Cliente":
+        raise HTTPException(403, "Solo disponible para clientes")
+
+    hospitales_permitidos = auth.hospitales_de_cliente(current_user["email"], db)
+    if not any(h["hospital_id"] == hospital_id for h in hospitales_permitidos):
+        raise HTTPException(403, "No tenés acceso a este hospital")
+
+    hosp = db.query(database.HospitalMetadata).filter_by(hospital_id=hospital_id).first()
+    if not hosp or not hosp.asana_project_id:
+        return []
+
+    return asana_conector.listar_casos_abiertos(hosp.asana_project_id)

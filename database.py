@@ -134,6 +134,7 @@ class UserModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     # email: Único e indexado para búsquedas rápidas durante el login
     email = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String, unique=True, index=True, nullable=True)
     # hashed_password: Nunca guardaremos la clave en texto plano
     hashed_password = Column(String, nullable=False)
     full_name = Column(String)
@@ -168,5 +169,27 @@ class ClienteHospitalAccess(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "hospital_id", name="uq_cliente_hospital"),
     )
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    ip = Column(String, primary_key=True)
+    intentos = Column(Integer, default=0)
+    bloqueado_hasta = Column(Float, default=0)
+
+class AccessRequestModel(Base):
+    __tablename__ = "access_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tipo = Column(String, nullable=False)          # "interno" | "cliente"
+    email = Column(String, nullable=False)
+    nombre = Column(String, nullable=False)
+    apellido = Column(String, nullable=True)        # solo interno
+    full_name_cliente = Column(String, nullable=True)  # solo cliente ("Resp. Sistemas · Hospital X")
+    motivo = Column(Text, nullable=True)
+    hospitales_solicitados = Column(Text, nullable=True)  # JSON: ["H01","H02"] — solo cliente
+    estado = Column(String, default="pendiente")    # "pendiente" | "aprobado" | "rechazado"
+    creado_en = Column(DateTime, default=datetime.now)
+    revisado_por = Column(String, nullable=True)
+    revisado_en = Column(DateTime, nullable=True)
 
 Base.metadata.create_all(bind=engine)

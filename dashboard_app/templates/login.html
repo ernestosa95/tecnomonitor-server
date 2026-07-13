@@ -4,65 +4,215 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Acceso - TecnoMonitor</title>
-    <link rel="stylesheet" href="/static/style.css">
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --danger: #e74c3c; --radius: 8px; }
-        body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--dark); height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .login-card { background: white; width: 100%; max-width: 380px; padding: 40px; border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); text-align: center; margin: 20px; }
-        .logo-container { margin-bottom: 25px; display: inline-flex; align-items: center; justify-content: center; background: rgba(52, 152, 219, 0.1); padding: 15px; border-radius: 50%; }
-        h1 { color: var(--dark); font-size: 1.5rem; margin: 0; font-weight: 700; }
-        p.subtitle { color: #7f8c8d; margin: 0 0 30px 0; font-size: 0.95rem; }
-        .input-group { margin-bottom: 20px; text-align: left; }
-        .input-group label { display: block; margin-bottom: 8px; color: #34495e; font-weight: 600; font-size: 0.9rem; }
-        .input-group input { width: 100%; padding: 12px 15px; border: 2px solid #e1e4e8; border-radius: var(--radius); font-size: 1rem; box-sizing: border-box; outline: none; transition: 0.3s; }
-        .input-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1); }
-        .btn-login { width: 100%; padding: 14px; background-color: var(--primary); color: white; border: none; border-radius: var(--radius); font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        .btn-login:hover { background-color: #2980b9; transform: translateY(-2px); }
-        #error-msg { background: #fdeded; color: var(--danger); padding: 10px; border-radius: var(--radius); font-size: 0.9rem; margin-top: 20px; display: none; border: 1px solid #f5c6cb; }
-        
-        /* Estilos para el Modal */
-        .modal-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 5000; }
-        .modal-content { background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; text-align: left; }
+/* ============================================================
+   LOGIN — mismo Design System Oscuro que index_beta.html
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+    --bg:#0A0A0B;
+    --surface:#111113;
+    --surface2:#18181B;
+    --border:#232327;
+    --border2:#2e2e34;
+    --text:#F0F0F2;
+    --muted:#6B6B7A;
+    --green:#00E5A0;
+    --green-dim:rgba(0,229,160,0.12);
+    --red:#FF5C5C;
+    --red-dim:rgba(255,92,92,0.12);
+    --blue:#4A8FFF;
+    --amber:#FFA940;
+    --amber-dim:rgba(255,169,64,0.1);
+    --radius:8px;
+    --radius2:12px;
+    --radius3:16px;
+}
+html,body{
+    background:var(--bg);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    color:var(--text);
+    height:100%;
+}
+body{
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;overflow-x:hidden;
+}
+
+.login-bg{
+    position:fixed;inset:0;z-index:0;
+    background:
+        radial-gradient(circle at 20% 25%, rgba(0,229,160,0.06) 0%, transparent 45%),
+        radial-gradient(circle at 80% 75%, rgba(74,143,255,0.07) 0%, transparent 45%);
+}
+
+.login-wrapper{
+    position:relative;z-index:1;
+    display:flex;align-items:center;justify-content:center;
+    width:100%;min-height:100vh;padding:20px;box-sizing:border-box;
+}
+.login-card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius3);padding:40px;width:100%;max-width:400px;
+    box-shadow:0 24px 64px rgba(0,0,0,.5);
+}
+.login-logo{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    margin-bottom:8px;
+}
+.login-logo .icon-wrap{
+    width:52px;height:52px;border-radius:14px;
+    background:var(--green-dim);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--green);
+}
+.login-title{
+    text-align:center;font-size:1.35em;font-weight:800;color:var(--text);
+    margin:14px 0 4px;
+}
+.login-subtitle{
+    text-align:center;font-size:13px;color:var(--muted);margin-bottom:30px;
+}
+
+.input-group{margin-bottom:16px}
+.input-group label{
+    font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);margin-bottom:6px;display:block;font-weight:600;
+}
+.input-group input,
+.input-group textarea{
+    background:var(--surface2);border:1px solid var(--border);
+    color:var(--text);font-weight:500;width:100%;padding:11px 14px;
+    border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:.92em;
+    outline:none;transition:border-color .2s;box-sizing:border-box;
+}
+.input-group input:focus,
+.input-group textarea:focus{border-color:var(--green)}
+.input-group input::placeholder,
+.input-group textarea::placeholder{color:var(--muted)}
+
+.btn-login{
+    width:100%;padding:12px;background:var(--green);color:#0A0A0B;
+    border:none;border-radius:var(--radius);font-size:.95em;
+    font-weight:800;cursor:pointer;font-family:'Inter',sans-serif;
+    transition:opacity .2s;margin-top:6px;
+}
+.btn-login:hover{opacity:.85}
+.btn-login:disabled{opacity:.5;cursor:default}
+
+#error-msg{
+    background:var(--red-dim);color:var(--red);
+    border:1px solid rgba(255,92,92,.25);
+    padding:11px 14px;border-radius:var(--radius);
+    font-size:.85em;margin-top:18px;display:none;
+}
+
+.solicitar-link{
+    margin-top:22px;font-size:13px;color:var(--muted);text-align:center;
+}
+.solicitar-link a{
+    color:var(--blue);font-weight:600;text-decoration:none;cursor:pointer;
+}
+.solicitar-link a:hover{text-decoration:underline}
+
+/* ── MODAL ── */
+.modal-overlay{
+    display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,.7);z-index:5000;
+    align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);
+    padding:20px;box-sizing:border-box;
+}
+.modal-content{
+    background:var(--surface);padding:28px;border-radius:var(--radius3);
+    width:90%;max-width:460px;border:1px solid var(--border2);
+    box-shadow:0 24px 64px rgba(0,0,0,.5);
+    max-height:88vh;overflow-y:auto;
+}
+.modal-content h3{
+    color:var(--text);margin:0 0 18px;font-size:1.05em;font-weight:700;
+    border-bottom:1px solid var(--border);padding-bottom:14px;
+}
+
+@media(max-width:420px){
+    .login-card{padding:28px 22px}
+}
     </style>
 </head>
 <body>
 
-    <div class="login-card">
-        <div class="logo-container">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="17" x2="12" y2="21"></line>
-                <path d="M10 9l2 2 4-4"></path>
-            </svg>
-        </div>
+<div class="login-bg"></div>
 
-        <h1>TecnoMonitor</h1>
-        <p class="subtitle">Acceso corporativo</p>
+<div class="login-wrapper">
+    <div class="login-card">
+        <div class="login-logo">
+            <div class="icon-wrap">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                    <path d="M8 21h8"/><path d="M12 17v4"/>
+                    <path d="M9 10h6"/><path d="M12 7v6"/>
+                </svg>
+            </div>
+        </div>
+        <h1 class="login-title">TecnoMonitor</h1>
+        <p class="login-subtitle">Acceso corporativo</p>
 
         <div class="input-group">
-            <label for="email">Correo @tecnoimagen.com.ar</label>
-            <input type="email" id="email" placeholder="usuario@tecnoimagen.com.ar" autofocus>
+            <label for="identificador">Usuario o correo</label>
+            <input type="text" id="identificador" placeholder="usuario o correo@tecnoimagen.com.ar" autocomplete="username" autofocus>
         </div>
 
         <div class="input-group">
             <label for="password">Contraseña</label>
-            <input type="password" id="password" placeholder="••••••••" onkeyup="checkEnter(event)">
+            <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" onkeyup="checkEnter(event)">
         </div>
 
-        <button class="btn-login" onclick="validarAcceso()">Ingresar</button>
-
-        <p style="margin-top: 20px; font-size: 0.85rem; color: #7f8c8d;">
-            ¿No tienes cuenta? 
-            <a href="#" onclick="abrirModalSolicitud(); return false;" style="color: #3498db; font-weight: 600; text-decoration: none;">Solicitar acceso</a>
-        </p>
+        <button class="btn-login" id="btn-ingresar" onclick="validarAcceso()">Ingresar</button>
 
         <div id="error-msg"></div>
-    </div>
 
-    <div id="modal-solicitud" class="modal-overlay">
-        <div class="modal-content">
-            <h3 style="margin-top:0; color:#2c3e50;">👤 Solicitar Usuario</h3>
+        <p class="solicitar-link">
+            ¿No tenés cuenta?
+            <a onclick="abrirModalSolicitud()">Solicitar acceso</a>
+        </p>
+    </div>
+</div>
+
+<div id="modal-version" class="modal-overlay">
+    <div class="modal-content" style="max-width:380px;text-align:center">
+        <h3 style="border-bottom:none;text-align:center;padding-bottom:0">¿Qué versión querés usar?</h3>
+        <p style="color:var(--muted);font-size:13px;margin:0 0 22px">
+            Estamos probando una nueva interfaz. Podés elegir la versión clásica o probar la beta.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="btn-login" onclick="irAVersionBeta()">✨ Probar versión beta</button>
+            <button class="btn-login" onclick="irAVersionClasica()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Usar versión clásica</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Solicitud de Acceso — interno o cliente -->
+<div id="modal-solicitud" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Solicitar acceso</h3>
+
+        <div class="input-group">
+            <label>Tipo de acceso</label>
+            <div style="display:flex;gap:8px;margin-bottom:4px">
+                <button type="button" id="btn-sol-interno" onclick="cambiarTipoSolicitud('interno')"
+                    style="flex:1;padding:10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--green-dim);color:var(--green);font-weight:700;font-family:'Inter',sans-serif;cursor:pointer">
+                    Interno (@tecnoimagen)
+                </button>
+                <button type="button" id="btn-sol-cliente" onclick="cambiarTipoSolicitud('cliente')"
+                    style="flex:1;padding:10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-weight:700;font-family:'Inter',sans-serif;cursor:pointer">
+                    Cliente
+                </button>
+            </div>
+        </div>
+        <input type="hidden" id="sol-tipo" value="interno">
+
+        <!-- Campos INTERNO -->
+        <div id="sol-campos-interno">
             <div class="input-group">
                 <label>Nombre</label>
                 <input type="text" id="req-nombre" placeholder="Ej: Juan">
@@ -76,111 +226,229 @@
                 <input type="email" id="req-email" placeholder="usuario@tecnoimagen.com.ar">
             </div>
             <div class="input-group">
-                <label>Motivo del Acceso</label>
-                <textarea id="req-motivo" rows="3" style="width: 100%; border: 2px solid #e1e4e8; border-radius: 8px; padding: 10px; font-family: inherit; resize: none;" placeholder="Describa brevemente su función..."></textarea>
-            </div>
-            <div style="display:flex; gap:10px; margin-top:20px;">
-                <button class="btn-login" onclick="cerrarModalSolicitud()" style="background:#95a5a6; flex:1;">Cancelar</button>
-                <button class="btn-login" id="btn-enviar-sol" onclick="enviarSolicitud()" style="flex:1.5;">Enviar Solicitud</button>
+                <label>Motivo del acceso</label>
+                <textarea id="req-motivo" rows="3" placeholder="Describa brevemente su función..."></textarea>
             </div>
         </div>
+
+        <!-- Campos CLIENTE -->
+        <div id="sol-campos-cliente" style="display:none">
+            <div class="input-group">
+                <label>Nombre / referencia</label>
+                <input type="text" id="req-cliente-nombre" placeholder="Ej: Resp. de Sistemas">
+            </div>
+            <div class="input-group">
+                <label>Correo (no @tecnoimagen.com.ar)</label>
+                <input type="email" id="req-cliente-email" placeholder="sistemas@hospital.org.ar">
+            </div>
+            <div class="input-group">
+                <label>Hospital(es) a los que necesita acceso</label>
+                <div id="sol-hosp-list" style="border:1px solid var(--border);border-radius:var(--radius);max-height:180px;overflow-y:auto;background:var(--surface2)">
+                    <div style="padding:14px;color:var(--muted);font-size:.85em;text-align:center">Cargando hospitales...</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:20px;">
+            <button class="btn-login" onclick="cerrarModalSolicitud()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);flex:1;">Cancelar</button>
+            <button class="btn-login" id="btn-enviar-sol" onclick="enviarSolicitud()" style="flex:1.5;">Enviar Solicitud</button>
+        </div>
     </div>
+</div>
 
-    <script>
-        // --- FUNCIONES DE LOGIN ---
-        async function validarAcceso() {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            if (!email || !password) return;
+<script>
+    // --- FUNCIONES DE LOGIN ---
+    async function validarAcceso() {
+        const identificador = document.getElementById('identificador').value.trim();
+        const password = document.getElementById('password').value;
+        if (!identificador || !password) return;
 
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ email, password })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    // Guardamos el token para adjuntarlo en cada petición a la API
-                    sessionStorage.setItem('tecnomonitor_token', data.token);
-                    sessionStorage.setItem('tecnomonitor_user', JSON.stringify(data.user));
-                    window.location.href = '/monitor';
+        const btn = document.getElementById('btn-ingresar');
+        btn.disabled = true;
+        btn.innerText = "Ingresando...";
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ email: identificador, password })
+            });
+            const data = await response.json();
+            if (data.success) {
+                sessionStorage.setItem('tecnomonitor_token', data.token);
+                sessionStorage.setItem('tecnomonitor_user', JSON.stringify(data.user));
+
+                if (data.user.role === 'Cliente') {
+                    window.location.href = '/monitor';   // rebota internamente a /cliente
                 } else {
-                    mostrarError(data.message || "Credenciales incorrectas");
+                    abrirModalVersion();   // 👈 pregunta solo a roles internos
                 }
-            } catch (e) { mostrarError("Error de conexión"); }
+            } else {
+                mostrarError(data.message || "Credenciales incorrectas");
+                btn.disabled = false;
+                btn.innerText = "Ingresar";
+            }
+        } catch (e) {
+            mostrarError("Error de conexión");
+            btn.disabled = false;
+            btn.innerText = "Ingresar";
         }
+    }
 
-        // --- FUNCIONES DEL MODAL ---
-        function abrirModalSolicitud() {
-            console.log("Abriendo modal...");
-            document.getElementById('modal-solicitud').style.display = 'flex';
+    function abrirModalVersion() {
+        document.getElementById('modal-version').style.display = 'flex';
+    }
+
+    function irAVersionClasica() {
+        window.location.href = '/monitor';
+    }
+
+    function irAVersionBeta() {
+        window.location.href = '/beta';
+    }
+
+    function mostrarError(texto) {
+        const msg = document.getElementById('error-msg');
+        msg.innerText = "⚠️ " + texto;
+        msg.style.display = 'block';
+    }
+
+    function checkEnter(e) { if (e.key === "Enter") validarAcceso(); }
+
+    sessionStorage.removeItem('tecnomonitor_user');
+
+    // --- SOLICITUD DE ACCESO (interno / cliente) ---
+    var solHospitalesCache = [];
+    var solHospitalesSeleccionados = [];
+
+    function cambiarTipoSolicitud(tipo) {
+        document.getElementById('sol-tipo').value = tipo;
+        var btnI = document.getElementById('btn-sol-interno');
+        var btnC = document.getElementById('btn-sol-cliente');
+        var campI = document.getElementById('sol-campos-interno');
+        var campC = document.getElementById('sol-campos-cliente');
+
+        if (tipo === 'interno') {
+            btnI.style.background = 'var(--green-dim)'; btnI.style.color = 'var(--green)';
+            btnC.style.background = 'var(--surface2)'; btnC.style.color = 'var(--muted)';
+            campI.style.display = ''; campC.style.display = 'none';
+        } else {
+            btnC.style.background = 'var(--green-dim)'; btnC.style.color = 'var(--green)';
+            btnI.style.background = 'var(--surface2)'; btnI.style.color = 'var(--muted)';
+            campC.style.display = ''; campI.style.display = 'none';
+            if (!solHospitalesCache.length) cargarHospitalesSolicitud();
         }
+    }
 
-        function cerrarModalSolicitud() {
-            document.getElementById('modal-solicitud').style.display = 'none';
+    function cargarHospitalesSolicitud() {
+        fetch('/api/hospitales-publico')
+            .then(function(r){ return r.json(); })
+            .then(function(data){
+                solHospitalesCache = data;
+                var cont = document.getElementById('sol-hosp-list');
+                if (!data.length) { cont.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:.85em;text-align:center">No hay hospitales disponibles</div>'; return; }
+                cont.innerHTML = data.map(function(h){
+                    return '<label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:.9em">'
+                        + '<input type="checkbox" value="' + h.hospital_id + '" onchange="toggleHospSolicitud(this)" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">'
+                        + '<span>' + h.nombre + ' <span style="color:var(--muted);font-family:monospace;font-size:.85em">(' + h.hospital_id + ')</span></span>'
+                        + '</label>';
+                }).join('');
+            })
+            .catch(function(){
+                document.getElementById('sol-hosp-list').innerHTML = '<div style="padding:14px;color:var(--red);font-size:.85em;text-align:center">Error al cargar hospitales</div>';
+            });
+    }
+
+    function toggleHospSolicitud(chk) {
+        var id = chk.value;
+        if (chk.checked) {
+            if (solHospitalesSeleccionados.indexOf(id) < 0) solHospitalesSeleccionados.push(id);
+        } else {
+            solHospitalesSeleccionados = solHospitalesSeleccionados.filter(function(h){ return h !== id; });
         }
+    }
 
-        async function enviarSolicitud() {
-            // 1. Obtenemos el elemento completo
-            const emailInput = document.getElementById('req-email');
-            
-            // 2. Extraemos el VALOR (.value) para que sea un String y podamos usar .endsWith()
-            const email = emailInput.value.toLowerCase().trim();
+    function abrirModalSolicitud() {
+        document.getElementById('modal-solicitud').style.display = 'flex';
+        cambiarTipoSolicitud('interno');
+    }
 
-            // 3. Validación de dominio corporativo
+    function cerrarModalSolicitud() {
+        document.getElementById('modal-solicitud').style.display = 'none';
+    }
+
+    async function enviarSolicitud() {
+        var tipo = document.getElementById('sol-tipo').value;
+        var btn = document.getElementById('btn-enviar-sol');
+        var payload = { tipo: tipo };
+
+        if (tipo === 'interno') {
+            var email = document.getElementById('req-email').value.toLowerCase().trim();
             if (!email.endsWith("@tecnoimagen.com.ar")) {
-                alert("⚠️ Por seguridad, solo puedes solicitar acceso con tu mail de @tecnoimagen.com.ar");
+                alert("⚠️ Por seguridad, solo puedes solicitar acceso interno con tu mail de @tecnoimagen.com.ar");
                 return;
             }
-
-            const data = {
-                nombre: document.getElementById('req-nombre').value,
-                apellido: document.getElementById('req-apellido').value,
-                email: email,
-                motivo: document.getElementById('req-motivo').value
-            };
-
-            if (!data.nombre || !data.apellido || !data.motivo) {
+            payload.email = email;
+            payload.nombre = document.getElementById('req-nombre').value.trim();
+            payload.apellido = document.getElementById('req-apellido').value.trim();
+            payload.motivo = document.getElementById('req-motivo').value.trim();
+            if (!payload.nombre || !payload.apellido || !payload.motivo) {
                 alert("Por favor, completa todos los campos.");
                 return;
             }
-
-            const btn = document.getElementById('btn-enviar-sol');
-            btn.disabled = true;
-            btn.innerText = "Enviando...";
-
-            try {
-                const response = await fetch('/api/user/request-access', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-
-                if (response.ok) {
-                    alert("✅ Solicitud enviada. Ernesto Ridel revisará tu acceso pronto.");
-                    cerrarModalSolicitud();
-                } else {
-                    const error = await response.json();
-                    alert("❌ Error: " + (error.detail || "No se pudo enviar la solicitud"));
-                }
-            } catch (e) { 
-                alert("❌ Error de red."); 
-            } finally { 
-                btn.disabled = false; 
-                btn.innerText = "Enviar Solicitud"; 
+        } else {
+            var emailC = document.getElementById('req-cliente-email').value.toLowerCase().trim();
+            if (emailC.endsWith("@tecnoimagen.com.ar")) {
+                alert("⚠️ Usá un correo externo para solicitudes de cliente.");
+                return;
+            }
+            payload.email = emailC;
+            payload.nombre = document.getElementById('req-cliente-nombre').value.trim();
+            payload.full_name_cliente = payload.nombre;
+            payload.hospital_ids = solHospitalesSeleccionados;
+            if (!payload.nombre || !emailC) {
+                alert("Completá el nombre/referencia y el correo.");
+                return;
+            }
+            if (!payload.hospital_ids.length) {
+                alert("Seleccioná al menos un hospital.");
+                return;
             }
         }
 
-        function mostrarError(texto) {
-            const msg = document.getElementById('error-msg');
-            msg.innerText = "⚠️ " + texto;
-            msg.style.display = 'block';
-        }
+        btn.disabled = true;
+        btn.innerText = "Enviando...";
 
-        function checkEnter(e) { if (e.key === "Enter") validarAcceso(); }
-        
-        sessionStorage.removeItem('tecnomonitor_user');
-    </script>
+        try {
+            const response = await fetch('/api/access-requests', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                alert("✅ Solicitud enviada. Un administrador la revisará pronto.");
+                cerrarModalSolicitud();
+                solHospitalesSeleccionados = [];
+            } else {
+                const error = await response.json();
+                alert("❌ Error: " + (error.detail || "No se pudo enviar la solicitud"));
+            }
+        } catch (e) {
+            alert("❌ Error de red.");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Enviar Solicitud";
+        }
+    }
+
+    // Cerrar modal al hacer click afuera
+    document.getElementById('modal-solicitud').addEventListener('click', function(e){
+        if (e.target === this) cerrarModalSolicitud();
+    });
+    document.getElementById('modal-version').addEventListener('click', function(e){
+        if (e.target === this) irAVersionClasica();  // si cierra sin elegir, va a la clásica por defecto
+    });
+</script>
 </body>
 </html>

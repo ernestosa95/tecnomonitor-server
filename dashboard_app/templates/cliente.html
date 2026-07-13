@@ -130,6 +130,14 @@ body{
 .cl-gate .save:hover{background:var(--ti-blue-deep)}
 .cl-gate .err{color:var(--red);font-size:12px;margin-bottom:12px;display:none}
 .hidden{display:none!important}
+.cl-gate-hint{
+    display:block;
+    font-size:11px;
+    color:var(--muted);
+    margin-top:-8px;
+    margin-bottom:14px;
+    line-height:1.4;
+}
 </style>
 </head>
 <body>
@@ -146,15 +154,10 @@ body{
   <div class="cl-sedes hidden" id="cl-sedes"></div>
 
   <div class="cl-hero s-load" id="cl-hero">
-    <div class="glow"></div>
-    <div class="wm">TI</div>
-    <div class="h-name" id="cl-h-name">—</div>
-    <div class="h-status"><span class="h-ball"></span><span class="h-label" id="cl-h-label">Cargando…</span></div>
-    <div class="h-meta" id="cl-h-meta">Consultando el estado de tu infraestructura…</div>
-    <div class="h-incident" id="cl-h-incident">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span id="cl-h-incident-text"></span>
-    </div>
+      <div class="glow"></div>
+      <div class="wm">TI</div>
+      <div class="h-name" id="cl-h-name">—</div>
+      <div class="h-meta" id="cl-h-meta">Consultando el estado…</div>
   </div>
 
   <div class="cl-cards" id="cl-cards"></div>
@@ -162,6 +165,9 @@ body{
   <div class="cl-detail hidden" id="cl-kpi">
     <div class="d-head">
       <div class="d-title">Uso clínico <span class="tag">DETALLE</span></div>
+      <div id="cl-kpi-total-inline" style="font-size:20px;font-weight:800;color:var(--text)">
+        —<small style="font-size:12px;color:var(--muted);font-weight:500"> estudios (período)</small>
+      </div>
       <button class="cl-dl" id="cl-kpi-dl" onclick="clKpiDescargar()" title="Descargar el gráfico visible (PNG)" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Descargar
@@ -217,6 +223,7 @@ body{
     <div class="err" id="cl-gate-err"></div>
     <div id="cl-gate-current-wrap" class="hidden"><label>Contraseña actual</label><input type="password" id="cl-gate-current" placeholder="••••••••••"></div>
     <label>Nueva contraseña</label><input type="password" id="cl-gate-new" placeholder="••••••••••">
+    <small class="cl-gate-hint">Mínimo 10 caracteres, con mayúscula, número y carácter especial.</small>
     <label>Repetir contraseña</label><input type="password" id="cl-gate-rep" placeholder="••••••••••">
     <button class="save" id="cl-gate-save" onclick="clGuardarPass()">Guardar y entrar</button>
   </div>
@@ -252,18 +259,31 @@ function clAbrirGate(forzado){
   document.getElementById('cl-gate-err').style.display='none';
   document.getElementById('cl-gate').classList.add('show');
 }
+
 function clGuardarPass(){
   var err=document.getElementById('cl-gate-err');
   var nuevo=document.getElementById('cl-gate-new').value, rep=document.getElementById('cl-gate-rep').value;
   var actual=document.getElementById('cl-gate-current').value;
   function fail(m){ err.textContent=m; err.style.display='block'; }
-  if(nuevo.length<8){ return fail('La contraseña debe tener al menos 8 caracteres.'); }
+
+  if(nuevo.length<10){ return fail('La contraseña debe tener al menos 10 caracteres.'); }
+  if(!/[A-Z]/.test(nuevo)){ return fail('La contraseña debe contener al menos una letra mayúscula.'); }
+  if(!/[0-9]/.test(nuevo)){ return fail('La contraseña debe contener al menos un número.'); }
+  if(!/[!@#$%^&*(),.?":{}|<>]/.test(nuevo)){ return fail('La contraseña debe contener al menos un carácter especial.'); }
   if(nuevo!==rep){ return fail('Las dos contraseñas no coinciden.'); }
-  var body={ new_password:nuevo };
-  if(!clForzado) body.current_password=actual;   // cambio voluntario
+
+  var body={ email: clUser.email, new_password:nuevo };   // 👈 EL FIX: agregamos email
+  if(!clForzado) body.current_password=actual;
   var btn=document.getElementById('cl-gate-save'); btn.disabled=true; btn.textContent='Guardando…';
   clFetch('/api/user/change-password',{method:'POST',body:JSON.stringify(body)})
-    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||d.message||'No se pudo cambiar la contraseña'); return d; }); })
+    .then(function(r){ return r.json().then(function(d){
+        if(!r.ok){
+          var msg = d.detail;
+          if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || JSON.stringify(e); }).join(' — ');
+          throw new Error(msg || 'No se pudo cambiar la contraseña');
+        }
+        return d;
+      }); })
     .then(function(){
       try{ var u=JSON.parse(sessionStorage.getItem('tecnomonitor_user')||'{}'); u.must_change_password=false; sessionStorage.setItem('tecnomonitor_user',JSON.stringify(u)); clUser=u; }catch(e){}
       document.getElementById('cl-gate').classList.remove('show');
@@ -272,6 +292,7 @@ function clGuardarPass(){
     .catch(function(e){ fail(e.message); })
     .finally(function(){ btn.disabled=false; btn.textContent='Guardar y entrar'; });
 }
+
 function clLogout(){ sessionStorage.clear(); location.href='/'; }
 
 // ── Permisos: qué sedes y pestañas ──
@@ -307,7 +328,6 @@ function clHeroVacio(msg){
   document.getElementById('cl-kpi').classList.add('hidden');
 }
 
-// ── Cargar un hospital ──
 function clCargarHospital(sede, idx){
   var hid=sede.hospital_id, tabs=sede.tabs||{infra:true,software:true,kpis:true};
   var hero=document.getElementById('cl-hero'); hero.className='cl-hero s-load';
@@ -324,11 +344,13 @@ function clCargarHospital(sede, idx){
     var estado=clDerivarEstado(detalle, soft);
     clRenderHero(estado, detalle);
     clRenderCards(tabs, detalle, soft, estado);
+    clCargarCasos(hid);   // 👈 nuevo — corre después de que exista #cl-casos-list en el DOM
     if(tabs.kpis){ document.getElementById('cl-kpi').classList.remove('hidden'); clKpiInit(hid); } else { document.getElementById('cl-kpi').classList.add('hidden'); }
     // semáforo en selector
     if(typeof idx==='number'){ var d=document.querySelectorAll('#cl-sedes .cl-sede')[idx]; if(d){ var dot=d.querySelector('.dot'); var st=d.querySelector('.st'); dot.className='dot '+({ok:'dot-green',warn:'dot-amber',down:'dot-red'}[estado.nivel]||'dot-muted'); st.textContent=estado.label; } }
   });
 }
+
 function clJson(r){ if(!r||!r.ok) throw new Error('http '+(r&&r.status)); return r.json(); }
 
 // ── Derivación del estado (defensiva) ──
@@ -380,50 +402,64 @@ function clDerivarEstado(d, soft){
 function clRenderHero(estado, d){
   var hero=document.getElementById('cl-hero');
   hero.className='cl-hero s-'+(estado.nivel==='ok'?'ok':estado.nivel==='warn'?'warn':'down');
-  document.getElementById('cl-h-label').textContent=estado.label;
   var ts = d && (d.db_timestamp || d.timestamp);
-  var metaTxt = estado.nivel==='ok' ? 'Todos los sistemas funcionando' : estado.detalle;
-  if(ts) metaTxt += ' · último reporte: '+clEsc(ts);
-  document.getElementById('cl-h-meta').textContent=metaTxt;
-  if(estado.nivel!=='ok'){ document.getElementById('cl-h-incident-text').textContent=estado.detalle; }
+  document.getElementById('cl-h-meta').textContent = ts ? ('Último reporte: '+clEsc(ts)) : 'Sin datos de reporte disponibles';
 }
 
 function clRenderCards(tabs, d, soft, estado){
   var cont=document.getElementById('cl-cards'); var html='';
+  var almSt = clEstadoAlmacenamiento(d);
   if(tabs.infra){
     var infraSt = estado.nivel==='down' ? {c:'down',t:'Sin datos'} : (estado.nivel==='warn' ? {c:'ok',t:'Operativa'} : {c:'ok',t:'Operativa'});
     html+='<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('infra')+'Infraestructura</div><span class="cl-state '+infraSt.c+'"><i></i>'+infraSt.t+'</span></div>'
       +clRowVal('Servidores', d&&!d.error ? 'En línea':'Sin datos', d&&!d.error?'on':'off')
-      +clRowVal('Almacenamiento', 'OK', '')
+      +clRowVal('Almacenamiento',almSt.texto, almSt.cls)
       +clRowVal('Energía / clima', d&&!d.error?'Normal':'Sin datos', d&&!d.error?'on':'')
       +'</div>';
   }
-  if(tabs.software){
-    var integ='Sin datos', cls='off', soState={c:'muted',t:'Sin datos'};
-    if(soft){
-      var canales=clMirthCanales(soft);
-      var caidos=canales.filter(clCanalCaido).length;
-      var activos=canales.length-caidos;
-      if(canales.length===0){ integ='Sin datos'; cls='off'; soState={c:'muted',t:'Sin datos'}; }
-      else if(caidos>0){ integ=activos+' de '+canales.length+' activos'; cls='warn'; soState={c:'warn',t:'Atención'}; }
-      else { integ='Online · '+canales.length+' canales'; cls='on'; soState={c:'ok',t:'Operativos'}; }
-    }
-    html+='<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('soft')+'Sistemas</div><span class="cl-state '+soState.c+'"><i></i>'+soState.t+'</span></div>'
-      +clRowVal('Integración (Mirth)', integ, cls)
-      +clRowVal('Estado general', estado.nivel==='ok'?'Normal':(estado.nivel==='warn'?'Con alertas':'Sin datos'), estado.nivel==='ok'?'on':(estado.nivel==='warn'?'warn':'off'))
-      +'</div>';
-  }
+  
   if(tabs.kpis){
-    html+='<div class="cl-card kpi"><div class="c-head"><div class="c-title">'+clIco('kpi')+'Uso clínico</div></div>'
-      +'<div class="big" id="cl-kpi-hoy">—<small> estudios (período)</small></div>'
-      +'<div class="cl-loading" id="cl-kpi-cardloading"><span class="cl-spin"></span> cargando…</div></div>';
+    html += '<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('caso')+'Casos abiertos</div><span class="cl-state muted" id="cl-casos-badge"><i></i>—</span></div>'
+  + '<div id="cl-casos-list"><div class="cl-loading" style="padding:10px 0"><span class="cl-spin"></span> cargando…</div></div></div>';
   }
   cont.innerHTML=html;
 }
 function clRowVal(lbl,val,cls){ return '<div class="cl-row"><span class="lbl">'+clEsc(lbl)+'</span><span class="val '+(cls||'')+'">'+clEsc(val)+'</span></div>'; }
+
+function clEstadoAlmacenamiento(d){
+  if(!d || d.error) return {cls:'off', texto:'Sin datos'};
+
+  // 1. RAID físico: si algún volumen no está OK, es lo más grave
+  var phy = d.physical_layer || d.physical_host || {};
+  var vols = (phy.storage_layer && phy.storage_layer.logical_volumes) || [];
+  var volCritico = vols.find(function(v){
+    var st=(v.status||'').toString().toLowerCase();
+    return st && st!=='ok' && st!=='online';
+  });
+  if(volCritico){ return {cls:'off', texto:'RAID: '+(volCritico.status||'Error')}; }
+
+  // 2. Discos de VMs: buscamos el de mayor uso
+  var vms = d.virtual_layer || [];
+  var lista = Array.isArray(vms) ? vms : Object.values(vms);
+  var maxPct=null, maxMount=null;
+  lista.forEach(function(vm){
+    var discos = vm.storage || [];
+    (Array.isArray(discos)?discos:Object.values(discos)).forEach(function(disk){
+      var pct = disk.usage_percent;
+      if(pct!=null && (maxPct===null || pct>maxPct)){ maxPct=pct; maxMount=disk.mount_point; }
+    });
+  });
+
+  if(maxPct===null) return {cls:'muted', texto:'Sin datos'};
+  if(maxPct>=90) return {cls:'off', texto:(maxMount||'Disco')+' al '+Math.round(maxPct)+'%'};
+  if(maxPct>=75) return {cls:'warn', texto:(maxMount||'Disco')+' al '+Math.round(maxPct)+'%'};
+  return {cls:'on', texto:'Uso máx. '+Math.round(maxPct)+'%'};
+}
+
 function clIco(t){
   if(t==='infra') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>';
   if(t==='soft') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+  if(t==='caso') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>';
   return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
 }
 
@@ -473,15 +509,18 @@ function clKpiCargar(){
 
 // Tarjeta-resumen del grid (total del período)
 function clKpiActualizarTotalCard(){
-  var card=document.getElementById('cl-kpi-cardloading'); if(card) card.remove();
   var total=0;
   clKpiData.forEach(function(d){
     var m=d.application_metrics||{};
     (m.ris ||[]).forEach(function(it){ if(CL_EXCLUDED_AETS.indexOf(it.aet||it.equipo)>=0||CL_EXCLUDED_MODS.indexOf(it.mod)>=0) return; total+=(+it.ejecutados||0); });
     (m.pacs||[]).forEach(function(it){ if(CL_EXCLUDED_AETS.indexOf(it.aet)>=0||CL_EXCLUDED_MODS.indexOf(it.mod)>=0) return; total+=(+it.almacenados||0); });
   });
-  var hoy=document.getElementById('cl-kpi-hoy');
-  if(hoy){ hoy.innerHTML = total>0 ? total.toLocaleString('es-AR')+'<small> estudios (período)</small>' : '—<small> sin datos</small>'; }
+  var el=document.getElementById('cl-kpi-total-inline');
+  if(el){
+    el.innerHTML = total>0
+      ? total.toLocaleString('es-AR')+'<small style="font-size:12px;color:var(--muted);font-weight:500"> estudios (período)</small>'
+      : '—<small style="font-size:12px;color:var(--muted);font-weight:500"> sin datos</small>';
+  }
 }
 
 // Poblar el selector de nodo según modo + agrupación (con caso especial "Total")
@@ -647,6 +686,28 @@ function clKpiDescargar(){
   link.href=tmp.toDataURL('image/png');
   link.download=nombre;
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
+}
+
+function clCargarCasos(hid){
+  var cont=document.getElementById('cl-casos-list');
+  var badge=document.getElementById('cl-casos-badge');
+  if(!cont) return;
+  clFetch('/api/cliente/casos/'+encodeURIComponent(hid))
+    .then(function(r){ if(!r.ok) throw new Error('http'); return r.json(); })
+    .then(function(casos){
+      if(!Array.isArray(casos) || !casos.length){
+        cont.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0">No hay casos abiertos.</div>';
+        if(badge){ badge.className='cl-state muted'; badge.innerHTML='<i></i>0'; }
+        return;
+      }
+      if(badge){ badge.className='cl-state warn'; badge.innerHTML='<i></i>'+casos.length; }
+      cont.innerHTML = casos.map(function(c){
+        return '<div class="cl-row"><span class="lbl" style="max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+clEsc(c.titulo)+'">#'+clEsc(c.gid)+' · '+clEsc(c.titulo)+'</span><span class="val">'+clEsc(c.estado)+'</span></div>';
+      }).join('');
+    })
+    .catch(function(){
+      cont.innerHTML='<div style="color:var(--red);font-size:13px;padding:6px 0">No se pudieron cargar los casos.</div>';
+    });
 }
 
 </script>

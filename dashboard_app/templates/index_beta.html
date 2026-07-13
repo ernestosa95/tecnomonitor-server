@@ -701,8 +701,8 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     border:1px solid var(--border);
     border-radius:var(--radius2);
     overflow:hidden;
-    display:flex;
-    flex-direction:column;
+    display:flex!important;
+    flex-direction:column!important;
     box-shadow:0 32px 80px rgba(0,0,0,0.85),0 0 0 1px rgba(255,255,255,0.04);
     transform:scale(0.96) translateY(16px);
     opacity:0;
@@ -726,7 +726,12 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     scrollbar-width:thin;
     scrollbar-color:var(--border2) transparent;
 }
-.detalle-modal-overlay .tab-content{flex-shrink:0;}
+.detalle-modal-overlay .tab-content{
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+}
 
 /* ── CONFIG: layout con scroll libre (no pantalla completa fija) ── */
 #view-config{
@@ -887,13 +892,15 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     flex-shrink:0;
     background:var(--bg);
 }
+
 .alert-body{
     padding:12px 20px 40px;
     box-sizing:border-box;
     display:grid;
     grid-template-columns:30fr 70fr;
     gap:12px;
-    /* sin height fijo — el contenido expande y scrollea con la página */
+    height:calc(100vh - 72px);
+    overflow:hidden;
 }
 
 /* Tarjeta izquierda — indicadores */
@@ -917,11 +924,16 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     background:var(--red);flex-shrink:0;
     box-shadow:0 0 0 2px var(--red-dim);
 }
+
 .alert-stats-body{
     padding:16px;
     display:flex;flex-direction:column;gap:12px;
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
     scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
 }
+
 .alert-kpi-card{
     background:var(--surface2);
     border:1px solid var(--border);
@@ -965,8 +977,11 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     flex-shrink:0;
     border-radius:var(--radius2) var(--radius2) 0 0;
 }
+
 .alert-table-scroll{
-    overflow:hidden;
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
 }
 /* Lista de incidentes para mobile — oculta en desktop, ver @media max-width:600px */
 .tm-malert-list{ display:none; }
@@ -2388,6 +2403,11 @@ canvas{color-scheme:dark}
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Clientes
                     </button>
+                    <button class="conf-tab" id="conf-tab-usuarios" style="display:none"
+                            onclick="switchConfTab('tab-usuarios', this); cargarUsuariosConf(); cargarSolicitudesConf();">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Usuarios
+                    </button>
                 </div>
 
                 <!-- ── TAB: PERSONAL ── -->
@@ -2681,6 +2701,269 @@ canvas{color-scheme:dark}
   </div>
 </div>
 
+<!-- ── TAB: USUARIOS ── -->
+<div id="tab-usuarios" class="conf-tab-panel">
+    <div class="conf-section-block" id="usr-req-section" style="display:none">
+        <div class="cli-head">
+        <div class="cli-section-title">Solicitudes de acceso pendientes</div>
+        <span id="usr-req-count" style="font-size:11px;background:var(--amber-dim);color:var(--amber);padding:3px 10px;border-radius:20px;font-weight:700"></span>
+        </div>
+        <div class="cli-table-wrap">
+        <table class="cli-table">
+            <thead><tr><th>Solicitante</th><th>Tipo</th><th>Detalle</th><th style="text-align:right">Acciones</th></tr></thead>
+            <tbody id="usr-req-tbody"></tbody>
+        </table>
+        </div>
+    </div>
+
+  <div class="conf-section-block">
+    <div class="cli-head">
+      <div class="cli-section-title">Usuarios internos · Admin, Ingeniería, Comercial, Visor</div>
+      <div class="cli-head-right">
+        <div class="cli-search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="usr-search-input" placeholder="Buscar usuario…" oninput="usrFiltrar(this.value)">
+        </div>
+        <button class="cli-btn cli-btn-primary" onclick="usrAbrirCrear()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nuevo usuario
+        </button>
+      </div>
+    </div>
+    <div class="cli-table-wrap">
+      <table class="cli-table">
+        <thead><tr><th>Usuario</th><th>Username</th><th>Rol</th><th>Estado</th><th style="text-align:right">Acciones</th></tr></thead>
+        <tbody id="usr-tbody"><tr><td colspan="4" class="cli-empty"><span class="cli-spin"></span> Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- modal crear/editar usuario -->
+<div class="cli-overlay" id="usr-modal">
+  <div class="cli-modal">
+    <div class="cli-modal-head"><h3 id="usr-modal-title">Nuevo usuario</h3><button class="cli-x" onclick="usrCerrar()">&times;</button></div>
+    <div class="cli-modal-body">
+      <div class="cli-fld"><label>Correo corporativo</label>
+        <input id="usr-f-email" type="email" placeholder="usuario@tecnoimagen.com.ar" autocomplete="off">
+        <div class="cli-hint">Debe ser <b>@tecnoimagen.com.ar</b>.</div></div>
+      <div class="cli-fld"><label>Username</label>
+        <input id="usr-f-username" type="text" placeholder="juan.perez" autocomplete="off">
+        <div class="cli-hint">Minúsculas, sin espacios. El usuario podrá loguearse con este nombre o con su email.</div></div>
+      <div class="cli-fld"><label>Nombre completo</label>
+        <input id="usr-f-name" type="text" placeholder="Juan Pérez" autocomplete="off"></div>
+      <div class="cli-fld"><label>Rol</label>
+        <select id="usr-f-role" style="width:100%;height:42px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0 13px;font-size:14px;font-family:inherit;color:var(--text)">
+          <option value="Admin">Admin</option>
+          <option value="Ingenieria">Ingeniería</option>
+          <option value="Comercial">Comercial</option>
+          <option value="Visor">Visor</option>
+        </select></div>
+      <div class="cli-fld"><label>ID de Asana (opcional)</label>
+        <input id="usr-f-asana" type="text" placeholder="Ej: 1205248667269451" autocomplete="off"></div>
+    </div>
+    <div class="cli-modal-foot">
+      <button class="cli-btn cli-btn-ghost" onclick="usrCerrar()">Cancelar</button>
+      <button class="cli-btn cli-btn-primary" id="usr-btn-guardar" onclick="usrGuardar()">Crear usuario</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal contraseña temporal -->
+<div class="cli-overlay" id="usr-modal-pw">
+  <div class="cli-modal" style="max-width:460px">
+    <div class="cli-modal-head"><h3>Contraseña temporal</h3><button class="cli-x" onclick="document.getElementById('usr-modal-pw').classList.remove('show')">&times;</button></div>
+    <div class="cli-modal-body">
+      <div class="cli-pwbox">
+        <div class="ttl">Usuario listo</div>
+        <div class="warn">Copiá esta contraseña y entregásela al usuario. <b>No se vuelve a mostrar.</b> Se le pedirá cambiarla al primer ingreso.</div>
+        <div class="code"><span id="usr-pw-code">—</span><button onclick="usrCopiarPw()">Copiar</button></div>
+        <div class="who" id="usr-pw-who"></div>
+      </div>
+    </div>
+    <div class="cli-modal-foot"><button class="cli-btn cli-btn-primary" onclick="document.getElementById('usr-modal-pw').classList.remove('show')">Entendido</button></div>
+  </div>
+</div>
+
+<!-- modal aprobar solicitud interna -->
+<div class="cli-overlay" id="usr-modal-aprobar-interno">
+  <div class="cli-modal" style="max-width:420px">
+    <div class="cli-modal-head"><h3>Aprobar solicitud interna</h3><button class="cli-x" onclick="document.getElementById('usr-modal-aprobar-interno').classList.remove('show')">&times;</button></div>
+    <div class="cli-modal-body">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px">
+        <div id="usr-aprob-nombre" style="font-weight:700;color:var(--text)"></div>
+        <div id="usr-aprob-email" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+        <div id="usr-aprob-motivo" style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic"></div>
+      </div>
+      <div class="cli-fld"><label>Rol a asignar</label>
+        <select id="usr-aprob-role" style="width:100%;height:42px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0 13px;font-size:14px;font-family:inherit;color:var(--text)">
+          <option value="Visor">Visor</option>
+          <option value="Comercial">Comercial</option>
+          <option value="Ingenieria">Ingeniería</option>
+          <option value="Admin">Admin</option>
+        </select></div>
+      <div class="cli-fld"><label>ID de Asana (opcional)</label>
+        <input id="usr-aprob-asana" type="text" placeholder="Ej: 1205248667269451" autocomplete="off"></div>
+    </div>
+    <div class="cli-modal-foot">
+      <button class="cli-btn cli-btn-ghost" onclick="document.getElementById('usr-modal-aprobar-interno').classList.remove('show')">Cancelar</button>
+      <button class="cli-btn cli-btn-primary" id="usr-btn-aprobar-interno" onclick="usrConfirmarAprobarInterno()">Aprobar y crear usuario</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal aprobar solicitud cliente -->
+<div class="cli-overlay" id="usr-modal-aprobar-cliente">
+  <div class="cli-modal">
+    <div class="cli-modal-head"><h3>Aprobar solicitud de cliente</h3><button class="cli-x" onclick="document.getElementById('usr-modal-aprobar-cliente').classList.remove('show')">&times;</button></div>
+    <div class="cli-modal-body">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px">
+        <div id="usr-aprob-cli-nombre" style="font-weight:700;color:var(--text)"></div>
+        <div id="usr-aprob-cli-email" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div class="cli-assign-head"><label>Hospitales solicitados y pestañas a habilitar</label></div>
+      <div class="cli-hlist" id="usr-aprob-cli-hlist"></div>
+      <div class="cli-assign-foot"><b id="usr-aprob-cli-count">0</b> hospital(es) con al menos una pestaña marcada.</div>
+    </div>
+    <div class="cli-modal-foot">
+      <button class="cli-btn cli-btn-ghost" onclick="document.getElementById('usr-modal-aprobar-cliente').classList.remove('show')">Cancelar</button>
+      <button class="cli-btn cli-btn-primary" id="usr-btn-aprobar-cliente" onclick="usrConfirmarAprobarCliente()">Aprobar y crear cliente</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var usrFetch = function(p,o){ o=o||{}; return fetch(p,Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}},o)); };
+var usrUsuarios=[], usrModo='crear', usrEditId=null;
+function usrEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+function usrToast(msg,err){var t=document.getElementById('cli-toast');t.textContent=msg;t.className='show'+(err?' err':'');setTimeout(function(){t.className='';},3200);}
+function usrBusy(btn,on,txt){btn.disabled=on;btn.innerHTML=on?'<span class="cli-spin"></span> '+txt:txt;}
+
+var ROL_LABEL = {Admin:'Admin', Ingenieria:'Ingeniería', Comercial:'Comercial', Visor:'Visor'};
+
+var solHospitalesMetaCache = null;
+function cargarUsuariosConf(){
+  var tb=document.getElementById('usr-tbody');
+  tb.innerHTML='<tr><td colspan="4" class="cli-empty"><span class="cli-spin"></span> Cargando…</td></tr>';
+  usrFetch('/api/admin/usuarios').then(function(r){ if(!r.ok) throw new Error('No se pudo cargar la lista ('+r.status+')'); return r.json(); })
+    .then(function(data){ usrUsuarios=data; usrRender(); })
+    .catch(function(e){ tb.innerHTML='<tr><td colspan="4" class="cli-empty"><b>No se pudo cargar</b>'+usrEsc(e.message)+'</td></tr>'; });
+
+    if (!solHospitalesMetaCache) {
+        usrFetch('/api/hospitales-metadata')
+        .then(function(r){ return r.json(); })
+        .then(function(d){ solHospitalesMetaCache = d; })
+        .catch(function(){ solHospitalesMetaCache = []; });
+    }
+}
+window.cargarUsuariosConf = cargarUsuariosConf;
+
+function usrRender(filtro){
+  var f=(filtro||'').trim().toLowerCase();
+  var tb=document.getElementById('usr-tbody');
+  var items=usrUsuarios.filter(function(u){ return !f || (u.email||'').toLowerCase().indexOf(f)>=0 || (u.full_name||'').toLowerCase().indexOf(f)>=0; });
+  if(!items.length){ tb.innerHTML='<tr><td colspan="4" class="cli-empty"><b>'+(usrUsuarios.length?'Sin coincidencias':'Todavía no hay usuarios')+'</b>'+(usrUsuarios.length?'':'Creá el primero con “Nuevo usuario”.')+'</td></tr>'; return; }
+  tb.innerHTML=items.map(function(u){
+        return '<tr><td><div class="cli-email">'+usrEsc(u.email)+'</div><div class="cli-name">'+usrEsc(u.full_name||'')+'</div></td>'
+        +'<td style="font-family:monospace;color:var(--text)">'+usrEsc(u.username||'—')+'</td>'
+        +'<td>'+(ROL_LABEL[u.role]||usrEsc(u.role))+'</td>'
+        +'<td><span class="cli-pill '+(u.is_active?'on':'off')+'"><i></i>'+(u.is_active?'Activo':'Inactivo')+'</span></td>'
+        +'<td><div class="cli-actions">'
+            +'<button class="cli-btn cli-btn-ghost cli-btn-sm" onclick="usrAbrirEditar('+u.id+')">Editar</button>'
+            +'<button class="cli-btn cli-btn-ghost cli-btn-sm" onclick="usrReset('+u.id+',\''+usrEsc(u.email)+'\')">Reset clave</button>'
+            +'<button class="cli-btn '+(u.is_active?'cli-btn-danger':'cli-btn-ghost')+' cli-btn-sm" onclick="usrToggle('+u.id+')">'+(u.is_active?'Desactivar':'Activar')+'</button>'
+        +'</div></td></tr>';
+    }).join('');
+}
+function usrFiltrar(v){ usrRender(v); }
+window.usrFiltrar = usrFiltrar;
+
+function usrAbrirCrear(){
+  usrModo='crear'; usrEditId=null;
+  document.getElementById('usr-modal-title').textContent='Nuevo usuario';
+  document.getElementById('usr-f-email').disabled=false;
+  document.getElementById('usr-f-email').value=''; document.getElementById('usr-f-username').value='';
+  document.getElementById('usr-f-name').value='';
+  document.getElementById('usr-f-role').value='Visor'; document.getElementById('usr-f-asana').value='';
+  document.getElementById('usr-btn-guardar').textContent='Crear usuario';
+  document.getElementById('usr-modal').classList.add('show');
+}
+window.usrAbrirCrear = usrAbrirCrear;
+
+function usrAbrirEditar(id){
+  usrModo='editar'; usrEditId=id;
+  var u=usrUsuarios.find(function(x){ return x.id===id; });
+  if(!u) return;
+  document.getElementById('usr-modal-title').textContent='Editar usuario';
+  document.getElementById('usr-f-email').value=u.email; document.getElementById('usr-f-email').disabled=true;
+  document.getElementById('usr-f-username').value=u.username||'';
+  document.getElementById('usr-f-name').value=u.full_name||'';
+  document.getElementById('usr-f-role').value=u.role;
+  document.getElementById('usr-f-asana').value=u.asana_id||'';
+  document.getElementById('usr-btn-guardar').textContent='Guardar cambios';
+  document.getElementById('usr-modal').classList.add('show');
+}
+window.usrAbrirEditar = usrAbrirEditar;
+
+function usrCerrar(){ document.getElementById('usr-modal').classList.remove('show'); }
+window.usrCerrar = usrCerrar;
+
+function usrGuardar(){
+  var btn=document.getElementById('usr-btn-guardar');
+  var full_name=document.getElementById('usr-f-name').value.trim();
+  var role=document.getElementById('usr-f-role').value;
+  var asana_id=document.getElementById('usr-f-asana').value.trim();
+  var username=document.getElementById('usr-f-username').value.trim().toLowerCase();
+
+  if(!username){ usrToast('Falta el username', true); return; }
+
+  if(usrModo==='crear'){
+    var email=document.getElementById('usr-f-email').value.trim().toLowerCase();
+    if(!email){ usrToast('Falta el correo', true); return; }
+    if(!email.endsWith('@tecnoimagen.com.ar')){ usrToast('El correo debe ser @tecnoimagen.com.ar', true); return; }
+    if(!full_name){ usrToast('Falta el nombre completo', true); return; }
+    usrBusy(btn,true,'Creando…');
+    usrFetch('/api/admin/usuarios',{method:'POST',body:JSON.stringify({email:email,username:username,full_name:full_name,role:role,asana_id:asana_id||null})})
+      .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo crear'); return d; }); })
+      .then(function(d){ usrCerrar(); usrMostrarPw(d.password_temporal,d.email); cargarUsuariosConf(); })
+      .catch(function(e){ usrToast(e.message,true); })
+      .finally(function(){ usrBusy(btn,false,'Crear usuario'); });
+  } else {
+    if(!full_name){ usrToast('Falta el nombre completo', true); return; }
+    usrBusy(btn,true,'Guardando…');
+    usrFetch('/api/admin/usuarios/'+usrEditId,{method:'PUT',body:JSON.stringify({username:username,full_name:full_name,role:role,asana_id:asana_id||null})})
+      .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo guardar'); return d; }); })
+      .then(function(){ usrCerrar(); usrToast('Usuario actualizado'); cargarUsuariosConf(); })
+      .catch(function(e){ usrToast(e.message,true); })
+      .finally(function(){ usrBusy(btn,false,'Guardar cambios'); });
+  }
+}
+window.usrGuardar = usrGuardar;
+
+function usrToggle(id){
+  usrFetch('/api/admin/usuarios/'+id+'/toggle-active',{method:'PATCH'})
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo cambiar el estado'); return d; }); })
+    .then(function(){ cargarUsuariosConf(); })
+    .catch(function(e){ usrToast(e.message,true); });
+}
+window.usrToggle = usrToggle;
+
+function usrReset(id,email){
+  if(!confirm('¿Generar una nueva contraseña temporal para '+email+'? La actual dejará de funcionar.')) return;
+  usrFetch('/api/admin/usuarios/'+id+'/reset-password',{method:'POST'})
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo resetear'); return d; }); })
+    .then(function(d){ usrMostrarPw(d.password_temporal,email); })
+    .catch(function(e){ usrToast(e.message,true); });
+}
+window.usrReset = usrReset;
+
+function usrMostrarPw(pw,email){ document.getElementById('usr-pw-code').textContent=pw; document.getElementById('usr-pw-who').textContent='Para: '+email; document.getElementById('usr-modal-pw').classList.add('show'); }
+function usrCopiarPw(){ var t=document.getElementById('usr-pw-code').textContent; if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ usrToast('Contraseña copiada'); }); }
+window.usrCopiarPw = usrCopiarPw;
+
+['usr-modal','usr-modal-pw'].forEach(function(id){ var o=document.getElementById(id); o.addEventListener('click',function(e){ if(e.target===o) o.classList.remove('show'); }); });
+</script>
+
 <!-- modal crear/editar -->
 <div class="cli-overlay" id="cli-modal">
   <div class="cli-modal">
@@ -2688,10 +2971,10 @@ canvas{color-scheme:dark}
     <div class="cli-modal-body">
       <div id="cli-form-datos">
         <div class="cli-fld"><label>Correo del cliente</label>
-          <input id="cli-f-email" type="email" placeholder="sistemas@hospital.org.ar" autocomplete="off">
-          <div class="cli-hint">Debe ser un correo externo (no <b>@tecnoimagen.com.ar</b>).</div></div>
+            <input id="cli-f-email" type="email" placeholder="sistemas@hospital.org.ar" autocomplete="off">
+            <div class="cli-hint">Debe ser un correo externo (no <b>@tecnoimagen.com.ar</b>).</div></div>
         <div class="cli-fld"><label>Nombre y referencia</label>
-          <input id="cli-f-name" type="text" placeholder="Resp. de Sistemas · Hospital Italiano" autocomplete="off"></div>
+            <input id="cli-f-name" type="text" placeholder="Resp. de Sistemas" autocomplete="off"></div>
       </div>
       <div class="cli-assign-head"><label>Hospitales y pestañas habilitadas</label></div>
       <div class="cli-hlist" id="cli-hlist"><div class="cli-empty"><span class="cli-spin"></span></div></div>
@@ -2724,10 +3007,14 @@ canvas{color-scheme:dark}
 
 <script>
 (function(){
-  // Mostrar la pestaña Clientes SOLO para Admin (la barrera real son los endpoints require_roles("Admin"))
+  // Mostrar las pestañas Clientes y Usuarios SOLO para Admin
+  // (la barrera real son los endpoints require_roles("Admin"))
   try{
     var u = JSON.parse(sessionStorage.getItem('tecnomonitor_user')||'{}');
-    if(u.role === 'Admin'){ var t=document.getElementById('conf-tab-clientes'); if(t) t.style.display=''; }
+    if(u.role === 'Admin'){
+      var t1=document.getElementById('conf-tab-clientes'); if(t1) t1.style.display='';
+      var t2=document.getElementById('conf-tab-usuarios'); if(t2) t2.style.display='';
+    }
   }catch(e){}
 })();
 
@@ -3872,6 +4159,153 @@ window._nuestroVolverAlDashboard = function() {
             };
         }
     });
+
+function cargarSolicitudesConf(){
+  usrFetch('/api/admin/access-requests?estado=pendiente')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      window.usrSolicitudesCache = data;   // 👈 guardamos el caché acá, que es donde sí se ejecuta
+
+      var sec = document.getElementById('usr-req-section');
+      if (!data.length) { sec.style.display = 'none'; return; }
+      sec.style.display = '';
+      document.getElementById('usr-req-count').textContent = data.length + ' pendiente(s)';
+      var tb = document.getElementById('usr-req-tbody');
+      tb.innerHTML = data.map(function(r){
+        var detalle = r.tipo === 'interno'
+          ? '<div class="cli-name">' + usrEsc(r.motivo||'') + '</div>'
+          : '<div class="cli-name">Hospitales: ' + r.hospitales_solicitados.map(usrEsc).join(', ') + '</div>';
+        var nombreMostrado = r.tipo === 'interno' ? (r.nombre + ' ' + (r.apellido||'')) : (r.full_name_cliente || r.nombre);
+        return '<tr><td><div class="cli-email">' + usrEsc(r.email) + '</div><div class="cli-name">' + usrEsc(nombreMostrado) + '</div></td>'
+          + '<td><span class="cli-pill ' + (r.tipo==='interno'?'on':'off') + '">' + (r.tipo==='interno'?'Interno':'Cliente') + '</span></td>'
+          + '<td>' + detalle + '</td>'
+          + '<td><div class="cli-actions">'
+            + '<button class="cli-btn cli-btn-primary cli-btn-sm" onclick="usrAprobarSolicitud(' + r.id + ',\'' + r.tipo + '\')">Aprobar</button>'
+            + '<button class="cli-btn cli-btn-danger cli-btn-sm" onclick="usrRechazarSolicitud(' + r.id + ')">Rechazar</button>'
+          + '</div></td></tr>';
+      }).join('');
+    })
+    .catch(function(){});
+}
+
+function usrRechazarSolicitud(id){
+  if(!confirm('¿Rechazar esta solicitud? No se podrá deshacer.')) return;
+  usrFetch('/api/admin/access-requests/'+id+'/rechazar',{method:'POST'})
+    .then(function(r){ if(!r.ok) throw new Error('No se pudo rechazar'); return r.json(); })
+    .then(function(){ usrToast('Solicitud rechazada'); cargarSolicitudesConf(); })
+    .catch(function(e){ usrToast(e.message,true); });
+}
+
+var usrReqAprobActual = null;   // solicitud siendo aprobada
+var usrAprobCliAsign = {};      // {hospital_id: {infra,software,kpis}}
+
+function usrAprobarSolicitud(id, tipo){
+    var req = (window.usrSolicitudesCache || []).find(function(x){ return x.id === id; });
+    if (!req) { usrToast('No se encontró la solicitud, recargá la lista', true); return; }
+    usrReqAprobActual = req;
+
+    if (tipo === 'interno') {
+        document.getElementById('usr-aprob-nombre').textContent = req.nombre + ' ' + (req.apellido || '');
+        document.getElementById('usr-aprob-email').textContent = req.email;
+        document.getElementById('usr-aprob-motivo').textContent = req.motivo || 'Sin motivo especificado';
+        document.getElementById('usr-aprob-role').value = 'Visor';
+        document.getElementById('usr-aprob-asana').value = '';
+        document.getElementById('usr-modal-aprobar-interno').classList.add('show');
+    } else {
+        usrAprobCliAsign = {};
+        (req.hospitales_solicitados || []).forEach(function(hid){
+            usrAprobCliAsign[hid] = { infra: true, software: true, kpis: true }; // por defecto todo habilitado
+        });
+        document.getElementById('usr-aprob-cli-nombre').textContent = req.full_name_cliente || req.nombre;
+        document.getElementById('usr-aprob-cli-email').textContent = req.email;
+        usrRenderAprobCliHlist(req);
+        document.getElementById('usr-modal-aprobar-cliente').classList.add('show');
+    }
+}
+window.usrAprobarSolicitud = usrAprobarSolicitud;
+
+function usrRenderAprobCliHlist(req){
+    var cont = document.getElementById('usr-aprob-cli-hlist');
+    var ids = req.hospitales_solicitados || [];
+    if (!ids.length) { cont.innerHTML = '<div class="cli-empty">No se especificaron hospitales.</div>'; return; }
+    cont.innerHTML = ids.map(function(hid){
+        var meta = solHospitalesMetaCache ? solHospitalesMetaCache.find(function(h){return h.hospital_id===hid;}) : null;
+        var nombre = meta ? meta.nombre : hid;
+        var a = usrAprobCliAsign[hid] || {infra:true,software:true,kpis:true};
+        return '<div class="cli-hrow active" data-hid="' + usrEsc(hid) + '">'
+            + '<div><div class="cli-hn">' + usrEsc(nombre) + '</div><div class="cli-hid">' + usrEsc(hid) + '</div></div>'
+            + '<div class="cli-chktabs">'
+                + '<label class="cli-tabchk"><input type="checkbox" data-tab="infra" ' + (a.infra?'checked':'') + '>Infra</label>'
+                + '<label class="cli-tabchk"><input type="checkbox" data-tab="software" ' + (a.software?'checked':'') + '>Software</label>'
+                + '<label class="cli-tabchk kpis"><input type="checkbox" data-tab="kpis" ' + (a.kpis?'checked':'') + '>KPIs</label>'
+            + '</div></div>';
+    }).join('');
+    usrAprobContarCli();
+}
+
+function usrAprobContarCli(){
+    var n = Object.keys(usrAprobCliAsign).filter(function(k){ var a=usrAprobCliAsign[k]; return a.infra||a.software||a.kpis; }).length;
+    document.getElementById('usr-aprob-cli-count').textContent = n;
+}
+
+document.getElementById('usr-aprob-cli-hlist')?.addEventListener('change', function(e){
+    var chk = e.target.closest('input[data-tab]'); if (!chk) return;
+    var row = chk.closest('.cli-hrow'), hid = row.dataset.hid, tab = chk.dataset.tab;
+    usrAprobCliAsign[hid] = usrAprobCliAsign[hid] || {infra:false,software:false,kpis:false};
+    usrAprobCliAsign[hid][tab] = chk.checked;
+    row.classList.toggle('active', usrAprobCliAsign[hid].infra || usrAprobCliAsign[hid].software || usrAprobCliAsign[hid].kpis);
+    usrAprobContarCli();
+});
+
+function usrConfirmarAprobarInterno(){
+    if (!usrReqAprobActual) return;
+    var role = document.getElementById('usr-aprob-role').value;
+    var asana_id = document.getElementById('usr-aprob-asana').value.trim();
+    var btn = document.getElementById('usr-btn-aprobar-interno');
+    usrBusy(btn, true, 'Aprobando…');
+    usrFetch('/api/admin/access-requests/' + usrReqAprobActual.id + '/aprobar-interno', {
+        method: 'POST', body: JSON.stringify({ role: role, asana_id: asana_id || null })
+    })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo aprobar'); return d; }); })
+    .then(function(d){
+        document.getElementById('usr-modal-aprobar-interno').classList.remove('show');
+        usrMostrarPw(d.password_temporal, d.email);
+        cargarSolicitudesConf(); cargarUsuariosConf();
+    })
+    .catch(function(e){ usrToast(e.message, true); })
+    .finally(function(){ usrBusy(btn, false, 'Aprobar y crear usuario'); });
+}
+window.usrConfirmarAprobarInterno = usrConfirmarAprobarInterno;
+
+function usrConfirmarAprobarCliente(){
+    if (!usrReqAprobActual) return;
+    var accesos = Object.keys(usrAprobCliAsign)
+        .filter(function(k){ var a=usrAprobCliAsign[k]; return a.infra||a.software||a.kpis; })
+        .map(function(k){ var a=usrAprobCliAsign[k]; return {hospital_id:k, infra:a.infra, software:a.software, kpis:a.kpis}; });
+    if (!accesos.length) { usrToast('Marcá al menos una pestaña para algún hospital', true); return; }
+
+    var btn = document.getElementById('usr-btn-aprobar-cliente');
+    usrBusy(btn, true, 'Aprobando…');
+    usrFetch('/api/admin/access-requests/' + usrReqAprobActual.id + '/aprobar-cliente', {
+        method: 'POST', body: JSON.stringify({ accesos: accesos })
+    })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||'No se pudo aprobar'); return d; }); })
+    .then(function(d){
+        document.getElementById('usr-modal-aprobar-cliente').classList.remove('show');
+        usrMostrarPw(d.password_temporal, d.email);
+        cargarSolicitudesConf();
+        if (typeof cargarClientesConf === 'function') cargarClientesConf();
+    })
+    .catch(function(e){ usrToast(e.message, true); })
+    .finally(function(){ usrBusy(btn, false, 'Aprobar y crear cliente'); });
+}
+window.usrConfirmarAprobarCliente = usrConfirmarAprobarCliente;
+
+['usr-modal-aprobar-interno','usr-modal-aprobar-cliente'].forEach(function(id){
+    var o = document.getElementById(id);
+    if (o) o.addEventListener('click', function(e){ if (e.target === o) o.classList.remove('show'); });
+});
+
 </script>
 </body>
 </html>

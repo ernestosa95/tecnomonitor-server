@@ -253,3 +253,75 @@ def verificar_conexion_asana():
         logger.error(f"❌ Asana NO responde (token inválido/expirado o sin salida a api.asana.com): {repr(e)}")
         return False
 
+CSAC_PROJECT_GID = os.environ.get("CSAC_PROJECT_GID")
+
+def listar_casos_abiertos(hospital_project_gid):
+    """
+    Lista los casos de soporte (proyecto CSAC) que están ABIERTOS y que
+    también pertenecen al proyecto de Asana del hospital indicado.
+    Solo lectura — no crea, ni modifica, ni cierra nada.
+    """
+    if not ASANA_ENABLED or not CSAC_PROJECT_GID or not hospital_project_gid:
+        return []
+
+    configuration = asana.Configuration()
+    configuration.access_token = ASANA_ACCESS_TOKEN
+    api_client = asana.ApiClient(configuration)
+    tasks_api = asana.TasksApi(api_client)
+
+    try:
+        tareas = tasks_api.get_tasks_for_project(
+            CSAC_PROJECT_GID,
+            {
+                "completed_since": "now",  # trae solo las incompletas
+                "opt_fields": "name,gid,custom_fields,memberships.project.gid"
+            }
+        )
+    except Exception as e:
+        logger.error(f"❌ Error listando casos CSAC: {e}")
+        return []
+
+    hp_gid = str(hospital_project_gid).strip()
+    resultado = []
+    debug_impreso = False
+
+    for t in tareas:
+        memberships = t.get("memberships", []) if isinstance(t, dict) else getattr(t, "memberships", [])
+        pertenece_al_hospital = any(
+            str((m.get("project") or {}).get("gid")) == hp_gid
+            for m in memberships
+        )
+        if not pertenece_al_hospital:
+            continue
+
+        campos = t.get("custom_fields", []) if isinstance(t, dict) else getattr(t, "custom_fields", [])
+
+        # 🔍 DEBUG temporal: loguea los campos reales de la primera tarea que matchea,
+        # para confirmar los nombres exactos que devuelve Asana. Sacar después de probar.
+        if not debug_impreso:
+            logger.info(f"🔍 DEBUG custom_fields de tarea {t.get('gid')}: {campos}")
+            debug_impreso = True
+
+        estado = "Sin estado"
+        id_visible = t.get("gid")
+
+        for cf in campos:
+            nombre_campo = (cf.get("name") or "").strip().lower()
+            valor = cf.get("display_value")
+            if valor is None:
+                # Fallback según el tipo de campo, por si display_value no viene poblado
+                valor = cf.get("text_value") or (cf.get("enum_value") or {}).get("name")
+
+            if nombre_campo == "estado csac":
+                estado = valor or "Sin estado"
+            elif nombre_campo == "t":
+                id_visible = valor or id_visible
+
+        resultado.append({
+            "gid": id_visible,
+            "titulo": t.get("name"),
+            "estado": estado
+        })
+
+    return resultado
+
