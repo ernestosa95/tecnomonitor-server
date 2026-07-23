@@ -16,11 +16,40 @@ except ImportError as e:
     print(f"⚠️ No se pudo cargar asana_conector: {e}")
     asana_conector = None
 
-UMBRAL_LATENCIA_MS = 50.0  
+# NOTA: constante histórica sin uso actual. Los umbrales de latencia reales
+# están hardcodeados en _evaluar_reglas_v3 (200 ms NOTICE / 500 ms CRITICAL).
+# Se conserva por compatibilidad con posibles imports externos.
+UMBRAL_LATENCIA_MS = 50.0
+
+
+# =====================================================================
+# DEFAULTS DE KPIs GRANULARES POR HOSPITAL
+# ---------------------------------------------------------------------
+# 🛠️ FIX BUG 3: Estos valores DEBEN ser idénticos a los que devuelve
+# dashboard.get_kpi_settings() y a los que asume script.js en el modal
+# (`prefs.KPI_INACT_RAD ?? true` / `prefs.KPI_INACT_MAMO ?? false`).
+#
+# Antes el motor usaba defaults invertidos respecto de la UI:
+#   - MAMO: motor asumía True, la UI mostraba el switch APAGADO
+#     -> el ticket se generaba igual aunque vos lo vieras desactivado.
+#   - RAD:  motor asumía False, la UI mostraba el switch ENCENDIDO
+#     -> la alerta nunca disparaba aunque vos la vieras activa.
+#
+# ⚠️ IMPORTANTE AL DESPLEGAR: al alinear RAD en True, los hospitales con
+# has_ris=True y kpi_settings vacío ('{}') EMPIEZAN a generar tickets
+# KPI_INACT_RAD que hoy no generan. Corré primero un backfill que escriba
+# el JSON explícito en todos los hospitales existentes; así el default deja
+# de importar y no hay sorpresas.
+# =====================================================================
+KPI_DEFAULTS = {
+    "KPI_INACT_RAD": True,
+    "KPI_INACT_MAMO": False,
+}
+
 
 def cargar_config(db: Session):
     """
-    Carga la configuración global desde la base de datos, 
+    Carga la configuración global desde la base de datos,
     manejando tipos booleanos, enteros y cadenas.
     """
     def g(k, d, is_bool=False):
@@ -39,15 +68,31 @@ def cargar_config(db: Session):
         return d
 
     return {
-        # --- Configuración de Infraestructura (Existente) ---
+        # --- Configuración de Infraestructura ---
         "offline_minutes": g("offline_minutes", 15),
         "disk_threshold": g("disk_threshold", 90),
+        "temp_amb_max": g("temp_amb_max", 27),
         "temp_cpu_max": g("temp_cpu_max", 70),
+        "cpu_host_max": g("cpu_host_max", 85),
+        "ram_host_max": g("ram_host_max", 95),
+        "cpu_vm_max": g("cpu_vm_max", 90),
+        "ram_vm_max": g("ram_vm_max", 90),
         "enable_fans": g("enable_fans", True, is_bool=True),
         "enable_power": g("enable_power", True, is_bool=True),
         "enable_raid": g("enable_raid", True, is_bool=True),
-        
-        # --- Configuración de KPIs de Negocio (Nuevos) ---
+
+        # 🛠️ FIX BUG 2: esta clave NO se cargaba. El switch "Latencia de Red"
+        # se guardaba bien en la DB y la UI lo leía bien, pero el motor jamás
+        # lo veía (config.get() devolvía siempre el default).
+        "enable_network_latency": g("enable_network_latency", True, is_bool=True),
+
+        # 🛠️ FIX BUG 1: esta clave NO se cargaba. procesar_offline() hacía
+        # config.get('global_alert_responsible_email', '') -> siempre ''
+        # -> lista de followers vacía -> Asana recibía followers: []
+        # aunque en el panel tuvieras responsables configurados.
+        "global_alert_responsible_email": g("global_alert_responsible_email", ""),
+
+        # --- Configuración de KPIs de Negocio ---
         "kpi_execution_time": g("kpi_execution_time", "08:00"),
         "kpi_rad_alert_enabled": g("kpi_rad_alert_enabled", False, is_bool=True),
         "kpi_rad_threshold_hours": g("kpi_rad_threshold_hours", 24),
@@ -63,21 +108,77 @@ def cargar_config(db: Session):
         "mirth_responsible_email": g("mirth_responsible_email", "")
     }
 
+
+# =====================================================================
+# HELPERS DE RESOLUCIÓN DE FOLLOWERS Y PREFERENCIAS
+# =====================================================================
+
+def _followers_de(db, config, clave='global_alert_responsible_email'):
+    """
+    Traduce una lista de emails guardada en config (CSV) a IDs de Asana.
+    Centralizado para que todos los caminos (ingesta, tick, KPIs, Mirth)
+    resuelvan followers de la misma manera.
+    """
+    emails = [e.strip() for e in (config.get(clave) or '').split(',') if e.strip()]
+    if not emails:
+        return []
+    usuarios = db.query(database.UserModel).filter(
+        database.UserModel.email.in_(emails)
+    ).all()
+    return [u.asana_id for u in usuarios if u.asana_id]
+
+
+def _kpi_habilitado(hosp, clave):
+    """
+    🛠️ FIX BUG 3: única fuente de verdad para leer el JSON granular de KPIs
+    de un hospital. Tolera kpi_settings en string (SQLite) o dict, y usa
+    KPI_DEFAULTS cuando la clave no está seteada.
+    """
+    prefs = hosp.kpi_settings or {}
+    if isinstance(prefs, str):
+        try:
+            prefs = json.loads(prefs)
+        except Exception:
+            prefs = {}
+    if not isinstance(prefs, dict):
+        prefs = {}
+    return bool(prefs.get(clave, KPI_DEFAULTS.get(clave, False)))
+
+
+# =====================================================================
+# PUNTOS DE ENTRADA
+# =====================================================================
+
 def analizar_reporte(hospital_id, json_data_v3, db: Session):
+    """
+    Camino de INGESTA: se dispara al recibir un reporte del agente.
+
+    🛠️ FIX BUG 4 (el más grave): esta función llamaba a _evaluar_reglas_v3()
+    con 5 argumentos cuando la firma exige 6 (faltaba asana_followers).
+    Resultado: TypeError en CADA reporte entrante -> analizar_reporte()
+    nunca ejecutó una sola regla. Las alertas de infra que se veían las
+    generaba exclusivamente procesar_offline() en su tick periódico.
+    """
     meta = db.query(database.HospitalMetadata).filter_by(hospital_id=hospital_id).first()
-    if not meta or not meta.alerts_enabled: return 
+    if not meta or not meta.alerts_enabled:
+        return
+
     config = cargar_config(db)
-    _evaluar_reglas_v3(hospital_id, json_data_v3, db, config, meta.asana_project_id)
+    followers = _followers_de(db, config)  # <-- faltaba por completo
+    return _evaluar_reglas_v3(
+        hospital_id, json_data_v3, db, config,
+        meta.asana_project_id, followers
+    )
+
 
 def procesar_offline(db: Session):
     config = cargar_config(db)
 
-    # --- IDs de Asana Globales ---
-    emails_globales = [e.strip() for e in config.get('global_alert_responsible_email', '').split(',') if e.strip()]
-    global_asana_followers = []
-    if emails_globales:
-        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_globales)).all()
-        global_asana_followers = [u.asana_id for u in usuarios if u.asana_id]
+    # --- IDs de Asana Globales (Infraestructura) ---
+    global_asana_followers = _followers_de(db, config, 'global_alert_responsible_email')
+    if not global_asana_followers:
+        print("ℹ️ [Vigilancia] Sin followers globales resueltos "
+              "(revisá 'Responsables Asana (Infraestructura)' y que esos usuarios tengan asana_id).")
 
     # OFFLINE aislado: si falla, no arrastra al resto del tick
     try:
@@ -116,7 +217,7 @@ def procesar_offline(db: Session):
                     row.hospital_id, data, db, config,
                     meta.asana_project_id, global_asana_followers
                 )
-                if isinstance(resultado, int):   # ver nota sobre el return opcional
+                if isinstance(resultado, int):
                     total_hallazgos += resultado
                 evaluados += 1
             except Exception as e:
@@ -144,12 +245,21 @@ def procesar_offline(db: Session):
         f"hallazgos_no_ok={total_hallazgos} alertas_activas={activas_ahora}"
     )
 
-# --- HELPERS DE UMBRALES TRIPLES ---
+
+# =====================================================================
+# HELPERS DE UMBRALES
+# =====================================================================
+
 def _nivel_cpu_ram(valor):
+    """
+    Escalonado fijo 90/85/75 para CPU de host físico.
+    ⚠️ PENDIENTE (no tocado en esta pasada): ignora config['cpu_host_max'].
+    """
     if valor >= 90: return "CRITICAL"
     if valor >= 85: return "WARNING"
     if valor >= 75: return "NOTICE"
     return "OK"
+
 
 def _nivel_temp(valor, crit_max):
     if valor >= crit_max: return "CRITICAL"
@@ -157,28 +267,59 @@ def _nivel_temp(valor, crit_max):
     if valor >= crit_max - 10: return "NOTICE"
     return "OK"
 
-def _nivel_disco(valor):
-    if valor >= 90: return "CRITICAL"
-    if valor >= 85: return "WARNING"
-    if valor >= 80: return "NOTICE"
+
+def _nivel_ram_host(valor, umbral_critical=95):
+    """
+    Umbral ÚNICO (no escalonado) para RAM de host físico.
+    Motivo: la mayoría de los hospitales opera con RAM alta de forma normal
+    (cache de SO), así que el escalonado 75/85/90 generaba falsos positivos
+    constantes. Solo alertamos CRITICAL al superar el umbral configurado
+    (default 95%). No hay WARNING/NOTICE intermedios a propósito.
+    """
+    if valor >= umbral_critical:
+        return "CRITICAL"
     return "OK"
 
-# =====================================================================
-# PARCHE para alerts_engine.py
-# Reemplazar la función _evaluar_reglas_v3 completa por esta versión.
-# =====================================================================
+
+def _nivel_cpu_ram_configurable(valor, umbral_max):
+    """Igual que _nivel_cpu_ram pero usando el umbral configurado en vez de 90 fijo."""
+    if valor >= umbral_max:
+        return "CRITICAL"
+    if valor >= umbral_max - 5:
+        return "WARNING"
+    if valor >= umbral_max - 10:
+        return "NOTICE"
+    return "OK"
+
+
+def _nivel_disco(valor, umbral_critical=90):
+    """
+    🛠️ FIX: acepta el umbral configurado (config['disk_threshold']) en vez de
+    tener 90/85/80 hardcodeado sin relación con el panel (input 'conf-disk').
+
+    🧹 LIMPIEZA: existía una segunda definición _nivel_disco(valor) más arriba
+    del archivo, sin parámetro de umbral. Python la pisaba con ésta (la última
+    definición gana), así que funcionaba de casualidad. Se eliminó la muerta.
+    """
+    if valor >= umbral_critical:
+        return "CRITICAL"
+    if valor >= umbral_critical - 5:
+        return "WARNING"
+    if valor >= umbral_critical - 10:
+        return "NOTICE"
+    return "OK"
+
 
 # =====================================================================
-# RECORDATORIO: agregar esta clave en cargar_config() del archivo real
-# (si no la agregás, va a usar el default 95 hardcodeado, que también
-# está OK, pero así queda ajustable desde el panel sin tocar código):
-#
-#   "ram_host_max": g("ram_host_max", 95),
-#
+# MOTOR DE REGLAS V3
 # =====================================================================
 
-# --- MOTOR DE REGLAS V3 (CORREGIDO) ---
-def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
+def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers=None):
+    # 🛠️ Default defensivo: si algún camino olvida pasar followers, degradamos
+    # a lista vacía en vez de reventar con TypeError (ver FIX BUG 4).
+    if asana_followers is None:
+        asana_followers = []
+
     hallazgos = {}
     phy = data.get('physical_layer') or {}
     tele_host = phy.get('telemetry') or {}
@@ -212,14 +353,23 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
         else:
             hallazgos["HOST_UPTIME"] = ("OK", f"Uptime estable: {int(dias_uptime)} días")
 
-    latencia_ms = net_health.get('cloud_latency_ms', -1)
-    if latencia_ms is not None and latencia_ms >= 0:
-        if latencia_ms >= 500:
-            hallazgos["NETWORK_LATENCY"] = ("CRITICAL", f"Latencia de red severa: {latencia_ms} ms")
-        elif latencia_ms >= 200:
-            hallazgos["NETWORK_LATENCY"] = ("NOTICE", f"Saturación/Latencia de red elevada: {latencia_ms} ms")
-        else:
-            hallazgos["NETWORK_LATENCY"] = ("OK", f"Latencia de red normal: {latencia_ms} ms")
+    # 🛠️ FIX BUG 2: este bloque NO consultaba el switch. Los otros sensores sí
+    # (enable_fans / enable_power / enable_raid), pero latencia alertaba siempre.
+    #
+    # NOTA sobre el apagado: cuando el flag está en False simplemente NO se
+    # genera hallazgo, así que las NETWORK_LATENCY que ya estén abiertas NO se
+    # auto-cierran (quedan colgadas hasta cierre manual en Asana). Si preferís
+    # que apagar el switch cierre las abiertas, hay que emitir "OK" explícito
+    # en el else. Decisión pendiente -> por ahora, comportamiento conservador.
+    if config.get('enable_network_latency', True):
+        latencia_ms = net_health.get('cloud_latency_ms', -1)
+        if latencia_ms is not None and latencia_ms >= 0:
+            if latencia_ms >= 500:
+                hallazgos["NETWORK_LATENCY"] = ("CRITICAL", f"Latencia de red severa: {latencia_ms} ms")
+            elif latencia_ms >= 200:
+                hallazgos["NETWORK_LATENCY"] = ("NOTICE", f"Saturación/Latencia de red elevada: {latencia_ms} ms")
+            else:
+                hallazgos["NETWORK_LATENCY"] = ("OK", f"Latencia de red normal: {latencia_ms} ms")
 
     # =========================================================
     # 🟢 2. BOOLEANOS (Todo o nada -> CRITICAL o OK)
@@ -240,7 +390,6 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
         for ld in storage_layer.get('logical_volumes', []):
             st = ld.get('status', 'OK')
             nivel = "OK" if st in ['OK', 'Online'] else "CRITICAL"
-            # 🛠️ FIX: faltaba asignar el hallazgo (antes era una línea "hallazgos" suelta, un no-op)
             hallazgos[f"RAID_VOL_{ld.get('name')}"] = (nivel, f"Volumen RAID '{ld.get('name')}': {st}")
 
         for pd in storage_layer.get('physical_drives', []):
@@ -249,7 +398,7 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
             hallazgos[f"RAID_DISK_{pd.get('slot')}"] = (nivel, f"Disco físico (Slot {pd.get('slot')}): {st}")
 
     # =========================================================
-    # 🟢 3. CAPA VIRTUAL (VMs) — 🛠️ FIX: este bloque no existía
+    # 🟢 3. CAPA VIRTUAL (VMs)
     # =========================================================
     cpu_vm_max = config.get('cpu_vm_max', 90)
     ram_vm_max = config.get('ram_vm_max', 90)
@@ -280,7 +429,7 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
             )
 
     # =========================================================
-    # 🟢 4. PERSISTENCIA — 🛠️ FIX: este bucle no existía, nada se guardaba
+    # 🟢 4. PERSISTENCIA
     # =========================================================
     contador = 0
     for tipo_unico, (nivel, mensaje) in hallazgos.items():
@@ -290,46 +439,6 @@ def _evaluar_reglas_v3(hid, data, db, config, asana_proj_id, asana_followers):
 
     return contador
 
-
-# --- HELPERS ACTUALIZADOS ---
-
-def _nivel_ram_host(valor, umbral_critical=95):
-    """
-    Umbral ÚNICO (no escalonado) para RAM de host físico.
-    Motivo: la mayoría de los hospitales opera con RAM alta de forma normal
-    (cache de SO), así que el escalonado 75/85/90 generaba falsos positivos
-    constantes. Solo alertamos CRITICAL al superar el umbral configurado
-    (default 95%). No hay WARNING/NOTICE intermedios a propósito.
-    """
-    if valor >= umbral_critical:
-        return "CRITICAL"
-    return "OK"
-
-
-def _nivel_cpu_ram_configurable(valor, umbral_max):
-    """Igual que _nivel_cpu_ram pero usando el umbral configurado en vez de 90 fijo."""
-    if valor >= umbral_max:
-        return "CRITICAL"
-    if valor >= umbral_max - 5:
-        return "WARNING"
-    if valor >= umbral_max - 10:
-        return "NOTICE"
-    return "OK"
-
-
-def _nivel_disco(valor, umbral_critical=90):
-    """
-    🛠️ FIX: ahora acepta el umbral configurado (config['disk_threshold'])
-    en vez de tener 90/85/80 hardcodeado sin relación con lo que el usuario
-    configura en el panel (input 'conf-disk').
-    """
-    if valor >= umbral_critical:
-        return "CRITICAL"
-    if valor >= umbral_critical - 5:
-        return "WARNING"
-    if valor >= umbral_critical - 10:
-        return "NOTICE"
-    return "OK"
 
 # --- GESTOR INTELIGENTE DE INCIDENTES V3 ---
 def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None, asana_followers=None):
@@ -382,13 +491,13 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers)
             alerta.asana_task_gid = nuevo_gid
             db.commit()
-            
+
         # 1. ¿Cambió la gravedad? Solo si es distinto avisamos a Asana
         elif nivel_db != nivel:
             print(f"🛡️ CAMBIO DE GRAVEDAD CONFIRMADO: {hid} -> {tipo_unico} (De {nivel_db} a {nivel})")
             if alerta.asana_task_gid and asana_conector:
                 asana_conector.actualizar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, nivel, mensaje, reabrir=False)
-        
+
         # 2. Guardado en DB silencioso (actualiza decimales y minutos sin tocar Asana)
         if str(alerta.mensaje) != nuevo_mensaje:
             alerta.mensaje = nuevo_mensaje
@@ -398,7 +507,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         # B3: Estaba cerrada. Amnesia de 15 días
         if alerta.end_time and (ahora - alerta.end_time).days <= DIAS_CADUCIDAD:
             print(f"♻️ REINCIDENCIA (Reabriendo): {hid} -> {tipo_unico} ({nivel})")
-            
+
             if alerta.asana_task_gid and asana_conector:
                 # Flujo normal: Reabre la tarea existente
                 asana_conector.actualizar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, nivel, mensaje, reabrir=True)
@@ -407,7 +516,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
                 print(f"⚠️ REINCIDENCIA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
                 nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers)
                 alerta.asana_task_gid = nuevo_gid
-                
+
             alerta.is_active = 1
             alerta.end_time = None
             alerta.start_time = ahora
@@ -419,6 +528,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             nueva = database.AlertaModel(hospital_id=hid, tipo=tipo_unico, mensaje=f"[{nivel}] {mensaje}", start_time=ahora, is_active=1, asana_task_gid=gid)
             db.add(nueva)
             db.commit()
+
 
 def _parsear_timestamp(ts_val):
     """Convierte un timestamp de la DB a datetime. Devuelve None SOLO si es irrecuperable."""
@@ -443,6 +553,7 @@ def _parsear_timestamp(ts_val):
         return datetime.strptime(s.replace("T", " ").split(".")[0], "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return None
+
 
 def _verificar_conectividad(db, config, asana_followers):
     limit_min = config['offline_minutes']
@@ -477,25 +588,25 @@ def _verificar_conectividad(db, config, asana_followers):
 
         actualizar_estado_alerta(db, meta.hospital_id, "OFFLINE", nivel, msg, meta.asana_project_id, asana_followers)
 
+
+# =====================================================================
+# KPIs DE NEGOCIO
+# =====================================================================
+
 def verificar_actividad_ris(db: Session):
     config = cargar_config(db)
-    
+
     if not config.get('kpi_rad_alert_enabled'):
         return
 
     print("📊 Iniciando verificación de KPIs de Negocio (Inactividad RIS)...")
-    
+
     umbral_horas = config.get('kpi_rad_threshold_hours', 24)
     modalidades_target = [m.strip().upper() for m in config.get('kpi_rad_modalities', 'DX,CR').split(',')]
-    emails_responsables = [e.strip() for e in config.get('kpi_rad_responsible_email', '').split(',') if e.strip()]
-    
-    asana_followers = []
-    if emails_responsables:
-        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_responsables)).all()
-        asana_followers = [u.asana_id for u in usuarios if u.asana_id]
+    asana_followers = _followers_de(db, config, 'kpi_rad_responsible_email')
 
     fecha_limite = datetime.now() - timedelta(hours=umbral_horas)
-    
+
     hospitales_ris = db.query(database.HospitalMetadata).filter(
         database.HospitalMetadata.is_visible == True,
         database.HospitalMetadata.alerts_enabled == True,
@@ -503,16 +614,11 @@ def verificar_actividad_ris(db: Session):
     ).all()
 
     for hosp in hospitales_ris:
-        # --- NUEVO LOGICA GRANULAR: Verificamos preferencias en JSON ---
-        kpi_prefs = hosp.kpi_settings or {}
-        if isinstance(kpi_prefs, str):
-            try: kpi_prefs = json.loads(kpi_prefs)
-            except: kpi_prefs = {}
-            
-        # Si explícitamente se apagó para este hospital, saltamos
-        if kpi_prefs.get('KPI_INACT_RAD', False) == False:
+        # 🛠️ FIX BUG 3 (espejo): antes era .get('KPI_INACT_RAD', False), o sea
+        # que un hospital sin kpi_settings guardado NUNCA disparaba, aunque la
+        # UI mostrara el switch encendido. Ahora ambos usan KPI_DEFAULTS.
+        if not _kpi_habilitado(hosp, 'KPI_INACT_RAD'):
             continue
-        # -------------------------------------------------------------
 
         reportes = db.query(database.ReporteUso).filter(
             database.ReporteUso.hospital_id == hosp.hospital_id,
@@ -520,7 +626,7 @@ def verificar_actividad_ris(db: Session):
         ).all()
 
         total_admitidos = 0
-        
+
         for rep in reportes:
             if not rep.kpi_json_data:
                 continue
@@ -530,44 +636,46 @@ def verificar_actividad_ris(db: Session):
                     mod_reportada = str(item.get('mod', '')).upper()
                     if any(mod_target in mod_reportada for mod_target in modalidades_target):
                         total_admitidos += item.get('admitidos', 0)
-            except Exception as e:
+            except Exception:
                 continue
 
-        # --- CORRECCIÓN BUG 1: Lógica de Auto-cierre si volvió a tener producción ---
+        # --- Lógica de Auto-cierre si volvió a tener producción ---
         if total_admitidos == 0:
             mensaje = f"Cero (0) admisiones registradas en las modalidades {', '.join(modalidades_target)} durante las últimas {umbral_horas} horas."
             print(f"⚠️ ALERTA KPI: Inactividad en {hosp.hospital_id}. Generando ticket...")
-            # Usamos la nueva función refactorizada para crear alertas KPI
             _crear_alerta_kpi_generica(db, hosp, "KPI_INACT_RAD", mensaje, asana_followers)
         else:
             # Si hay admisiones, llamamos a actualizar_estado_alerta para que la CIERRE si estaba abierta
             actualizar_estado_alerta(db, hosp.hospital_id, "KPI_INACT_RAD", "OK", "Producción reanudada", hosp.asana_project_id, asana_followers)
 
+
 # Variable global para registrar la última ejecución
 ultima_ejecucion_kpis = None
 
+
 def verificar_kpis_programados(db: Session):
     global ultima_ejecucion_kpis
-    
+
     config = cargar_config(db)
     hora_configurada = config.get('kpi_execution_time', '08:00')
-    
+
     ahora = datetime.now()
     hora_actual_str = ahora.strftime("%H:%M")
-    
+
     # ¿Es la hora de correr los KPIs?
     if hora_actual_str == hora_configurada:
         fecha_hoy = ahora.strftime("%Y-%m-%d")
-        
+
         # Verificamos que no se haya ejecutado ya en el día de hoy
         if ultima_ejecucion_kpis != fecha_hoy:
             ultima_ejecucion_kpis = fecha_hoy
             print(f"⏰ Hora programada ({hora_configurada}) alcanzada. Lanzando batería de KPIs...")
-            
+
             # --- Aquí listamos todas las funciones KPI ---
-            verificar_actividad_ris(db) # Alerta 1
-            verificar_actividad_mamo(db) # Alerta 2
+            verificar_actividad_ris(db)   # Alerta 1
+            verificar_actividad_mamo(db)  # Alerta 2
             # verificar_otra_alerta_kpi(db)  <-- Cuando agregues más, irán aquí
+
 
 def verificar_actividad_mamo(db: Session):
     config = cargar_config(db)
@@ -576,35 +684,24 @@ def verificar_actividad_mamo(db: Session):
 
     print("📊 Verificando KPI 2: Inactividad en Mamografía...")
     dias_umbral = config.get('kpi_mamo_threshold_days', 7)
-    
-    # --- CORRECCIÓN BUG 2: Email cruzado. Apuntamos a la variable correcta ---
-    emails_resp = [e.strip() for e in config.get('kpi_mamo_responsible_email', '').split(',') if e.strip()]
-    
-    followers = []
-    if emails_resp:
-        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_resp)).all()
-        followers = [u.asana_id for u in usuarios if u.asana_id]
+
+    followers = _followers_de(db, config, 'kpi_mamo_responsible_email')
 
     fecha_limite = datetime.now() - timedelta(days=dias_umbral)
-    
+
     hospitales_ris = db.query(database.HospitalMetadata).filter(
         database.HospitalMetadata.is_visible == True,
-        # --- CORRECCIÓN BUG 3: Faltaba chequear que las alertas estuvieran encendidas globalmente ---
         database.HospitalMetadata.alerts_enabled == True,
         database.HospitalMetadata.has_ris == True
     ).all()
 
     for hosp in hospitales_ris:
-        # --- NUEVA LOGICA GRANULAR ---
-        kpi_prefs = hosp.kpi_settings or {}
-        if isinstance(kpi_prefs, str):
-            try: kpi_prefs = json.loads(kpi_prefs)
-            except: kpi_prefs = {}
-            
-        # Si explícitamente se apagó MAMO, saltamos
-        if kpi_prefs.get('KPI_INACT_MAMO', True) == False:
+        # 🛠️ FIX BUG 3: antes era .get('KPI_INACT_MAMO', True) -> un hospital
+        # sin kpi_settings guardado se veía APAGADO en la UI pero el motor lo
+        # trataba como ENCENDIDO y levantaba el ticket igual. Éste es el caso
+        # exacto que apareció en producción.
+        if not _kpi_habilitado(hosp, 'KPI_INACT_MAMO'):
             continue
-        # -----------------------------
 
         reportes = db.query(database.ReporteUso).filter(
             database.ReporteUso.hospital_id == hosp.hospital_id,
@@ -613,14 +710,16 @@ def verificar_actividad_mamo(db: Session):
 
         total_mamo = 0
         for rep in reportes:
-            if not rep.kpi_json_data: continue
+            if not rep.kpi_json_data:
+                continue
             try:
                 metrics = json.loads(rep.kpi_json_data)
                 for item in metrics.get('ris', []):
                     mod_reportada = str(item.get('mod', '')).upper()
                     if any(m in mod_reportada for m in ['MG', 'MAMO']):
                         total_mamo += item.get('admitidos', 0)
-            except: continue
+            except Exception:
+                continue
 
         if total_mamo == 0:
             mensaje = f"Sin admisiones de Mamografía (MG) en los últimos {dias_umbral} días."
@@ -630,29 +729,30 @@ def verificar_actividad_mamo(db: Session):
             # Auto-cierre
             actualizar_estado_alerta(db, hosp.hospital_id, "KPI_INACT_MAMO", "OK", "Producción reanudada", hosp.asana_project_id, followers)
 
+
 def _crear_alerta_kpi_generica(db, hosp, tipo, mensaje, followers):
     # Verificamos si ya existe para no duplicar
     existe = db.query(database.AlertaModel).filter_by(hospital_id=hosp.hospital_id, tipo=tipo, is_active=1).first()
     if not existe:
-        gid = asana_conector.crear_tarea_alerta(hosp.hospital_id, tipo, "WARNING", mensaje, hosp.asana_project_id, extra_followers=followers)
+        gid = asana_conector.crear_tarea_alerta(hosp.hospital_id, tipo, "WARNING", mensaje, hosp.asana_project_id, extra_followers=followers) if asana_conector else None
         nueva = database.AlertaModel(hospital_id=hosp.hospital_id, tipo=tipo, mensaje=f"[KPI] {mensaje}", start_time=datetime.now(), is_active=1, asana_task_gid=gid)
         db.add(nueva)
         db.commit()
 
+
+# =====================================================================
+# SOFTWARE / MIRTH
+# =====================================================================
+
 def verificar_estado_software(db: Session):
     config = cargar_config(db)
-    
+
     # 1. Chequeo de encendido
     if not config.get('mirth_alert_enabled'):
         return
 
     umbral_encolados = config.get('mirth_queued_threshold', 100)
-    emails_resp = [e.strip() for e in config.get('mirth_responsible_email', '').split(',') if e.strip()]
-    
-    asana_followers = []
-    if emails_resp:
-        usuarios = db.query(database.UserModel).filter(database.UserModel.email.in_(emails_resp)).all()
-        asana_followers = [u.asana_id for u in usuarios if u.asana_id]
+    asana_followers = _followers_de(db, config, 'mirth_responsible_email')
 
     hospitales_activos = db.query(database.HospitalMetadata).filter(
         database.HospitalMetadata.is_visible == True,
@@ -685,21 +785,21 @@ def verificar_estado_software(db: Session):
         for cid, historia in historial_canales.items():
             # CORRECCIÓN 3: Re-aseguramos en Python que [0] es siempre el último reporte (rn=1)
             historia.sort(key=lambda x: x.rn)
-            
+
             actual = historia[0]
             estado_canal = (actual.status_value or '').upper()
-            
+
             # CORRECCIÓN 4: Parseo seguro a número entero para evitar el TypeError
             try:
                 encolados = int(actual.metric_value or 0)
             except (ValueError, TypeError):
                 encolados = 0
-            
+
             estado_anterior = (historia[1].status_value or '').upper() if len(historia) > 1 else estado_canal
-            
+
             nivel = "OK"
             mensaje = ""
-            
+
             if estado_canal in ['STOPPED', 'ERROR', 'PAUSED']:
                 if estado_anterior in ['STOPPED', 'ERROR', 'PAUSED']:
                     nivel = "CRITICAL"
@@ -707,27 +807,23 @@ def verificar_estado_software(db: Session):
                     mensaje = f"Canal inoperativo de forma sostenida ({estado_canal})."
                 else:
                     # Micro-corte detectado: Esperamos al próximo ciclo
-                    continue 
-                
+                    continue
+
             elif encolados >= umbral_encolados:
                 nivel = "CRITICAL"
                 mensaje = f"Acumulación en canal: {encolados} mensajes encolados (Umbral: {umbral_encolados})."
-                
+
             else:
                 mensaje = f"Operando normal. Encolados: {encolados}"
-            
+
             tipo_alerta = f"MIRTH_{cid[:35]}"
-            
+
             actualizar_estado_alerta(
-                db=db, 
-                hid=hosp.hospital_id, 
-                tipo_unico=tipo_alerta, 
-                nivel=nivel, 
-                mensaje=mensaje, 
-                asana_proj_id=hosp.asana_project_id, 
+                db=db,
+                hid=hosp.hospital_id,
+                tipo_unico=tipo_alerta,
+                nivel=nivel,
+                mensaje=mensaje,
+                asana_proj_id=hosp.asana_project_id,
                 asana_followers=asana_followers
             )
-
-
-
-

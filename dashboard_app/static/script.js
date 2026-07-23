@@ -14,6 +14,7 @@ let currentHasPhysicalHost = true;
 let mirthChartInstance = null;
 let currentMirthDataCache = null;
 let elasticChartInstance = null;
+let dicomChartInstance = null;
 
 // --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
 async function authFetch(url, options = {}) {
@@ -753,6 +754,7 @@ function renderizarDetalle(data, id) {
                 Object.entries(metricas.discos).forEach(([mnt, dsk]) => {
                     storageV3.push({
                         mount_point: mnt,
+                        total_gb: dsk.total_gb,
                         free_gb: dsk.libre_gb,
                         usage_percent: dsk.percent_used,
                         performance: { latency_ms: dsk.latency_ms || 0, status: dsk.latency_status || "OK" }
@@ -993,11 +995,27 @@ function renderizarDetalle(data, id) {
         }
 
         // Render Seguro de Discos
+        const fmtSize = (gb) => gb >= 1024 ? (gb/1024).toFixed(2) + ' TB' : gb.toFixed(1) + ' GB';
+
         let disksHtml = (vm.storage || []).map(disk => {
-            const w = disk.usage_percent || 0; 
-            const color = w > 90 ? '#e74c3c' : '#3498db';
+            const w = disk.usage_percent || 0;
+            const color = w > 90 ? '#e74c3c' : (w > 80 ? '#f39c12' : '#3498db');
+
+            const free = disk.free_gb || 0;
+            // Si el agente no reporta total_gb, lo derivamos: libre / (1 - uso)
+            let total = disk.total_gb || 0;
+            if (!total && w > 0 && w < 100) total = free / (1 - w / 100);
+            const totalTxt = total ? fmtSize(total) : 'N/A';
+
             let latHtml = disk.performance?.latency_ms !== undefined ? `<span style="font-size:0.75em; ${disk.performance.latency_ms > 20 ? 'color:#e74c3c; font-weight:bold;' : 'color:#f39c12;'} margin-left:8px;" title="Latencia">⚡ ${disk.performance.latency_ms.toFixed(1)}ms</span>` : '';
-            return `<div class="disk-row"><div class="disk-info"><span>${disk.mount_point}</span><span>${(disk.free_gb||0).toFixed(1)} GB Libres${latHtml}</span></div><div class="progress-track"><div class="progress-fill" style="width:${w}%; background:${color};"></div></div></div>`;
+
+            return `<div class="disk-row" title="${disk.mount_point} — ${fmtSize(free)} libres de ${totalTxt} (${w.toFixed(1)}% ocupado)">
+                <div class="disk-info">
+                    <span>${disk.mount_point}</span>
+                    <span><b style="color:${color};">${w.toFixed(1)}%</b> de ${totalTxt}${latHtml}</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" style="width:${w}%; background:${color};"></div></div>
+            </div>`;
         }).join('');
 
         // Render Seguro de Servicios
@@ -3531,12 +3549,14 @@ function renderizarSoftware(data) {
     
     const hasMirth = data.mirth && Object.keys(data.mirth).length > 0;
     const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
+    const hasDicom = data.dicom_routing && data.dicom_routing.length > 0;   // 🆕 DICOM
 
-    if (!hasMirth && !hasSSL && !hasElastic) {
+
+    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom) {
         container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; color: #7f8c8d;">
-                <h3 style="margin-top: 20px;">Sin Integraciones Reportadas</h3>
-                <p style="font-style: italic;">Este hospital no tiene canales de Mirth ni Certificados SSL monitoreados actualmente.</p>
+                <h3 style="margin-top: 20px;">Sin Reportes</h3>
+                <p style="font-style: italic;">Este hospital no tiene moniteos de soft. actualmente.</p>
             </div>
         `;
         return;
@@ -3753,6 +3773,96 @@ function renderizarSoftware(data) {
         esHtml += `</div></div>`; // Cierra grid y card
         html += esHtml;
     }
+
+    // ==========================================
+    // --- 4. 🆕 RENDER DE AUTO-ENRUTADO DICOM ---
+    // ==========================================
+    if (hasDicom) {
+        let dicomHtml = `
+            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #16a085;">
+                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;" class="detail-card-header">
+                    <div style="display:flex; align-items:center; gap: 10px;">
+                        <span style="font-size: 1.5em;">📡</span>
+                        <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Auto-Enrutado DICOM <span style="color:#16a085;">(Colas de envío)</span></h3>
+                    </div>
+                    <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
+                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
+                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
+                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
+                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
+                    </div>
+                </div>
+
+                <div style="padding: 20px; border-bottom: 1px solid #eee;">
+                    <div style="height: 260px; width: 100%; position: relative;">
+                        ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(255,255,255,0.8); z-index:10; color:#7f8c8d; font-weight:bold; text-align:center; padding:0 20px;">Seleccione un rango de tiempo para ver la evolución de las colas.</div>' : ''}
+                        <canvas id="dicomChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
+                    <table class="table-clean" style="margin:0; width:100%;">
+                        <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
+                            <tr>
+                                <th style="padding: 12px 20px;">Regla</th>
+                                <th style="padding: 12px 20px;">Origen → Destino</th>
+                                <th style="padding: 12px 20px; text-align: center;">Pendientes</th>
+                                <th style="padding: 12px 20px; text-align: center;">Pico</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        // Ordenamos por pendientes desc para que lo problemático quede arriba
+        const reglasOrdenadas = [...data.dicom_routing].sort((a, b) => (b.pending_instances || 0) - (a.pending_instances || 0));
+
+        reglasOrdenadas.forEach(regla => {
+            const pend = regla.pending_instances || 0;
+            const estado = (regla.status || 'OK').toUpperCase();
+
+            // Semáforo
+            let color = '#27ae60', bg = 'rgba(39, 174, 96, 0.15)';
+            if (estado === 'CRITICAL') { color = '#e74c3c'; bg = 'rgba(231, 76, 60, 0.15)'; }
+            else if (estado === 'WARNING') { color = '#f39c12'; bg = 'rgba(243, 156, 18, 0.15)'; }
+
+            const oNick = (regla.from_node && (regla.from_node.nickname || regla.from_node.hostname)) || '?';
+            const oHost = (regla.from_node && regla.from_node.hostname) || '';
+            const dNick = (regla.to_node && (regla.to_node.nickname || regla.to_node.hostname)) || '?';
+            const dHost = (regla.to_node && regla.to_node.hostname) || '';
+
+            // Badge de estancamiento: la señal realmente valiosa
+            const estancadaBadge = regla.estancada
+                ? `<span title="La cola no se mueve: mismo valor sostenido" style="display:inline-block; margin-left:6px; background:#e74c3c; color:white; padding:2px 8px; border-radius:10px; font-size:0.7em; font-weight:bold;">⚠ ESTANCADA</span>`
+                : '';
+
+            dicomHtml += `
+                <tr style="border-bottom: 1px solid #f1f5f8;">
+                    <td style="padding: 12px 20px; font-family: monospace; font-weight: 700; color: #16a085;">#${regla.id_rule}</td>
+                    <td style="padding: 12px 20px; color:#2c3e50;">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <div>
+                                <div style="font-weight:600;">${oNick}</div>
+                                <div style="font-size:0.78em; color:#95a5a6; font-family:monospace;">${oHost}</div>
+                            </div>
+                            <span style="color:#16a085; font-size:1.2em; font-weight:bold;">→</span>
+                            <div>
+                                <div style="font-weight:600;">${dNick}</div>
+                                <div style="font-size:0.78em; color:#95a5a6; font-family:monospace;">${dHost}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding: 12px 20px; text-align:center;">
+                        <span style="color:${color}; background:${bg}; padding:4px 12px; border-radius:12px; font-weight:900; font-size:1.05em; border:1px solid ${color}40;">${pend.toLocaleString('es-AR')}</span>
+                    </td>
+                    <td style="padding: 12px 20px; text-align:center; color:#7f8c8d; font-weight:600;">${(regla.pico || 0).toLocaleString('es-AR')}</td>
+                    
+                </tr>
+            `;
+        });
+
+        dicomHtml += `</tbody></table></div></div>`;
+        html += dicomHtml;
+    }
     
     container.innerHTML += html; // Añade el HTML al DOM
     
@@ -3766,6 +3876,10 @@ function renderizarSoftware(data) {
     // --- AGREGAR LLAMADA AL GRÁFICO ELASTIC ---
     if (hasElastic) {
         dibujarGraficoElastic(data);
+    }
+
+    if (hasDicom) {
+        dibujarGraficoDicom(data);
     }
 }
 
@@ -4438,6 +4552,76 @@ function dibujarGraficoElastic(data) {
                             if (context.parsed.y !== null) { label += context.parsed.y.toLocaleString('es-AR'); }
                             return label;
                         }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// --- GRÁFICO DE LÍNEAS PARA COLAS DE AUTO-ENRUTADO DICOM ---
+function dibujarGraficoDicom(data) {
+    if (!data.dicom_routing || data.dicom_routing.length === 0) return;
+
+    const canvas = document.getElementById('dicomChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // 1. Eje X unificado con todos los timestamps
+    const tsSet = new Set();
+    data.dicom_routing.forEach(r => (r.history || []).forEach(h => tsSet.add(h.ts)));
+    const labels = Array.from(tsSet).sort();
+
+    const displayLabels = labels.map(ts => {
+        const d = new Date(ts);
+        return currentSoftwareMinutes > 1440
+            ? `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}:00`
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+
+    const datasets = [];
+    const palette = ['#16a085', '#e67e22', '#3498db', '#9b59b6', '#e74c3c', '#1abc9c', '#34495e', '#f1c40f'];
+
+    // 2. Una línea por regla. Valor ABSOLUTO (es un nivel, no un delta).
+    data.dicom_routing.forEach((regla, index) => {
+        const dataPoints = labels.map(ts => {
+            const point = (regla.history || []).find(h => h.ts === ts);
+            return point ? point.pending : 0;   // null = hueco, no fuerza a 0
+        });
+
+        // Descartamos reglas planas en 0 (sanas, sin interés visual)
+        if (dataPoints.some(v => v && v > 0)) {
+            datasets.push({
+                label: `#${regla.id_rule} · ${regla.label || ''}`,
+                data: dataPoints,
+                borderColor: palette[index % palette.length],
+                backgroundColor: palette[index % palette.length] + '20',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 0,
+                fill: true
+            });
+        }
+    });
+
+    if (dicomChartInstance) dicomChartInstance.destroy();
+
+    dicomChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: displayLabels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { grid: { display: false } },
+                y: { beginAtZero: true, title: { display: true, text: 'Instancias pendientes' } }
+            },
+            plugins: {
+                legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } },
+                tooltip: {
+                    callbacks: {
+                        label: (c) => `${c.dataset.label}: ${c.parsed.y !== null ? c.parsed.y.toLocaleString('es-AR') : 's/d'} pendientes`
                     }
                 }
             }

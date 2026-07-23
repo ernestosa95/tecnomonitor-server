@@ -95,9 +95,9 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         # =========================================================
         if isinstance(raw_body, dict):
             h_id = raw_body.get("envelope", {}).get("hospital_id")
-            if h_id == "P23":
-                logger.info("🔔 [DEBUG P23] Capturado reporte entrante:")
-                #print(json.dumps(raw_body, indent=2))
+            if h_id == "H45":
+                logger.info("🔔 [DEBUG H45] Capturado reporte entrante:")
+                print(json.dumps(raw_body, indent=2))
         # =========================================================
     except ClientDisconnect:
         logger.warning("⚠️ [Ingesta] Cliente desconectado a mitad del envío.")
@@ -274,6 +274,37 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     extra_data={
                         "expiration_date": cert.get("expiration_date", ""),
                         "issuer": cert.get("issuer", "")
+                    },
+                    timestamp=ts
+                ))
+            
+            # --- 4. NUEVO: COLAS DE AUTO-ENRUTADO DICOM ---
+            routing_queues = soft_monitoring.get("dicom_routing_queues") or []
+            for rule in routing_queues:
+                id_rule = rule.get("id_rule")
+                if id_rule is None:
+                    continue
+
+                origen  = rule.get("from_node") or {}
+                destino = rule.get("to_node") or {}
+
+                nick_o = origen.get("nickname")  or origen.get("hostname")  or "?"
+                nick_d = destino.get("nickname") or destino.get("hostname") or "?"
+
+                db.add(database.SoftwareMonitoring(
+                    hospital_id=h_id,
+                    app_name="dicom_routing",
+                    component_id=str(id_rule),
+                    status_value="OK",                       # severidad se calcula al leer
+                    metric_value=int(rule.get("pending_instances") or 0),
+                    extra_data={
+                        "label": f"{nick_o} → {nick_d}",
+                        "from_key": origen.get("key"),
+                        "from_nickname": origen.get("nickname"),
+                        "from_hostname": origen.get("hostname"),
+                        "to_key": destino.get("key"),
+                        "to_nickname": destino.get("nickname"),
+                        "to_hostname": destino.get("hostname"),
                     },
                     timestamp=ts
                 ))

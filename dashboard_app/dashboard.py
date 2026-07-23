@@ -1412,46 +1412,48 @@ def solicitar_acceso(req: UserAccessRequest):
         raise HTTPException(status_code=500, detail="Error al conectar con Asana")
 
 @app.get("/api/hospital/{hospital_id}/software")
-def obtener_estado_software(hospital_id: str, minutos: int = 0, 
-                            db: Session = Depends(get_db), 
+def obtener_estado_software(hospital_id: str, minutos: int = 0,
+                            db: Session = Depends(get_db),
                             current_user: dict = Depends(auth.require_hospital_access("software"))):
-    
-    # 1. Si minutos es 0, queremos el HISTÓRICO TOTAL
+
+    # 1. QUERY (histórico total vs. ventana de tiempo)
     if minutos == 0:
         query = text("""
             WITH RankedData AS (
                 SELECT app_name, component_id, status_value, metric_value, extra_data,
                        ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                 FROM software_monitoring
-                WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch')
+                WHERE hospital_id = :hid
+                  AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
             )
-            SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp 
+            SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp
             FROM RankedData WHERE rn = 1
         """)
         resultados = db.execute(query, {"hid": hospital_id}).fetchall()
         is_historical = False
     else:
-        # Lógica de intervalos de tiempo (Deltas)
         time_limit = datetime.now() - timedelta(minutes=minutos)
         query = text("""
             SELECT app_name, component_id, status_value, metric_value, extra_data, timestamp
             FROM software_monitoring
-            WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch')
+            WHERE hospital_id = :hid
+              AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
               AND timestamp >= :time_limit
             ORDER BY timestamp ASC
         """)
         resultados = db.execute(query, {"hid": hospital_id, "time_limit": time_limit}).fetchall()
-        
-        # Fallback si es un hospital nuevo sin historial reciente
+
+        # Fallback: hospital sin historial reciente -> traemos el último snapshot
         if not resultados:
             query_last = text("""
                 WITH RankedData AS (
                     SELECT app_name, component_id, status_value, metric_value, extra_data,
                            ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                     FROM software_monitoring
-                    WHERE hospital_id = :hid AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch')
+                    WHERE hospital_id = :hid
+                      AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
                 )
-                SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp 
+                SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp
                 FROM RankedData WHERE rn = 1
             """)
             resultados = db.execute(query_last, {"hid": hospital_id}).fetchall()
@@ -1459,46 +1461,44 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         else:
             is_historical = True
 
-    # 2. Agrupamos por aplicación y luego por canal/id
+    # 2. AGRUPAMOS por aplicación y luego por canal/id
     canales_mirth = {}
     certificados_ssl = {}
     elastic_logs = {}
-    
+    colas_dicom = {}   # 🆕 DICOM
+
     for row in resultados:
         if row.app_name == 'mirth':
-            if row.component_id not in canales_mirth:
-                canales_mirth[row.component_id] = []
-            canales_mirth[row.component_id].append(row)
+            canales_mirth.setdefault(row.component_id, []).append(row)
         elif row.app_name == 'ssl_certificate':
-            if row.component_id not in certificados_ssl:
-                certificados_ssl[row.component_id] = []
-            certificados_ssl[row.component_id].append(row)
+            certificados_ssl.setdefault(row.component_id, []).append(row)
         elif row.app_name == 'elasticsearch':
-            if row.component_id not in elastic_logs:
-                elastic_logs[row.component_id] = []
-            elastic_logs[row.component_id].append(row)
+            elastic_logs.setdefault(row.component_id, []).append(row)
+        elif row.app_name == 'dicom_routing':          # 🆕 DICOM
+            colas_dicom.setdefault(row.component_id, []).append(row)
 
     software_data = {
         "metadata": {"minutos": minutos, "is_historical": is_historical},
         "mirth": {},
         "ssl_certificates": [],
-        "elasticsearch": []
+        "elasticsearch": [],
+        "dicom_routing": []        # 🆕 DICOM
     }
-    
-    # 3. Procesamos los datos de MIRTH (Lógica con histórico para el gráfico)
+
+    # 3. PROCESAMOS MIRTH (deltas para el gráfico de tráfico)
     for cid, history in canales_mirth.items():
         if not history: continue
         actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
         instancia = extra_actual.get("instancia", "Default")
-        
+
         if instancia not in software_data["mirth"]:
             software_data["mirth"][instancia] = []
-            
+
         canal_nombre = cid.replace(f"[{instancia}] ", "") if cid.startswith(f"[{instancia}] ") else cid
-        
+
         historial_canal = []
-        
+
         if minutos == 0:
             total_recibidos = extra_actual.get("recibidos", 0)
             total_enviados = extra_actual.get("enviados", 0)
@@ -1510,30 +1510,28 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
                     extra = json.loads(row.extra_data) if row.extra_data else {}
                     r = extra.get("recibidos", 0)
                     s = extra.get("enviados", 0)
-                    
-                    # Calcular el Delta (Tráfico en ese momento específico)
+
                     delta_r = (r - prev_r) if prev_r is not None and r >= prev_r else 0
                     delta_s = (s - prev_s) if prev_s is not None and s >= prev_s else 0
-                    
+
                     if prev_r is not None:
                         total_recibidos += delta_r
                         total_enviados += delta_s
-                        
-                        # --- FIX: Validación de tipo (String vs Datetime) ---
+
                         if row.timestamp:
                             if isinstance(row.timestamp, str):
-                                ts_str = row.timestamp[:19] 
+                                ts_str = row.timestamp[:19]
                             else:
                                 ts_str = row.timestamp.strftime("%Y-%m-%d %H:%M:%S")
                         else:
                             ts_str = ""
-                            
+
                         historial_canal.append({
                             "ts": ts_str,
-                            "q": row.metric_value, # Encolados
-                            "traffic": delta_r + delta_s # Tráfico (Recibidos + Enviados)
+                            "q": row.metric_value,
+                            "traffic": delta_r + delta_s
                         })
-                        
+
                     prev_r, prev_s = r, s
 
         software_data["mirth"][instancia].append({
@@ -1543,34 +1541,31 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             "received": total_recibidos,
             "sent": total_enviados,
             "last_error": extra_actual.get("last_error", ""),
-            "history": historial_canal # Agregamos el array histórico para el gráfico
+            "history": historial_canal
         })
-        
-    # 4. Procesamos los datos de CERTIFICADOS SSL (NUEVO)
+
+    # 4. PROCESAMOS CERTIFICADOS SSL
     for url, history in certificados_ssl.items():
         if not history: continue
-        actual = history[-1] # Tomamos siempre la última medición de días
+        actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
-        
+
         software_data["ssl_certificates"].append({
             "url": url,
             "status": actual.status_value,
-            "days_remaining": actual.metric_value, # Guardamos los días en metric_value
+            "days_remaining": actual.metric_value,
             "expiration_date": extra_actual.get("expiration_date", ""),
             "issuer": extra_actual.get("issuer", "")
         })
-        
-    # --- 5. NUEVO: PROCESAMOS LOS DATOS DE ELASTICSEARCH ---
+
+    # 5. PROCESAMOS ELASTICSEARCH
     for rule_id, history in elastic_logs.items():
         if not history: continue
-        
-        # Ordenamos cronológicamente si es necesario
         history.sort(key=lambda x: x.timestamp if x.timestamp else datetime.min)
-        
+
         actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
-        
-        # Validación segura del tipo de dato del timestamp (última vez visto)
+
         last_seen_str = ""
         if actual.timestamp:
             if isinstance(actual.timestamp, str):
@@ -1578,7 +1573,6 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             else:
                 last_seen_str = actual.timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Construir el historial para el gráfico en el frontend
         historial_regla = []
         for row in history:
             ts_str = ""
@@ -1587,18 +1581,12 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
                     ts_str = row.timestamp[:19]
                 else:
                     ts_str = row.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Aseguramos que el valor sea numérico
             try:
                 conteo = int(row.metric_value or 0)
             except (ValueError, TypeError):
                 conteo = 0
-                
-            historial_regla.append({
-                "ts": ts_str,
-                "count": conteo
-            })
-        
+            historial_regla.append({"ts": ts_str, "count": conteo})
+
         software_data["elasticsearch"].append({
             "rule_id": rule_id,
             "severity": actual.status_value,
@@ -1606,7 +1594,87 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             "services": extra_actual.get("services", []),
             "evidence": extra_actual.get("evidence", ""),
             "last_seen": last_seen_str,
-            "history": historial_regla # <-- Agregamos el array histórico aquí
+            "history": historial_regla
+        })
+
+    # 6. 🆕 DICOM — COLAS DE AUTO-ENRUTADO
+    #    pending_instances es un GAUGE (nivel actual), no un contador acumulado:
+    #    NO se calculan deltas como en Mirth. Serie = valor absoluto.
+    conf_w = db.execute(text("SELECT valor FROM configuracion WHERE clave = 'dicom_routing_warning'")).fetchone()
+    conf_c = db.execute(text("SELECT valor FROM configuracion WHERE clave = 'dicom_routing_critical'")).fetchone()
+    try:
+        WARN = int(conf_w.valor) if conf_w and conf_w.valor is not None else 50
+    except (ValueError, TypeError):
+        WARN = 50
+    try:
+        CRIT = int(conf_c.valor) if conf_c and conf_c.valor is not None else 200
+    except (ValueError, TypeError):
+        CRIT = 200
+
+    for id_rule, history in colas_dicom.items():
+        if not history: continue
+        history.sort(key=lambda x: x.timestamp if x.timestamp else datetime.min)
+
+        actual = history[-1]
+        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+
+        try:
+            pendientes = int(actual.metric_value or 0)
+        except (ValueError, TypeError):
+            pendientes = 0
+
+        # Estancamiento: mismo valor > 0 sostenido en los últimos snapshots = la cola no drena
+        ultimos = []
+        for h in history[-6:]:
+            try:
+                ultimos.append(int(h.metric_value or 0))
+            except (ValueError, TypeError):
+                ultimos.append(0)
+        estancada = len(ultimos) >= 3 and pendientes > 0 and len(set(ultimos)) == 1
+
+        # Serie histórica (valor absoluto)
+        historial_regla = []
+        for row in history:
+            ts_str = ""
+            if row.timestamp:
+                if isinstance(row.timestamp, str):
+                    ts_str = row.timestamp[:19]
+                else:
+                    ts_str = row.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                v = int(row.metric_value or 0)
+            except (ValueError, TypeError):
+                v = 0
+            historial_regla.append({"ts": ts_str, "pending": v})
+
+        try:
+            pico = max(int(h.metric_value or 0) for h in history)
+        except (ValueError, TypeError):
+            pico = pendientes
+
+        if pendientes >= CRIT or estancada:
+            estado = "CRITICAL"
+        elif pendientes >= WARN:
+            estado = "WARNING"
+        else:
+            estado = "OK"
+
+        software_data["dicom_routing"].append({
+            "id_rule": id_rule,
+            "label": extra_actual.get("label", f"Regla {id_rule}"),
+            "from_node": {
+                "nickname": extra_actual.get("from_nickname"),
+                "hostname": extra_actual.get("from_hostname")
+            },
+            "to_node": {
+                "nickname": extra_actual.get("to_nickname"),
+                "hostname": extra_actual.get("to_hostname")
+            },
+            "pending_instances": pendientes,
+            "status": estado,
+            "estancada": estancada,
+            "pico": pico,
+            "history": historial_regla
         })
 
     return software_data
