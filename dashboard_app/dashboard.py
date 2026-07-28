@@ -1289,6 +1289,15 @@ async def get_ris_analytics(request: Request):
 async def get_hl7_analytics(request: Request):
     return templates.TemplateResponse("solucion1.html", {"request": request})
 
+@app.get("/pacs-capacity")
+async def get_pacs_capacity(request: Request):
+    return templates.TemplateResponse("solucion3.html", {"request": request})
+
+# --- Landing temporal para testeo de gerencia (acceso público, SIN login) ---
+@app.get("/demo-pacs")
+def landing_demo_pacs():
+    return FileResponse("dashboard_app/templates/demo-pacs.html")
+
 @app.get("/tecno-solution")
 async def get_tecno_solutions(request: Request):
     return templates.TemplateResponse("links.html", {"request": request})

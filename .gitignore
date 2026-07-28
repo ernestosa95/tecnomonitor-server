@@ -56,3 +56,4 @@ Thumbs.db
 # Archivos de Log
 # ========================
 *.log
+dashboard_app/static/videos/

@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TecnoXaaS_PACS® | Software PACS en la Nube para Centros de Diagnóstico en Argentina</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy:    #0b1728;
+            --navy2:   #0f2040;
+            --blue:    #1560bd;
+            --blue-lt: #2a7ae4;
+            --accent:  #00a99d;
+            --accent2: #00bfb3;
+            --green:   #16a34a;
+            --red:     #dc2626;
+            --slate:   #94a3b8;
+            --white:   #ffffff;
+            --off:     #f1f5f9;
+            --radius:  10px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--white);
+            color: var(--navy);
+            overflow-x: hidden;
+        }
+
+        /* ===== NAV ===== */
+        nav {
+            position: fixed; top: 0; width: 100%; z-index: 1000;
+            background: rgba(11,23,40,0.97);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding: 0 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 68px;
+        }
+
+        .nav-logo {
+            font-family: 'Sora', sans-serif;
+            font-weight: 800; font-size: 1.25rem;
+            color: var(--white); text-decoration: none;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .nav-logo span { color: var(--accent); }
+        .nav-logo .powered {
+            font-size: 0.6rem; font-weight: 400;
+            color: var(--slate); letter-spacing: 0.05em;
+            border-left: 1px solid rgba(255,255,255,0.15);
+            padding-left: 10px; line-height: 1.2;
+        }
+
+        nav ul {
+            list-style: none; display: flex; gap: 6px;
+        }
+        nav ul a {
+            color: #cbd5e1; text-decoration: none;
+            font-size: 0.85rem; font-weight: 500;
+            padding: 7px 14px; border-radius: 6px;
+            transition: all .2s;
+        }
+        nav ul a:hover { color: var(--white); background: rgba(255,255,255,0.07); }
+
+        .nav-cta {
+            background: var(--accent) !important;
+            color: var(--white) !important;
+            font-weight: 700 !important;
+            padding: 9px 20px !important;
+        }
+        .nav-cta:hover { background: var(--accent2) !important; }
+
+        /* ===== SHARED ===== */
+        section { width: 100%; }
+        .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+        .section-label {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; color: var(--accent);
+            background: rgba(0,169,157,0.1); border: 1px solid rgba(0,169,157,0.25);
+            padding: 5px 14px; border-radius: 99px; margin-bottom: 22px;
+        }
+        .h2-section {
+            font-family: 'Sora', sans-serif;
+            font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+            font-weight: 800; line-height: 1.15;
+            color: var(--navy);
+        }
+        .h2-section.light { color: var(--white); }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 32px; border-radius: 8px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.95rem; font-weight: 700;
+            text-decoration: none; cursor: pointer;
+            border: none; transition: all .25s;
+        }
+        .btn-orange {
+            background: var(--accent); color: var(--white);
+            box-shadow: 0 4px 24px rgba(0,169,157,0.35);
+        }
+        .btn-orange:hover { background: var(--accent2); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,169,157,0.4); }
+        .btn-outline {
+            background: transparent; color: var(--white);
+            border: 1.5px solid rgba(255,255,255,0.35);
+        }
+        .btn-outline:hover { border-color: var(--white); background: rgba(255,255,255,0.06); }
+        .btn-blue { background: var(--blue); color: var(--white); }
+        .btn-blue:hover { background: var(--blue-lt); transform: translateY(-2px); }
+
+        /* ===== HERO ===== */
+        #hero {
+            min-height: 100vh;
+            background:
+                linear-gradient(155deg, rgba(11,23,40,0.95) 50%, rgba(15,32,64,0.88) 100%),
+                /* 
+                   OPCIONES DE FONDO — descomente la que prefiera:
+                   CT scan axial oscuro:      photo-1584982751601-97dcc096659c
+                   Radiología laboratorio:    photo-1559757175-0eb30cd8c063
+                   Radiólogo con lightbox:    photo-1516069677018-378515003435
+                   MRI tomógrafo sala:        photo-1631815589968-fdb09a223b1e
+                   Rayos X tórax en pantalla: photo-1666214280557-f1b5022eb634
+                */
+                url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2072&auto=format&fit=crop') center/cover no-repeat;
+            display: flex; flex-direction: column; justify-content: center;
+            padding: 100px 24px 60px;
+            position: relative; overflow: hidden;
+        }
+
+        #hero::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse 70% 60% at 80% 50%, rgba(21,96,189,0.18) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-inner {
+            max-width: 1080px; margin: 0 auto; width: 100%;
+            display: grid; grid-template-columns: 1fr 420px; gap: 60px; align-items: center;
+        }
+
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.15em;
+            text-transform: uppercase; color: #93c5fd;
+            background: rgba(147,197,253,0.1); border: 1px solid rgba(147,197,253,0.25);
+            padding: 5px 14px; border-radius: 99px; margin-bottom: 18px;
+        }
+
+        .hero-h1 {
+            font-family: 'Sora', sans-serif;
+            font-size: clamp(1.6rem, 3.2vw, 2.6rem);
+            font-weight: 800; line-height: 1.15;
+            color: var(--white); margin-bottom: 20px;
+        }
+        .hero-h1 em {
+            font-style: normal;
+            background: linear-gradient(90deg, var(--accent), #fbbf24);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        .hero-sub {
+            font-size: 0.95rem; line-height: 1.7;
+            color: #94a3b8; margin-bottom: 32px;
+            max-width: 520px;
+        }
+        .hero-sub strong { color: #e2e8f0; font-weight: 500; }
+
+        .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 44px; }
+
+        .microcopy {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.78rem; color: var(--slate);
+        }
+        .microcopy::before { content: '🔒'; font-size: 0.9rem; }
+
+        /* Trust logos */
+        .trust-logos {
+            display: flex; align-items: center; gap: 24px;
+            flex-wrap: wrap; margin-top: 8px;
+        }
+        .trust-logo-item {
+            font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+            color: #475569; text-transform: uppercase;
+            padding: 6px 14px; border: 1px solid #1e3356;
+            border-radius: 6px; background: rgba(255,255,255,0.03);
+        }
+
+        /* Hero card on right */
+        .hero-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px; padding: 32px;
+            backdrop-filter: blur(12px);
+        }
+        .hero-card h3 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1rem; font-weight: 700; color: var(--white);
+            margin-bottom: 6px;
+        }
+        .hero-card p { font-size: 0.82rem; color: var(--slate); margin-bottom: 24px; }
+        .hero-stat {
+            padding: 14px 0;
+            border-top: 1px solid rgba(255,255,255,0.07);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .hero-stat-label { font-size: 0.78rem; color: var(--slate); }
+        .hero-stat-val {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.3rem; font-weight: 800; color: var(--accent);
+        }
+
+        /* ===== DOLOR / ALIVIO ===== */
+        #desafio {
+            background: var(--off);
+            padding: 100px 24px;
+        }
+        #desafio .h2-section { text-align: center; margin-bottom: 12px; }
+        #desafio .sub { text-align: center; color: #64748b; max-width: 600px; margin: 0 auto 60px; }
+
+        .pain-grid {
+            display: grid;
+            grid-template-columns: 1fr 60px 1fr;
+            gap: 0; align-items: stretch;
+        }
+
+        .pain-col { display: flex; flex-direction: column; gap: 16px; }
+        .pain-col.left .pain-item { border-left: 3px solid var(--red); }
+        .pain-col.right .pain-item { border-left: 3px solid var(--green); }
+
+        .pain-item {
+            background: var(--white); border-radius: var(--radius);
+            padding: 20px 22px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+        .pain-item .pain-icon { font-size: 1.4rem; margin-bottom: 8px; }
+        .pain-item h4 {
+            font-family: 'Sora', sans-serif;
+            font-size: 0.9rem; font-weight: 700; margin-bottom: 6px;
+        }
+        .pain-col.left .pain-item h4 { color: var(--red); }
+        .pain-col.right .pain-item h4 { color: var(--green); }
+        .pain-item p { font-size: 0.85rem; color: #475569; line-height: 1.6; }
+
+        .pain-divider {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 14px; padding: 0 8px;
+        }
+        .pain-divider .vs-line {
+            flex: 1; width: 2px;
+            background: linear-gradient(to bottom, transparent, #cbd5e1, transparent);
+        }
+        .pain-divider .vs-badge {
+            font-family: 'Sora', sans-serif;
+            font-size: 0.75rem; font-weight: 800;
+            color: var(--navy); background: #e2e8f0;
+            border-radius: 99px; padding: 6px 10px;
+        }
+
+        /* ===== AUTORIDAD ===== */
+        #autoridad {
+            background: var(--navy);
+            padding: 100px 24px;
+        }
+        #autoridad .h2-section.light { text-align: center; margin-bottom: 12px; }
+        #autoridad .sub { text-align: center; color: var(--slate); max-width: 620px; margin: 0 auto 56px; }
+
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+        }
+        .benefit-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px; padding: 28px;
+            transition: all .25s;
+        }
+        .benefit-card:hover {
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(21,96,189,0.5);
+            transform: translateY(-4px);
+        }
+        .benefit-icon { font-size: 2rem; margin-bottom: 16px; }
+        .benefit-card h3 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1rem; font-weight: 700;
+            color: var(--white); margin-bottom: 8px;
+        }
+        .benefit-card p { font-size: 0.85rem; color: var(--slate); line-height: 1.65; }
+
+        .stat-strip {
+            margin-top: 60px;
+            background: rgba(21,96,189,0.15);
+            border: 1px solid rgba(21,96,189,0.3);
+            border-radius: 14px; padding: 32px;
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            text-align: center; gap: 0;
+        }
+        .stat-strip-item {
+            padding: 10px 20px;
+            border-right: 1px solid rgba(255,255,255,0.07);
+        }
+        .stat-strip-item:last-child { border-right: none; }
+        .stat-big {
+            font-family: 'Sora', sans-serif;
+            font-size: 2.2rem; font-weight: 800;
+            color: var(--accent); display: block;
+        }
+        .stat-desc { font-size: 0.8rem; color: var(--slate); margin-top: 4px; }
+
+        /* ===== SIMULADOR ===== */
+        #simulador {
+            background: var(--off);
+            padding: 100px 24px;
+        }
+        #simulador .h2-section { text-align: center; margin-bottom: 10px; }
+        #simulador .sub { text-align: center; color: #64748b; max-width: 580px; margin: 0 auto 56px; }
+
+        .sim-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+        }
+
+        .sim-card {
+            background: var(--white); border-radius: 14px;
+            padding: 36px; box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+            border: 1px solid #e2e8f0;
+        }
+        .sim-card h3 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1rem; font-weight: 700;
+            color: var(--navy); margin-bottom: 28px;
+        }
+
+        .input-grp { margin-bottom: 24px; }
+        .input-grp label {
+            display: block; font-size: 0.75rem;
+            font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.08em; color: #64748b; margin-bottom: 10px;
+        }
+        .input-grp input[type="number"] {
+            width: 100%; padding: 14px 16px;
+            border: 1.5px solid #e2e8f0; border-radius: 8px;
+            font-size: 1.05rem; font-weight: 600;
+            color: var(--navy); font-family: 'Sora', sans-serif;
+            transition: border .2s; background: #f8fafc;
+        }
+        .input-grp input:focus { outline: none; border-color: var(--blue); background: var(--white); }
+        .input-grp .hint { font-size: 0.75rem; color: #94a3b8; margin-top: 6px; }
+
+        .range-wrap { margin-top: 8px; }
+        .range-wrap input[type="range"] {
+            width: 100%; accent-color: var(--blue);
+            height: 6px; cursor: pointer;
+        }
+        .range-labels {
+            display: flex; justify-content: space-between;
+            font-size: 0.7rem; color: #94a3b8; margin-top: 4px;
+        }
+
+        .results-card {
+            background: var(--navy); border-radius: 14px;
+            padding: 36px; display: flex; flex-direction: column;
+        }
+        .results-card h3 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1rem; font-weight: 700;
+            color: var(--white); margin-bottom: 24px;
+        }
+        .res-row {
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .res-row:last-of-type { border-bottom: none; }
+        .res-lbl { font-size: 0.75rem; color: var(--slate); text-transform: uppercase; letter-spacing: 0.06em; }
+        .res-val {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.9rem; font-weight: 800;
+            color: var(--blue-lt); margin-top: 4px;
+        }
+        .res-val.white { color: var(--white); }
+        .res-val.green { color: #4ade80; }
+        .res-note { font-size: 0.7rem; color: #64748b; margin-top: 3px; }
+
+        .plan-badge {
+            margin-top: 16px; display: inline-block;
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.08em; padding: 5px 12px; border-radius: 99px;
+            background: rgba(21,96,189,0.25); color: #93c5fd;
+            border: 1px solid rgba(21,96,189,0.4);
+        }
+
+        .sim-cta-btn {
+            width: 100%; padding: 16px; margin-top: 24px;
+            background: var(--accent); border: none; border-radius: 8px;
+            color: var(--white); font-family: 'Sora', sans-serif;
+            font-size: 1rem; font-weight: 700; cursor: pointer;
+            transition: all .25s;
+        }
+        .sim-cta-btn:hover { background: var(--accent2); transform: translateY(-2px); }
+
+        /* ===== PLANES ===== */
+        #planes {
+            padding: 100px 24px;
+            background: var(--white);
+        }
+        #planes .h2-section { text-align: center; margin-bottom: 10px; }
+        #planes .sub { text-align: center; color: #64748b; max-width: 580px; margin: 0 auto 14px; }
+        .planes-deploy {
+            text-align: center; font-size: 0.85rem; color: #475569;
+            margin-bottom: 56px;
+            background: #f0fdfb; border: 1px solid #99e6e2;
+            padding: 12px 24px; border-radius: 8px;
+            display: inline-block;
+        }
+        .planes-deploy strong { color: var(--navy); }
+        .planes-deploy-wrap { text-align: center; }
+
+        .planes-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+        }
+
+        .plan-card {
+            border-radius: 16px; padding: 36px 30px;
+            border: 1.5px solid #e2e8f0;
+            display: flex; flex-direction: column;
+            transition: all .25s; position: relative; overflow: hidden;
+        }
+        .plan-card:hover { transform: translateY(-6px); box-shadow: 0 16px 48px rgba(0,0,0,0.1); }
+
+        .plan-card.featured {
+            border-color: var(--blue);
+            box-shadow: 0 8px 40px rgba(21,96,189,0.18);
+        }
+        .plan-card.featured::before {
+            content: '★ RECOMENDADO';
+            position: absolute; top: 0; right: 0;
+            background: var(--blue); color: var(--white);
+            font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em;
+            padding: 6px 18px; border-bottom-left-radius: 10px;
+        }
+
+        .plan-emoji { font-size: 2rem; margin-bottom: 16px; }
+        .plan-name {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.1rem; font-weight: 800;
+            color: var(--navy); margin-bottom: 6px;
+        }
+        .plan-tagline { font-size: 0.82rem; color: #64748b; line-height: 1.55; margin-bottom: 24px; }
+
+        .plan-price {
+            font-family: 'Sora', sans-serif;
+            font-size: 2.4rem; font-weight: 800; color: var(--navy);
+        }
+        .plan-price sup { font-size: 1rem; vertical-align: top; margin-top: 8px; }
+        .plan-price-sub { font-size: 0.8rem; color: #94a3b8; margin-bottom: 24px; }
+
+        .plan-features { list-style: none; flex: 1; margin-bottom: 28px; }
+        .plan-features li {
+            font-size: 0.85rem; color: #334155;
+            padding: 9px 0; border-bottom: 1px solid #f1f5f9;
+            display: flex; align-items: flex-start; gap: 10px;
+        }
+        .plan-features li::before {
+            content: '✓'; color: var(--green);
+            font-weight: 800; font-size: 0.85rem; flex-shrink: 0;
+        }
+
+        .plan-btn {
+            width: 100%; padding: 14px; border-radius: 8px;
+            font-family: 'Sora', sans-serif; font-size: 0.9rem; font-weight: 700;
+            cursor: pointer; border: none; transition: all .25s;
+        }
+        .plan-btn.secondary {
+            background: var(--off); color: var(--navy);
+            border: 1.5px solid #e2e8f0;
+        }
+        .plan-btn.secondary:hover { border-color: var(--blue); color: var(--blue); }
+        .plan-btn.primary {
+            background: var(--blue); color: var(--white);
+        }
+        .plan-btn.primary:hover { background: var(--blue-lt); transform: translateY(-2px); }
+
+        /* Aceleradores */
+        .aceleradores {
+            margin-top: 56px;
+            background: var(--navy); border-radius: 16px; padding: 40px;
+        }
+        .aceleradores h3 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.1rem; font-weight: 800; color: var(--white); margin-bottom: 6px;
+        }
+        .aceleradores .sub-acc { font-size: 0.85rem; color: var(--slate); margin-bottom: 32px; }
+        .acc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .acc-item {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px; padding: 22px;
+        }
+        .acc-item .acc-icon { font-size: 1.5rem; margin-bottom: 10px; }
+        .acc-item h4 {
+            font-family: 'Sora', sans-serif;
+            font-size: 0.9rem; font-weight: 700;
+            color: var(--white); margin-bottom: 6px;
+        }
+        .acc-item p { font-size: 0.8rem; color: var(--slate); line-height: 1.55; margin-bottom: 12px; }
+        .acc-price { font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 800; color: var(--accent); }
+
+        /* ===== FORMULARIO / CTA FINAL ===== */
+        #contacto {
+            padding: 100px 24px;
+            background: linear-gradient(135deg, #0b1728 0%, #0f2040 60%, #0d1f3c 100%);
+        }
+
+        .contact-inner {
+            display: grid; grid-template-columns: 1fr 480px; gap: 72px; align-items: start;
+        }
+
+        .contact-left .h2-section.light { margin-bottom: 18px; }
+        .contact-left .sub-light { font-size: 1rem; color: #94a3b8; line-height: 1.75; margin-bottom: 36px; }
+
+        .trust-items { display: flex; flex-direction: column; gap: 16px; }
+        .trust-item {
+            display: flex; align-items: flex-start; gap: 14px;
+        }
+        .trust-item .ti-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 2px; }
+        .trust-item .ti-text { font-size: 0.85rem; color: #94a3b8; line-height: 1.6; }
+        .trust-item .ti-text strong { color: #e2e8f0; font-weight: 600; }
+
+        /* Form */
+        .form-card {
+            background: var(--white); border-radius: 18px;
+            padding: 40px; box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+        }
+        .form-card h3 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.1rem; font-weight: 800;
+            color: var(--navy); margin-bottom: 6px;
+        }
+        .form-card .form-sub { font-size: 0.83rem; color: #64748b; margin-bottom: 28px; }
+
+        .fgroup { margin-bottom: 16px; }
+        .fgroup label {
+            display: block; font-size: 0.73rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.07em;
+            color: #64748b; margin-bottom: 7px;
+        }
+        .fgroup input, .fgroup select {
+            width: 100%; padding: 12px 14px;
+            border: 1.5px solid #e2e8f0; border-radius: 7px;
+            font-size: 0.9rem; color: var(--navy);
+            font-family: 'DM Sans', sans-serif;
+            transition: border .2s; background: #f8fafc;
+        }
+        .fgroup input:focus, .fgroup select:focus {
+            outline: none; border-color: var(--blue); background: var(--white);
+        }
+        .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        .form-submit {
+            width: 100%; padding: 17px; margin-top: 8px;
+            background: var(--accent); border: none; border-radius: 8px;
+            color: var(--white); font-family: 'Sora', sans-serif;
+            font-size: 1rem; font-weight: 700; cursor: pointer;
+            transition: all .25s;
+        }
+        .form-submit:hover { background: var(--accent2); transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,169,157,0.35); }
+
+        .form-privacy {
+            font-size: 0.72rem; color: #94a3b8; text-align: center;
+            margin-top: 12px; line-height: 1.5;
+        }
+
+        /* ===== MODAL ===== */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 2000;
+            background: rgba(11,23,40,0.7);
+            backdrop-filter: blur(6px);
+            display: none; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: var(--white); border-radius: 16px;
+            width: 92%; max-width: 560px; padding: 40px; position: relative;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+            animation: slideIn .3s ease;
+        }
+        @keyframes slideIn { from { transform: translateY(-18px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .modal-close {
+            position: absolute; top: 16px; right: 20px;
+            font-size: 1.4rem; cursor: pointer; color: #94a3b8;
+            border: none; background: none; line-height: 1;
+        }
+        .modal-content h2 {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.3rem; font-weight: 800;
+            color: var(--navy); margin-bottom: 6px;
+        }
+        .modal-content .m-sub { font-size: 0.85rem; color: #64748b; margin-bottom: 24px; }
+
+        /* Gracias page */
+        #gracias {
+            display: none;
+            position: fixed; inset: 0; z-index: 3000;
+            background: var(--navy);
+            flex-direction: column; align-items: center; justify-content: center;
+            padding: 40px; text-align: center;
+        }
+        .gracias-icon { font-size: 4rem; margin-bottom: 20px; }
+        #gracias h2 {
+            font-family: 'Sora', sans-serif;
+            font-size: clamp(1.6rem, 4vw, 2.4rem);
+            font-weight: 800; color: var(--white); margin-bottom: 16px;
+            max-width: 580px;
+        }
+        #gracias p { color: var(--slate); max-width: 480px; margin: 0 auto 32px; line-height: 1.7; }
+        .video-pill {
+            background: rgba(0,169,157,0.1); border: 1px solid rgba(0,169,157,0.3);
+            border-radius: 14px; padding: 28px 36px; max-width: 480px;
+            margin: 0 auto;
+        }
+        .video-pill p { color: #99e6e2; font-size: 0.9rem; margin-bottom: 16px; }
+        .video-pill a {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--accent); color: var(--white);
+            padding: 13px 28px; border-radius: 8px;
+            font-family: 'Sora', sans-serif; font-weight: 700; font-size: 0.9rem;
+            text-decoration: none; transition: all .2s;
+        }
+        .video-pill a:hover { background: var(--accent2); }
+
+        /* Footer simple */
+        footer {
+            background: var(--navy2);
+            padding: 30px 24px; text-align: center;
+            font-size: 0.78rem; color: #475569;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* ===== DEMO EN VIVO ===== */
+        #demo { padding: 100px 24px; background: var(--white); }
+        #demo .h2-section { text-align: center; margin-bottom: 12px; }
+        #demo .sub { text-align: center; color: #64748b; max-width: 620px; margin: 0 auto 48px; }
+
+        .demo-stage {
+            background: var(--navy); border-radius: 18px; overflow: hidden;
+            box-shadow: 0 24px 80px rgba(11,23,40,0.22);
+        }
+        .demo-chrome {
+            background: #1e293b; padding: 12px 20px;
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .demo-dots { display: flex; gap: 6px; }
+        .demo-dot { width: 11px; height: 11px; border-radius: 50%; }
+        .demo-dot.r { background: #ef4444; }
+        .demo-dot.y { background: #f59e0b; }
+        .demo-dot.g { background: #22c55e; }
+        .demo-url-bar {
+            flex: 1; background: rgba(255,255,255,0.06);
+            border-radius: 6px; padding: 6px 14px;
+            font-size: 0.72rem; color: #64748b;
+        }
+        .demo-badge-chrome {
+            font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.08em; color: var(--accent);
+            background: rgba(0,169,157,0.12); border: 1px solid rgba(0,169,157,0.25);
+            padding: 3px 10px; border-radius: 99px;
+        }
+        .demo-video-wrap {
+            position: relative; background: #000;
+            aspect-ratio: 16/9;
+        }
+        .demo-video-wrap video {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .demo-play-overlay {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: rgba(11,23,40,0.55); cursor: pointer; transition: background .2s;
+        }
+        .demo-play-overlay.hidden { display: none; }
+        .demo-play-overlay:hover { background: rgba(11,23,40,0.35); }
+        .demo-play-btn {
+            width: 76px; height: 76px; border-radius: 50%;
+            background: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem;
+            box-shadow: 0 0 0 14px rgba(0,169,157,0.15);
+            transition: transform .2s; margin-bottom: 14px;
+        }
+        .demo-play-overlay:hover .demo-play-btn { transform: scale(1.08); }
+        .demo-play-label {
+            font-family: 'Sora', sans-serif; font-weight: 700;
+            color: var(--white); font-size: 0.9rem;
+        }
+        .demo-info-bar {
+            padding: 22px 28px;
+            display: flex; align-items: center; justify-content: space-between; gap: 20px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .demo-info-title {
+            font-family: 'Sora', sans-serif; font-size: 1rem;
+            font-weight: 700; color: var(--white); margin-bottom: 4px;
+        }
+        .demo-info-desc { font-size: 0.82rem; color: var(--slate); }
+        .demo-info-cta {
+            flex-shrink: 0; padding: 11px 22px;
+            background: var(--accent); color: var(--white);
+            border: none; border-radius: 8px; cursor: pointer;
+            font-family: 'Sora', sans-serif; font-size: 0.82rem; font-weight: 700;
+            transition: all .2s; white-space: nowrap; text-decoration: none;
+            display: inline-block;
+        }
+        .demo-info-cta:hover { background: var(--accent2); }
+
+        .demo-thumbs {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+            margin-top: 18px;
+        }
+        .demo-thumb {
+            background: var(--navy); border-radius: 10px; overflow: hidden;
+            cursor: pointer; border: 2px solid transparent; transition: all .2s;
+        }
+        .demo-thumb.active { border-color: var(--accent); }
+        .demo-thumb:hover:not(.active) { border-color: rgba(0,169,157,0.35); }
+        .demo-thumb-preview {
+            aspect-ratio: 16/9; position: relative; overflow: hidden;
+        }
+        .demo-thumb-preview video {
+            width: 100%; height: 100%; object-fit: cover;
+            pointer-events: none;
+        }
+        .demo-thumb-overlay {
+            position: absolute; inset: 0;
+            background: rgba(11,23,40,0.45);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; transition: background .2s;
+        }
+        .demo-thumb.active .demo-thumb-overlay { background: rgba(0,169,157,0.25); }
+        .demo-thumb-label {
+            padding: 9px 12px; font-size: 0.7rem; font-weight: 700;
+            color: #94a3b8; font-family: 'Sora', sans-serif;
+            text-transform: uppercase; letter-spacing: 0.06em;
+        }
+        .demo-thumb.active .demo-thumb-label { color: var(--accent); }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 900px) {
+            .hero-inner { grid-template-columns: 1fr; }
+            .hero-card { display: none; }
+            .pain-grid { grid-template-columns: 1fr; }
+            .pain-divider { flex-direction: row; padding: 0; }
+            .pain-divider .vs-line { height: 2px; width: auto; flex: 1; }
+            .planes-grid { grid-template-columns: 1fr; }
+            .acc-grid { grid-template-columns: 1fr; }
+            .sim-grid { grid-template-columns: 1fr; }
+            .contact-inner { grid-template-columns: 1fr; }
+            .stat-strip { grid-template-columns: 1fr; }
+            .stat-strip-item { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.07); }
+            nav ul { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav>
+    <a class="nav-logo" href="#hero">
+        TecnoXaaS<span>_PACS®</span>
+        <span class="powered">Powered by<br>Dedalus</span>
+    </a>
+    <ul>
+        <li><a href="#desafio">¿Por qué la Nube?</a></li>
+        <li><a href="#autoridad">Tecnología</a></li>
+        <li><a href="#demo">Demo en Vivo</a></li>
+        <li><a href="#simulador">Calculadora de Ahorro</a></li>
+        <li><a href="#planes">Planes</a></li>
+        <li><a href="#contacto" class="nav-cta">Agendar Demo Exclusiva</a></li>
+    </ul>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section id="hero">
+    <div class="hero-inner">
+        <div>
+            <div class="hero-badge">☁️ Plataforma de diagnóstico como servicio (PaaS) en Argentina</div>
+            <h1 class="hero-h1">
+                Deje de Comprar Servidores.<br>
+                Transforme su <em>Riesgo Tecnológico</em> en Capacidad Diagnóstica.
+            </h1>
+            <p class="hero-sub">
+                Su centro pierde capital cada vez que adquiere hardware que se deprecia o sufre una caída del sistema.
+                <strong>TecnoXaaS_PACS®</strong> elimina el costo oculto de la infraestructura local transfiriendo el riesgo a la nube.<br><br>
+                Acceda al motor PACSonWEB de Dedalus —que procesa <strong>18.5 millones de imágenes diarias</strong> a nivel global— bajo un modelo <strong>OPEX 100% predecible</strong>. Movilidad Zero-Footprint para sus radiólogos, y ciberseguridad AWS para el prestigio de su institución.
+            </p>
+            <div class="hero-ctas">
+                <a href="#simulador" class="btn btn-orange">👉 Simular mi Ahorro Operativo Hoy</a>
+                <a href="#contacto" class="btn btn-outline">Agendar Demo Exclusiva</a>
+            </div>
+            <p class="microcopy">Implementación ágil en 48 hs. Retención legal de 5 años garantizada.</p>
+            <div class="trust-logos" style="margin-top: 36px;">
+                <span class="trust-logo-item">CADIME</span>
+                <span class="trust-logo-item">AWS</span>
+                <span class="trust-logo-item">Dedalus</span>
+                <span class="trust-logo-item">HL7</span>
+                <span class="trust-logo-item">DICOM</span>
+                <span class="trust-logo-item">Tecnoimagen</span>
+            </div>
+        </div>
+
+        <div class="hero-card">
+            <h3>Motor Global en Tiempo Real</h3>
+            <p>Dedalus PACSonWEB sobre infraestructura AWS</p>
+            <div class="hero-stat">
+                <span class="hero-stat-label">Imágenes procesadas / día</span>
+                <span class="hero-stat-val">18.5M</span>
+            </div>
+            <div class="hero-stat">
+                <span class="hero-stat-label">Disponibilidad garantizada</span>
+                <span class="hero-stat-val">99.9%</span>
+            </div>
+            <div class="hero-stat">
+                <span class="hero-stat-label">Retención legal de datos</span>
+                <span class="hero-stat-val">5 años</span>
+            </div>
+            <div class="hero-stat">
+                <span class="hero-stat-label">Tiempo de despliegue</span>
+                <span class="hero-stat-val">48 hs</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== DESAFÍO ===== -->
+<section id="desafio">
+    <div class="wrap">
+        <div class="section-label">⚡ El Desafío</div>
+        <h2 class="h2-section">¿Su centro está atado a la tecnología del pasado?</h2>
+        <p class="sub">Espejos de la realidad del CEO y Director Médico en Argentina. El modelo XaaS es la única salida lógica.</p>
+
+        <div class="pain-grid">
+            <div class="pain-col left">
+                <div class="pain-item">
+                    <div class="pain-icon">💸</div>
+                    <h4>El Dolor: CAPEX Inmovilizado</h4>
+                    <p>Inversión masiva y dolarizada en hardware que se deprecia. Capital que no trabaja para su clínica.</p>
+                </div>
+                <div class="pain-item">
+                    <div class="pain-icon">🖥️</div>
+                    <h4>El Dolor: Radiólogos Atados</h4>
+                    <p>Médicos limitados a una estación física. Sin capacidad de teleradiología. Sin movilidad. Sin futuro.</p>
+                </div>
+                <div class="pain-item">
+                    <div class="pain-icon">⚠️</div>
+                    <h4>El Dolor: Riesgo de Pérdida de Datos</h4>
+                    <p>Caídas del sistema, fallas de hardware y exposición a ciberataques sin redundancia de clase mundial.</p>
+                </div>
+            </div>
+
+            <div class="pain-divider">
+                <div class="vs-line"></div>
+                <div class="vs-badge">VS</div>
+                <div class="vs-line"></div>
+            </div>
+
+            <div class="pain-col right">
+                <div class="pain-item">
+                    <div class="pain-icon">📊</div>
+                    <h4>El Alivio: Modelo OPEX (Pago por estudio)</h4>
+                    <p>Sin grandes desembolsos iniciales. Su costo tecnológico alineado exactamente con su facturación real.</p>
+                </div>
+                <div class="pain-item">
+                    <div class="pain-icon">🌐</div>
+                    <h4>El Alivio: Movilidad Zero-Footprint</h4>
+                    <p>Teleradiología nativa desde cualquier dispositivo, en cualquier lugar. Diagnóstico sin fronteras.</p>
+                </div>
+                <div class="pain-item">
+                    <div class="pain-icon">🛡️</div>
+                    <h4>El Alivio: Ciberseguridad de Clase Mundial</h4>
+                    <p>Respaldo en la nube de AWS con redundancia total. El prestigio de su institución, protegido.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== AUTORIDAD ===== -->
+<section id="autoridad">
+    <div class="wrap">
+        <div class="section-label" style="color: #93c5fd; background: rgba(147,197,253,0.1); border-color: rgba(147,197,253,0.2);">🏆 Tecnología de Clase Mundial</div>
+        <h2 class="h2-section light">La Potencia Global de Dedalus,<br>con el Soporte Local de Tecnoimagen.</h2>
+        <p class="sub">Imagine procesar más de 18.5 millones de imágenes diarias. Esa es la solidez del motor DeepUnity PACSonWEB que respaldará sus diagnósticos, con herramientas avanzadas directamente en su navegador web.</p>
+
+        <div class="benefits-grid">
+            <div class="benefit-card">
+                <div class="benefit-icon">🖥️</div>
+                <h3>Visor Multimonitor Web (Zero-Footprint)</h3>
+                <p>MPR, MIP, 3D y mediciones avanzadas directamente en su navegador. Sin instalaciones. Sin dependencias.</p>
+            </div>
+            <div class="benefit-card">
+                <div class="benefit-icon">👥</div>
+                <h3>Portal Unificado para Derivantes y Pacientes</h3>
+                <p>Médicos derivantes y pacientes acceden a sus estudios de forma segura, ordenada y en tiempo real.</p>
+            </div>
+            <div class="benefit-card">
+                <div class="benefit-icon">🔗</div>
+                <h3>Integración HL7 Nativa con RIS/HIS</h3>
+                <p>Conectividad nativa disponible. Proyectos de integración avanzada a cotizar según sus requerimientos específicos.</p>
+            </div>
+            <div class="benefit-card">
+                <div class="benefit-icon">☁️</div>
+                <h3>Infraestructura AWS de Alta Disponibilidad</h3>
+                <p>Redundancia geográfica. Backups automáticos. SLA 99.9%. Su operación nunca se detiene.</p>
+            </div>
+            <div class="benefit-card">
+                <div class="benefit-icon">🎙️</div>
+                <h3>Reconocimiento de Voz con IA</h3>
+                <p>Acelere el ciclo de ingresos duplicando la velocidad de informe. Disponible como módulo adicional.</p>
+            </div>
+            <div class="benefit-card">
+                <div class="benefit-icon">🇦🇷</div>
+                <h3>Soporte Local Especializado</h3>
+                <p>Equipo de expertos de Tecnoimagen S.A. en Argentina. Acompañamiento y consultoría integral en español.</p>
+            </div>
+        </div>
+
+        <div class="stat-strip">
+            <div class="stat-strip-item">
+                <span class="stat-big">18.5M</span>
+                <p class="stat-desc">imágenes procesadas por día a nivel global (Dedalus)</p>
+            </div>
+            <div class="stat-strip-item">
+                <span class="stat-big">48 hs</span>
+                <p class="stat-desc">tiempo de despliegue y puesta en producción</p>
+            </div>
+            <div class="stat-strip-item">
+                <span class="stat-big">5 años</span>
+                <p class="stat-desc">de retención legal de datos garantizada en AWS</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== DEMO EN VIVO ===== -->
+<section id="demo">
+    <div class="wrap">
+        <div class="section-label">🎬 Visor en Acción</div>
+        <h2 class="h2-section">Vea el Poder Zero-Footprint<br>Antes de Comprometerse con Nada.</h2>
+        <p class="sub">Tres escenarios reales del visor PACSonWEB de Dedalus. Sin instalaciones, sin plugins. Diagnóstico de clase mundial desde cualquier navegador.</p>
+
+        <div class="demo-stage">
+            <!-- Browser chrome fake -->
+            <div class="demo-chrome">
+                <div class="demo-dots">
+                    <div class="demo-dot r"></div>
+                    <div class="demo-dot y"></div>
+                    <div class="demo-dot g"></div>
+                </div>
+                <div class="demo-url-bar" id="demo-url">🔒 pacs.tecnoimagen.com.ar · PACSonWEB · Dedalus</div>
+                <span class="demo-badge-chrome">Zero-Footprint</span>
+            </div>
+
+            <!-- Video principal -->
+            <div class="demo-video-wrap">
+                <video id="main-video" preload="metadata">
+                    <source src="/static/videos/TecnoXaaS_demo_1.mp4" type="video/mp4">
+                </video>
+                <div class="demo-play-overlay" id="play-overlay" onclick="togglePlay()">
+                    <div class="demo-play-btn">▶</div>
+                    <span class="demo-play-label" id="play-label">Reproducir Demo</span>
+                </div>
+            </div>
+
+            <!-- Info bar -->
+            <div class="demo-info-bar">
+                <div>
+                    <div class="demo-info-title" id="demo-title">Demo 1 — Visor Multimonitor & Herramientas Avanzadas</div>
+                    <div class="demo-info-desc" id="demo-desc">MPR, MIP, 3D y mediciones directamente en el navegador. Sin instalaciones. Sin dependencias locales.</div>
+                </div>
+                <a href="#contacto" class="demo-info-cta">Quiero esta demo en vivo →</a>
+            </div>
+        </div>
+
+        <!-- Miniaturas / selector -->
+        <div class="demo-thumbs">
+            <div class="demo-thumb active" onclick="selectDemo(0)">
+                <div class="demo-thumb-preview">
+                    <video preload="metadata" muted>
+                        <source src="/static/videos/TecnoXaaS_demo_1.mp4" type="video/mp4">
+                    </video>
+                    <div class="demo-thumb-overlay">▶</div>
+                </div>
+                <div class="demo-thumb-label">Demo 1 — Visor Multimonitor</div>
+            </div>
+            <div class="demo-thumb" onclick="selectDemo(1)">
+                <div class="demo-thumb-preview">
+                    <video preload="metadata" muted>
+                        <source src="/static/videos/TecnoXaaS_demo_2.mp4" type="video/mp4">
+                    </video>
+                    <div class="demo-thumb-overlay">▶</div>
+                </div>
+                <div class="demo-thumb-label">Demo 2 — Teleradiología</div>
+            </div>
+            <div class="demo-thumb" onclick="selectDemo(2)">
+                <div class="demo-thumb-preview">
+                    <video preload="metadata" muted>
+                        <source src="/static/videos/TecnoXaaS_demo_3.mp4" type="video/mp4">
+                    </video>
+                    <div class="demo-thumb-overlay">▶</div>
+                </div>
+                <div class="demo-thumb-label">Demo 3 — Dictado por Voz con IA</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== SIMULADOR ===== -->
+<section id="simulador">
+    <div class="wrap">
+        <div class="section-label">📊 Calculadora de Ahorro</div>
+        <h2 class="h2-section">Tome el Control de sus Costos. Proyecte su ROI.</h2>
+        <p class="sub">Ingrese su volumen mensual de estudios y vea en tiempo real cuánto puede ahorrar migrando de CAPEX a OPEX.</p>
+
+        <div class="sim-grid">
+            <div class="sim-card">
+                <h3>Ingrese sus parámetros operativos</h3>
+
+                <div class="input-grp">
+                    <label for="estudios">Estudios Mensuales Estimados</label>
+                    <div class="range-wrap">
+                        <input type="range" id="estudios-range" min="100" max="2000" value="800" step="50">
+                        <div class="range-labels"><span>100</span><span>2.000+</span></div>
+                    </div>
+                    <input type="number" id="estudios" value="800" min="100" max="5000" style="margin-top: 10px;">
+                    <p class="hint">Trinchera: ≤500 | Caballo de Batalla: ≤1.000 | Tope de Gama: ≤1.500</p>
+                </div>
+
+                <div class="input-grp">
+                    <label for="licencias">Licencias de Dictado por Voz (Médicos)</label>
+                    <input type="number" id="licencias" value="0" min="0" max="20">
+                    <p class="hint">USD 100 / usuario / mes. Entregue informes en el día.</p>
+                </div>
+
+                <div class="input-grp">
+                    <label for="storage">Storage Histórico Adicional (TB)</label>
+                    <input type="number" id="storage" value="0" min="0" max="100">
+                    <p class="hint">USD 60 / TB / mes. Reemplaza sus costosos NAS físicos.</p>
+                </div>
+            </div>
+
+            <div class="results-card">
+                <h3>Su Proyección de Inversión OPEX</h3>
+
+                <div class="res-row">
+                    <div class="res-lbl">Inversión de Despliegue (Única vez)</div>
+                    <div class="res-val white">USD 2.500</div>
+                    <div class="res-note">Instalación y configuración completa en AWS</div>
+                </div>
+                <div class="res-row">
+                    <div class="res-lbl">Plan de Suscripción Base / mes</div>
+                    <div class="res-val" id="res-base">USD 600</div>
+                    <div class="plan-badge" id="plan-name">Caballo de Batalla</div>
+                </div>
+                <div class="res-row">
+                    <div class="res-lbl">Licencias de Voz / mes</div>
+                    <div class="res-val" id="res-licencias">USD 0</div>
+                </div>
+                <div class="res-row">
+                    <div class="res-lbl">Storage Adicional / mes</div>
+                    <div class="res-val" id="res-storage">USD 0</div>
+                </div>
+                <div class="res-row">
+                    <div class="res-lbl">💰 Total Mensual (OPEX)</div>
+                    <div class="res-val green" id="res-total">USD 600</div>
+                </div>
+
+                <button class="sim-cta-btn" id="btn-sim-cta">
+                    🚀 Quiero este plan para mi centro
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== PLANES ===== -->
+<section id="planes">
+    <div class="wrap">
+        <div class="section-label">💡 Planes de Suscripción</div>
+        <h2 class="h2-section">Diseñado a la medida de su demanda.<br>Escale sin límites.</h2>
+        <p class="sub">Seleccione la capacidad operativa exacta que su institución requiere hoy. Cero inversiones inmovilizadas.</p>
+        <div class="planes-deploy-wrap">
+            <span class="planes-deploy">Inversión de Despliegue única para todos los planes: <strong>USD 2.500 + IVA</strong> — Incluye instalación y configuración en AWS.</span>
+        </div>
+
+        <div class="planes-grid">
+            <!-- Trinchera -->
+            <div class="plan-card">
+                <div class="plan-emoji">🛡️</div>
+                <div class="plan-name">TRINCHERA DIGITAL</div>
+                <p class="plan-tagline">Elimine la vulnerabilidad de su servidor local en 48 horas. Para centros con volumen inicial que requieren contingencia absoluta.</p>
+                <div class="plan-price"><sup>USD</sup> 350</div>
+                <p class="plan-price-sub">+ IVA / mes</p>
+                <ul class="plan-features">
+                    <li>500 estudios incluidos / mes</li>
+                    <li>5 años de retención legal segura</li>
+                    <li>USD 0.70 por estudio excedente</li>
+                    <li>Visor Zero-Footprint incluido</li>
+                    <li>Portal de pacientes incluido</li>
+                    <li>Despliegue en 48 hs</li>
+                </ul>
+                <button class="plan-btn secondary" onclick="abrirModal('Trinchera Digital — USD 350/mes')">Elegir Trinchera</button>
+            </div>
+
+            <!-- Caballo de Batalla -->
+            <div class="plan-card featured">
+                <div class="plan-emoji">🚀</div>
+                <div class="plan-name">CABALLO DE BATALLA</div>
+                <p class="plan-tagline">El estándar operativo. Alinee su costo tecnológico de forma exacta con su facturación real y habilite la teleradiología sin latencia.</p>
+                <div class="plan-price"><sup>USD</sup> 600</div>
+                <p class="plan-price-sub">+ IVA / mes</p>
+                <ul class="plan-features">
+                    <li>1.000 estudios incluidos / mes</li>
+                    <li>5 años de retención legal segura</li>
+                    <li>USD 0.60 por estudio excedente</li>
+                    <li>Visor Zero-Footprint incluido</li>
+                    <li>Portal de pacientes incluido</li>
+                    <li>Teleradiología nativa sin latencia</li>
+                </ul>
+                <button class="plan-btn primary" onclick="abrirModal('Caballo de Batalla — USD 600/mes')">Comenzar Transformación</button>
+            </div>
+
+            <!-- Tope de Gama -->
+            <div class="plan-card">
+                <div class="plan-emoji">🎙️</div>
+                <div class="plan-name">TOPE DE GAMA</div>
+                <p class="plan-tagline">Escale su operación a nivel federal. Acelere el ciclo de ingresos duplicando la velocidad de informe con Inteligencia Artificial.</p>
+                <div class="plan-price"><sup>USD</sup> 1.100</div>
+                <p class="plan-price-sub">+ IVA / mes</p>
+                <ul class="plan-features">
+                    <li>1.500 estudios incluidos / mes</li>
+                    <li>5 años de retención legal segura</li>
+                    <li>USD 0.55 por estudio excedente</li>
+                    <li>🎁 2 licencias de Reconocimiento de Voz</li>
+                    <li>Visor Zero-Footprint incluido</li>
+                    <li>Portal de pacientes incluido</li>
+                </ul>
+                <button class="plan-btn secondary" onclick="abrirModal('Tope de Gama — USD 1.100/mes')">Elegir Tope de Gama</button>
+            </div>
+        </div>
+
+        <!-- Aceleradores -->
+        <div class="aceleradores">
+            <h3>⚡ Aceleradores de Flujo de Trabajo (On-Demand)</h3>
+            <p class="sub-acc">Personalice su ecosistema según el crecimiento de su demanda.</p>
+            <div class="acc-grid">
+                <div class="acc-item">
+                    <div class="acc-icon">🎙️</div>
+                    <h4>Reconocimiento de Voz con IA</h4>
+                    <p>Entregue informes en el día y acelere su ciclo de facturación. Integrado nativamente al visor.</p>
+                    <div class="acc-price">USD 100 / usuario / mes</div>
+                </div>
+                <div class="acc-item">
+                    <div class="acc-icon">💾</div>
+                    <h4>Storage Histórico</h4>
+                    <p>Sustituya de forma definitiva la compra de costosos NAS físicos. Escalable sin fricción.</p>
+                    <div class="acc-price">USD 60 / TB / mes</div>
+                </div>
+                <div class="acc-item">
+                    <div class="acc-icon">🔗</div>
+                    <h4>Integración HIS/RIS (HL7)</h4>
+                    <p>Cero cargas manuales administrativas. Integración completa con su sistema de gestión existente.</p>
+                    <div class="acc-price">Cotización a medida</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== CONTACTO / CTA FINAL ===== -->
+<section id="contacto">
+    <div class="wrap">
+        <div class="contact-inner">
+            <div class="contact-left">
+                <div class="section-label" style="color: #93c5fd; background: rgba(147,197,253,0.1); border-color: rgba(147,197,253,0.2);">🏥 Consultoría Estratégica</div>
+                <h2 class="h2-section light">El Hospital Inteligente es inevitable.<br>Lideremos el cambio juntos. <span style="color: var(--accent);">Dé el salto a la nube hoy mismo.</span></h2>
+                <p class="sub-light">Deje que nuestro equipo de expertos en Tecnoimagen S.A. lo asesore. Acceda a una auditoría tecnológica sin cargo. Descubra exactamente cuánto capital inmovilizado puede liberar migrando de CAPEX a OPEX con TecnoXaaS_PACS®.</p>
+
+                <div class="trust-items">
+                    <div class="trust-item">
+                        <span class="ti-icon">🛡️</span>
+                        <p class="ti-text"><strong>Privacidad y Cumplimiento:</strong> Sus datos están protegidos bajo los más altos estándares de ciberseguridad de AWS.</p>
+                    </div>
+                    <div class="trust-item">
+                        <span class="ti-icon">🌐</span>
+                        <p class="ti-text"><strong>Respaldo Global:</strong> Tecnología PACSonWeb de Dedalus, procesando más de 18.5 millones de imágenes por día a nivel mundial.</p>
+                    </div>
+                    <div class="trust-item">
+                        <span class="ti-icon">🇦🇷</span>
+                        <p class="ti-text"><strong>Soporte Local:</strong> Acompañamiento y consultoría integral por especialistas de Tecnoimagen en Argentina.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <h3>Reserve su sesión de consultoría estratégica y demostración en vivo.</h3>
+                <p class="form-sub">Asesoramiento confidencial por expertos locales de Tecnoimagen S.A. en Argentina.</p>
+
+                <form id="form-contacto">
+                    <div class="frow">
+                        <div class="fgroup">
+                            <label for="f-nombre">Nombre y Apellido</label>
+                            <input type="text" id="f-nombre" required placeholder="Dr. Juan Pérez">
+                        </div>
+                        <div class="fgroup">
+                            <label for="f-institucion">Institución Médica</label>
+                            <input type="text" id="f-institucion" required placeholder="Clínica / Hospital">
+                        </div>
+                    </div>
+
+                    <div class="fgroup">
+                        <label for="f-cargo">Cargo Estratégico</label>
+                        <select id="f-cargo" required>
+                            <option value="">— Seleccionar —</option>
+                            <option>CEO</option>
+                            <option>Director Médico</option>
+                            <option>Gerente de IT</option>
+                            <option>Jefe de Radiología</option>
+                        </select>
+                    </div>
+
+                    <div class="fgroup">
+                        <label for="f-volumen">Volumen de Estudios Mensuales</label>
+                        <select id="f-volumen" required>
+                            <option value="">— Seleccionar —</option>
+                            <option>Menos de 1.000 estudios/mes</option>
+                            <option>Entre 1.000 y 5.000 estudios/mes</option>
+                            <option>Más de 5.000 estudios/mes</option>
+                        </select>
+                    </div>
+
+                    <div class="fgroup">
+                        <label for="f-email">Correo Corporativo</label>
+                        <input type="email" id="f-email" required placeholder="director@clinica.com.ar">
+                    </div>
+
+                    <button type="submit" class="form-submit">
+                        🚀 SOLICITAR MI DEMO Y SIMULAR MI AHORRO
+                    </button>
+                    <p class="form-privacy">🔒 Sus datos están protegidos. No spam. Solo asesoramiento experto.</p>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2025 <strong>Tecnoimagen S.A.</strong> — TecnoXaaS_PACS® es una solución Powered by Dedalus | PACSonWEB sobre AWS | Argentina 🇦🇷</p>
+</footer>
+
+<!-- ===== MODAL (desde simulador o planes) ===== -->
+<div class="modal-overlay" id="modal-contacto">
+    <div class="modal-content">
+        <button class="modal-close" id="btn-cerrar-modal">&times;</button>
+        <h2>Reserve su Demo Exclusiva</h2>
+        <p class="m-sub" id="modal-plan-text">Un consultor experto de Tecnoimagen analizará su perfil y preparará su entorno.</p>
+
+        <form id="form-modal">
+            <div class="frow">
+                <div class="fgroup">
+                    <label for="m-nombre">Nombre y Apellido</label>
+                    <input type="text" id="m-nombre" required placeholder="Dr. Juan Pérez">
+                </div>
+                <div class="fgroup">
+                    <label for="m-institucion">Institución Médica</label>
+                    <input type="text" id="m-institucion" required placeholder="Clínica / Hospital">
+                </div>
+            </div>
+            <div class="fgroup">
+                <label for="m-cargo">Cargo</label>
+                <select id="m-cargo" required>
+                    <option value="">— Seleccionar —</option>
+                    <option>CEO</option>
+                    <option>Director Médico</option>
+                    <option>Gerente de IT</option>
+                    <option>Jefe de Radiología</option>
+                </select>
+            </div>
+            <div class="fgroup">
+                <label for="m-email">Correo Corporativo</label>
+                <input type="email" id="m-email" required placeholder="director@clinica.com.ar">
+            </div>
+            <button type="submit" class="form-submit">🚀 SOLICITAR MI DEMO Y SIMULAR MI AHORRO</button>
+            <p class="form-privacy">🔒 Asesoramiento confidencial. Sin spam.</p>
+        </form>
+    </div>
+</div>
+
+<!-- ===== PÁGINA DE AGRADECIMIENTO ACTIVA ===== -->
+<div id="gracias">
+    <div class="gracias-icon">🎯</div>
+    <h2>Excelente decisión.<br>Su consultor experto de Tecnoimagen está analizando su perfil.</h2>
+    <p>En las próximas horas recibirá un contacto personalizado con su análisis de viabilidad y proyección de ahorro.</p>
+    <div class="video-pill">
+        <p>Mientras tanto, lo invitamos a ver este video de 1 minuto sobre cómo funciona nuestro visor Zero-Footprint 👇</p>
+        <a href="https://www.dedalus.com" target="_blank">▶ Ver Demo del Visor Zero-Footprint</a>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    /* ===== SIMULADOR ===== */
+    const inputEstudios = document.getElementById('estudios');
+    const rangeEstudios = document.getElementById('estudios-range');
+    const inputLicencias = document.getElementById('licencias');
+    const inputStorage   = document.getElementById('storage');
+    const resBase        = document.getElementById('res-base');
+    const resLicencias   = document.getElementById('res-licencias');
+    const resStorage     = document.getElementById('res-storage');
+    const resTotal       = document.getElementById('res-total');
+    const planName       = document.getElementById('plan-name');
+
+    const PLANES = [
+        { max: 500,  precio: 350,  excedente: 0.70, nombre: 'Trinchera Digital' },
+        { max: 1000, precio: 600,  excedente: 0.60, nombre: 'Caballo de Batalla' },
+        { max: 1500, precio: 1100, excedente: 0.55, nombre: 'Tope de Gama' },
+    ];
+
+    function calcular() {
+        const estudios  = parseInt(inputEstudios.value)  || 0;
+        const licencias = parseInt(inputLicencias.value) || 0;
+        const storage   = parseInt(inputStorage.value)   || 0;
+
+        let plan = PLANES[2];
+        for (const p of PLANES) {
+            if (estudios <= p.max) { plan = p; break; }
+        }
+
+        const excedente = Math.max(0, estudios - plan.max);
+        const costoBase = plan.precio + (excedente * plan.excedente);
+        const costoLic  = licencias * 100;
+        const costoSto  = storage   * 60;
+        const total     = costoBase + costoLic + costoSto;
+
+        const fmt = (n) => 'USD ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+        resBase.textContent       = fmt(costoBase);
+        resLicencias.textContent  = fmt(costoLic);
+        resStorage.textContent    = fmt(costoSto);
+        resTotal.textContent      = fmt(total);
+        planName.textContent      = plan.nombre;
+    }
+
+    // Sync range <-> number
+    rangeEstudios.addEventListener('input', () => {
+        inputEstudios.value = rangeEstudios.value;
+        calcular();
+    });
+    inputEstudios.addEventListener('input', () => {
+        rangeEstudios.value = Math.min(inputEstudios.value, 2000);
+        calcular();
+    });
+    inputLicencias.addEventListener('input', calcular);
+    inputStorage.addEventListener('input', calcular);
+    calcular();
+
+    /* ===== SIM CTA -> modal ===== */
+    document.getElementById('btn-sim-cta').addEventListener('click', () => {
+        const plan = planName.textContent;
+        abrirModal('Plan recomendado: ' + plan + ' · ' + resTotal.textContent + '/mes');
+    });
+
+    /* ===== MODAL ===== */
+    const modal = document.getElementById('modal-contacto');
+    document.getElementById('btn-cerrar-modal').addEventListener('click', () => { modal.style.display = 'none'; });
+    window.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+
+    document.getElementById('form-modal').addEventListener('submit', (e) => {
+        e.preventDefault();
+        modal.style.display = 'none';
+        mostrarGracias();
+    });
+
+    /* ===== FORM CONTACTO ===== */
+    document.getElementById('form-contacto').addEventListener('submit', (e) => {
+        e.preventDefault();
+        mostrarGracias();
+    });
+
+    /* ===== GRACIAS ACTIVA ===== */
+    function mostrarGracias() {
+        const g = document.getElementById('gracias');
+        g.style.display = 'flex';
+        setTimeout(() => { g.style.opacity = 1; }, 10);
+    }
+
+});
+
+function abrirModal(planTexto) {
+    const modal = document.getElementById('modal-contacto');
+    document.getElementById('modal-plan-text').textContent = 'Plan seleccionado: ' + planTexto + '. Un consultor de Tecnoimagen preparará su entorno.';
+    modal.style.display = 'flex';
+}
+
+/* ===== DEMO VIDEO PLAYER ===== */
+const demos = [
+    {
+        src:   '/static/videos/TecnoXaaS_demo_1.mp4',
+        title: 'Demo 1 — Visor Multimonitor & Herramientas Avanzadas',
+        desc:  'MPR, MIP, 3D y mediciones directamente en el navegador. Sin instalaciones. Sin dependencias locales.',
+        url:   '🔒 pacs.tecnoimagen.com.ar · Visor Multimonitor · PACSonWEB'
+    },
+    {
+        src:   '/static/videos/TecnoXaaS_demo_2.mp4',
+        title: 'Demo 2 — Teleradiología Zero-Footprint',
+        desc:  'Acceso remoto nativo desde cualquier dispositivo. Diagnóstico sin fronteras, sin latencia.',
+        url:   '🔒 pacs.tecnoimagen.com.ar · Teleradiología · PACSonWEB'
+    },
+    {
+        src:   '/static/videos/TecnoXaaS_demo_3.mp4',
+        title: 'Demo 3 — Dictado por Voz con Inteligencia Artificial',
+        desc:  'Acelere el ciclo de ingresos. Informes entregados en el día con reconocimiento de voz integrado.',
+        url:   '🔒 pacs.tecnoimagen.com.ar · Dictado por Voz IA · PACSonWEB'
+    }
+];
+
+let currentDemo = 0;
+const mainVideo = document.getElementById('main-video');
+const overlay   = document.getElementById('play-overlay');
+const playLabel = document.getElementById('play-label');
+const demoTitle = document.getElementById('demo-title');
+const demoDesc  = document.getElementById('demo-desc');
+const demoUrl   = document.getElementById('demo-url');
+const thumbs    = document.querySelectorAll('.demo-thumb');
+
+window.selectDemo = function(idx) {
+    mainVideo.pause();
+    overlay.classList.remove('hidden');
+    playLabel.textContent = 'Reproducir Demo';
+    currentDemo = idx;
+    const d = demos[idx];
+    mainVideo.src = d.src;
+    mainVideo.load();
+    demoTitle.textContent = d.title;
+    demoDesc.textContent  = d.desc;
+    demoUrl.textContent   = d.url;
+    thumbs.forEach((t, i) => t.classList.toggle('active', i === idx));
+};
+
+window.togglePlay = function() {
+    if (mainVideo.paused) {
+        mainVideo.play().then(() => {
+            overlay.classList.add('hidden');
+        }).catch(() => {
+            playLabel.textContent = '⚠ Suba los archivos MP4 al servidor para activar';
+        });
+    } else {
+        mainVideo.pause();
+        overlay.classList.remove('hidden');
+        playLabel.textContent = 'Reanudar';
+    }
+};
+
+mainVideo.addEventListener('ended', () => {
+    overlay.classList.remove('hidden');
+    playLabel.textContent = 'Ver de nuevo';
+    const next = (currentDemo + 1) % demos.length;
+    setTimeout(() => selectDemo(next), 1400);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PACS Capacity · TecnoMonitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<style>
+/* ═══════════ TECNOMONITOR DESIGN SYSTEM OSCURO v2 (index_beta) ═══════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0A0A0B; --surface:#111113; --surface2:#18181B; --surface3:#1E1E22;
+  --border:#232327; --border2:#2e2e34;
+  --text:#F0F0F2; --muted:#6B6B7A; --muted2:#44444F;
+  --green:#00E5A0; --green-dim:rgba(0,229,160,.12); --green-dim2:rgba(0,229,160,.06);
+  --red:#FF5C5C; --red-dim:rgba(255,92,92,.12);
+  --blue:#4A8FFF; --blue-dim:rgba(74,143,255,.12);
+  --amber:#FFA940; --amber-dim:rgba(255,169,64,.10);
+  --radius:8px; --radius2:12px; --radius3:16px; --pill:50px;
+}
+html,body{background:var(--bg);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+.hidden{display:none!important}
+
+/* ── NAV PILL FLOTANTE ── */
+.top-nav{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.06);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);padding:9px 18px;border-radius:var(--pill);display:flex;align-items:center;gap:26px;z-index:9999;box-shadow:0 4px 32px rgba(0,0,0,.4);width:max-content;max-width:calc(100vw - 32px)}
+.nav-logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:13px;color:#fff;white-space:nowrap}
+.nav-logo .dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);flex-shrink:0}
+.nav-logo small{color:var(--muted);font-weight:500;font-size:11px}
+.nav-links{display:flex;gap:4px}
+.nav-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--pill);color:rgba(255,255,255,.6);font-size:12px;font-weight:600;background:none;border:none;cursor:pointer;font-family:inherit;transition:.2s;white-space:nowrap}
+.nav-btn:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-btn.active{background:var(--green-dim);color:var(--green)}
+.nav-btn:disabled{opacity:.35;cursor:not-allowed}
+.nav-btn.ghost{color:var(--muted)}.nav-btn.ghost:hover{color:var(--red)}
+
+.wrap{max-width:1180px;margin:0 auto;padding:96px 24px 60px}
+
+/* ── UPLOAD ── */
+.upload-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.upload-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius3);padding:38px;max-width:560px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.upload-brand{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+.upload-brand .dot{width:11px;height:11px;border-radius:50%;background:var(--green);box-shadow:0 0 14px var(--green)}
+.upload-brand h1{font-size:1.4rem;font-weight:800}
+.upload-sub-h{color:var(--muted);font-size:.82rem;margin-bottom:26px}
+.dropzone{border:2px dashed var(--border2);border-radius:var(--radius2);padding:48px 24px;text-align:center;cursor:pointer;transition:.2s;background:var(--surface2)}
+.dropzone:hover,.dropzone.drag{border-color:var(--green);background:var(--green-dim2)}
+.dropzone .ico{font-size:2.6rem}
+.dropzone .t{font-weight:700;margin-top:12px}
+.dropzone .s{color:var(--muted);font-size:.85rem;margin-top:4px}
+.hint{font-size:.76rem;color:var(--muted);margin-top:22px;line-height:1.6;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px}
+.hint code{background:var(--green-dim);color:var(--green);padding:1px 6px;border-radius:5px;font-size:.92em}
+
+/* ── CARDS / PANELS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:22px 24px;margin-bottom:20px}
+.card h3{font-size:.98rem;font-weight:700;margin-bottom:3px}
+.card .desc{font-size:.78rem;color:var(--muted);margin-bottom:18px}
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted2);margin-bottom:12px}
+
+/* ── CALCULADORA ── */
+.calc{background:linear-gradient(135deg,var(--surface2),var(--surface));border:1px solid var(--border2)}
+.calc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;align-items:end}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.field input,.field select{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:10px 12px;font-size:.92rem;font-family:inherit;transition:.15s}
+.field input:focus,.field select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-dim2)}
+.check{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);cursor:pointer;user-select:none}
+.check input{accent-color:var(--green);width:15px;height:15px}
+
+/* ── KPIs ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:16px 18px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--blue)}
+.kpi.ok::before{background:var(--green)} .kpi.warn::before{background:var(--amber)} .kpi.danger::before{background:var(--red)}
+.kpi .label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.kpi .value{font-size:1.55rem;font-weight:800;margin-top:6px;line-height:1.1}
+.kpi.ok .value{color:var(--green)} .kpi.warn .value{color:var(--amber)} .kpi.danger .value{color:var(--red)}
+.kpi .foot{font-size:.72rem;color:var(--muted);margin-top:4px}
+
+.chart-wrap{position:relative;height:420px}
+.chart-wrap.sm{height:330px}
+
+.badge{display:inline-block;padding:4px 12px;border-radius:var(--pill);font-size:.74rem;font-weight:700}
+.badge.ok{background:var(--green-dim);color:var(--green)} .badge.warn{background:var(--amber-dim);color:var(--amber)} .badge.danger{background:var(--red-dim);color:var(--red)}
+.verdict-txt{margin-top:12px;font-size:.92rem;color:var(--text)}
+.verdict-txt strong{color:#fff}
+
+.btn{border:none;border-radius:var(--pill);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:9px 18px;display:inline-flex;align-items:center;gap:7px;transition:.15s}
+.btn-primary{background:var(--green);color:#06231a}.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border)}.btn-ghost:hover{border-color:var(--border2)}
+.export-row{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse;font-size:.84rem}
+.tbl th,.tbl td{padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl th{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;background:var(--surface2)}
+.tbl tr.proj td{color:var(--green);font-style:italic}
+
+.or-split{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--muted2);font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}
+.or-split::before,.or-split::after{content:'';flex:1;height:1px;background:var(--border)}
+/* tabla modalidades */
+.mod-tbl{width:100%;border-collapse:collapse;font-size:.84rem}
+.mod-tbl th{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
+.mod-tbl td{padding:6px 10px;border-bottom:1px solid var(--border)}
+.mod-tbl input{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 9px;font-size:.86rem;font-family:inherit;width:100%}
+.mod-tbl input:focus{outline:none;border-color:var(--green)}
+.mod-tbl .num{text-align:right;color:var(--muted)}
+.mod-tbl .rm{background:none;border:none;color:var(--muted2);cursor:pointer;font-size:1rem;padding:2px 6px}
+.mod-tbl .rm:hover{color:var(--red)}
+.mod-tbl input.wn{width:90px} .mod-tbl input.wmb{width:80px}
+.legend-dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{display:inline-block;margin-left:5px;color:var(--muted2);cursor:help;font-size:.8em;font-weight:400}
+.tip:hover{color:var(--green)}
+/* cascada de composición */
+.wf{display:flex;flex-direction:column;gap:2px}
+.wf-row{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-radius:var(--radius);font-size:.88rem}
+.wf-row .wf-lbl{display:flex;align-items:center;gap:8px;color:var(--text)}
+.wf-row .wf-val{font-weight:700;font-variant-numeric:tabular-nums}
+.wf-row.base{background:var(--surface2)}
+.wf-row.sub{color:var(--muted)} .wf-row.sub .wf-val{color:var(--blue)}
+.wf-row.add .wf-val{color:var(--amber)}
+.wf-row.total{background:var(--green-dim);border:1px solid rgba(0,229,160,.25);margin-top:4px}
+.wf-row.total .wf-lbl,.wf-row.total .wf-val{color:var(--green);font-weight:800}
+.wf-row.rec{background:var(--surface2);border:1px dashed var(--border2);margin-top:2px}
+.wf-op{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;flex-shrink:0}
+.wf-op.minus{background:var(--blue-dim);color:var(--blue)} .wf-op.plus{background:var(--amber-dim);color:var(--amber)} .wf-op.eq{background:var(--green-dim);color:var(--green)}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface3);border:1px solid var(--border2);color:#fff;padding:12px 22px;border-radius:var(--pill);font-size:.86rem;opacity:0;transition:opacity .25s;z-index:99999;pointer-events:none}
+.toast.show{opacity:1}
+/* modal SQL */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10000}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius3);width:min(860px,100%);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.7)}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 22px;border-bottom:1px solid var(--border)}
+.modal-head strong{font-size:1rem} .modal-sub{font-size:.76rem;color:var(--muted);margin-top:3px}
+.icon-x{background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:4px}.icon-x:hover{color:var(--text)}
+.sql-pre{margin:0;overflow:auto;flex:1;background:var(--bg)}
+.sql-pre code{display:block;padding:20px 22px;font-family:'SF Mono',Consolas,'Roboto Mono',monospace;font-size:.8rem;line-height:1.6;color:#c9d5e5;white-space:pre;tab-size:4}
+.modal-foot{display:flex;gap:10px;padding:16px 22px;border-top:1px solid var(--border)}
+@media(max-width:640px){.nav-logo small{display:none}.nav-links{gap:2px}.nav-btn{padding:7px 10px}}
+</style>
+</head>
+<body>
+
+<!-- ══════════ UPLOAD ══════════ -->
+<div class="upload-screen" id="view-upload">
+  <div class="upload-card">
+    <div class="upload-brand"><span class="dot"></span><h1>PACS Capacity</h1></div>
+    <div class="upload-sub-h">Proyección de capacidad de almacenamiento PACS · 100% offline</div>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+      <div class="ico">📈</div>
+      <div class="t">Cargá el CSV de crecimiento por quincena</div>
+      <div class="s">Arrastrá el archivo o hacé clic para seleccionarlo</div>
+      <input type="file" id="file-input" accept=".csv,.txt" class="hidden" onchange="handleFile(this.files[0])">
+    </div>
+    <div class="hint">
+      <strong>Detecta solo:</strong> período/quincena, GB por período, GB acumulado y cantidad de imágenes.
+      Soporta separadores <code>,</code> <code>;</code> tab, decimales con coma, notación científica y archivos
+      en UTF-8 o Latin-1. El archivo nunca sale de tu navegador.
+    </div>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:12px" onclick="openSql()">📋 Ver / copiar la consulta SQL que genera este CSV</button>
+    <div class="or-split"><span>o</span></div>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;padding:14px" onclick="enterApp('sizing')">
+      📐 Dimensionar una nueva instalación (sin datos previos)
+    </button>
+    <div style="font-size:.74rem;color:var(--muted);margin-top:8px;text-align:center">Calculá el almacenamiento a futuro a partir de estudios/mes por modalidad.</div>
+  </div>
+</div>
+
+<!-- ══════════ NAV ══════════ -->
+<nav class="top-nav hidden" id="nav">
+  <div class="nav-logo"><span class="dot"></span>PACS Capacity <small>TecnoMonitor</small></div>
+  <div class="nav-links">
+    <button class="nav-btn csv-tab active" data-tab="forecast" onclick="showTab('forecast')">🔮 Proyección</button>
+    <button class="nav-btn csv-tab" data-tab="growth" onclick="showTab('growth')">📊 Crecimiento</button>
+    <button class="nav-btn csv-tab" data-tab="table" onclick="showTab('table')">🧾 Datos</button>
+    <button class="nav-btn" data-tab="sizing" onclick="showTab('sizing')">📐 Dimensionamiento</button>
+    <button class="nav-btn csv-tab" onclick="openSql()">📋 SQL</button>
+    <button class="nav-btn ghost" onclick="resetApp()">↺ Nuevo</button>
+  </div>
+</nav>
+
+<!-- ══════════ APP ══════════ -->
+<div class="wrap hidden" id="view-app">
+
+  <!-- PROYECCIÓN -->
+  <section class="tab" id="tab-forecast">
+    <div class="section-title" id="range-label">—</div>
+
+    <!-- CALCULADORA -->
+    <div class="card calc">
+      <h3>Calculadora de capacidad</h3>
+      <div class="desc">Ingresá la capacidad de tu arreglo y estimá cuándo se satura al ritmo de crecimiento.</div>
+      <div class="calc-grid">
+        <div class="field"><label>Capacidad total</label><input type="number" id="cap-value" value="10" min="0" step="0.5" oninput="recompute()"></div>
+        <div class="field"><label>Unidad</label><select id="cap-unit" onchange="recompute()"><option value="1024">TB</option><option value="1">GB</option></select></div>
+        <div class="field"><label>Umbral alerta (%)</label><input type="number" id="threshold" value="80" min="1" max="100" oninput="recompute()"></div>
+        <div class="field"><label>Horizonte (quincenas)</label><input type="number" id="horizon" value="24" min="2" max="120" oninput="recompute()"></div>
+        <div class="field"><label>Modelo de tendencia</label><select id="model" onchange="recompute()">
+          <option value="linear">Lineal (histórico completo)</option>
+          <option value="recent">Lineal reciente (últimas 8)</option>
+          <option value="quad">Cuadrático (acelerado)</option>
+          <option value="auto">Automático (mejor R²)</option>
+        </select></div>
+        <label class="check"><input type="checkbox" id="drop-last" checked onchange="recompute()"> Excluir última quincena (parcial)</label>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" id="kpi-grid"></div>
+
+    <!-- VEREDICTO -->
+    <div class="card">
+      <div class="section-title">Estimación de saturación</div>
+      <div id="verdict-box"></div>
+      <div id="verdict-txt" style="color:var(--muted);font-size:.8rem;margin-top:10px"></div>
+    </div>
+
+    <!-- GRÁFICO PRINCIPAL -->
+    <div class="card">
+      <h3 id="chart-title">Proyección a 1 año</h3>
+      <div class="desc">Acumulado real (azul) · tendencia lineal (rojo) · proyección al futuro (verde).</div>
+      <div class="chart-wrap"><canvas id="chart-forecast"></canvas></div>
+      <div class="export-row" style="margin-top:16px">
+        <button class="btn btn-primary" onclick="exportPDF()">📄 Exportar PDF</button>
+        <button class="btn btn-ghost" onclick="exportExcel()">📥 Exportar Excel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CRECIMIENTO -->
+  <section class="tab hidden" id="tab-growth">
+    <div class="card">
+      <h3>Crecimiento por quincena</h3>
+      <div class="desc">GB nuevos ingresados en cada período. Sirve para ver picos, estacionalidad y aceleración del ritmo.</div>
+      <div class="chart-wrap sm"><canvas id="chart-growth"></canvas></div>
+    </div>
+  </section>
+
+  <!-- DATOS -->
+  <section class="tab hidden" id="tab-table">
+    <div class="card">
+      <h3>Datos históricos y proyectados</h3>
+      <div class="desc">Las filas proyectadas usan el modelo seleccionado en Proyección.</div>
+      <div style="overflow-x:auto"><table class="tbl" id="data-table"></table></div>
+    </div>
+  </section>
+
+  <!-- DIMENSIONAMIENTO -->
+  <section class="tab hidden" id="tab-sizing">
+    <div class="section-title">Dimensionamiento de nueva instalación</div>
+
+    <div class="card calc">
+      <h3>Parámetros del proyecto</h3>
+      <div class="desc">Definí el horizonte, el crecimiento esperado de la demanda y el factor de seguridad para el sobredimensionamiento.</div>
+      <div class="calc-grid">
+        <div class="field"><label>Horizonte (años)</label><input type="number" id="sz-years" value="5" min="1" max="20" oninput="recomputeSizing()"></div>
+        <div class="field"><label>Crecimiento anual demanda (%)</label><input type="number" id="sz-growth" value="10" min="0" max="100" oninput="recomputeSizing()"></div>
+        <div class="field"><label>Compresión (%)<span class="tip" title="Reducción por compresión DICOM. JPEG2000 lossless ≈ 50-60% en CT/MR; ~0% en US/cine ya comprimidos.">ⓘ</span></label><input type="number" id="sz-comp" value="0" min="0" max="90" oninput="recomputeSizing()"></div>
+        <div class="field"><label>Redundancia (%)<span class="tip" title="Copia adicional. 100% = segundo sitio con copia completa (geo-redundancia).">ⓘ</span></label><input type="number" id="sz-redun" value="0" min="0" max="300" oninput="recomputeSizing()"></div>
+        <div class="field"><label>Contingencia (%)<span class="tip" title="Headroom: overhead de RAID/filesystem, base de datos, objetos no-imagen y margen para no llenar al 100%.">ⓘ</span></label><input type="number" id="sz-cont" value="30" min="0" max="200" oninput="recomputeSizing()"></div>
+        <div class="field"><label>Redondeo capacidad</label><select id="sz-round" onchange="recomputeSizing()">
+          <option value="0">Sin redondeo</option><option value="1">Al TB superior</option><option value="2" selected>A escalón comercial</option>
+        </select></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Carga por modalidad DICOM</h3>
+      <div class="desc">Estudios por mes y tamaño promedio por estudio. Los MB son valores de referencia — ajustalos a los equipos reales (protocolo, cortes, cine, tomosíntesis, etc.).</div>
+      <div style="overflow-x:auto"><table class="mod-tbl" id="mod-table"></table></div>
+      <button class="btn btn-ghost" style="margin-top:14px" onclick="addModality()">＋ Agregar modalidad</button>
+    </div>
+
+    <div class="kpi-grid" id="sz-kpis"></div>
+
+    <div class="card">
+      <h3 id="sz-chart-title">Almacenamiento proyectado</h3>
+      <div class="desc">Área apilada = aporte de cada modalidad (total = techo de la pila). Línea punteada = total con factor de seguridad.</div>
+      <div class="chart-wrap"><canvas id="chart-sizing"></canvas></div>
+      <div class="export-row" style="margin-top:16px">
+        <button class="btn btn-primary" onclick="exportSizingPDF()">📄 Exportar PDF</button>
+        <button class="btn btn-ghost" onclick="exportSizingExcel()">📥 Exportar Excel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Composición de la capacidad</div>
+      <div class="desc" style="margin-bottom:14px">Del volumen bruto de imágenes a la capacidad a comprar, factor por factor.</div>
+      <div class="wf" id="sz-waterfall"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Desglose por modalidad a horizonte</div>
+      <div style="overflow-x:auto"><table class="tbl" id="sz-breakdown"></table></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ══════════ MODAL SQL ══════════ -->
+<div class="modal-backdrop hidden" id="sql-modal" onclick="if(event.target===this)closeSql()">
+  <div class="modal">
+    <div class="modal-head">
+      <div><strong>Consulta SQL · crecimiento de storage por quincena</strong>
+        <div class="modal-sub">SQL Server · base ExtensaPACS. Ejecutala, exportá el resultado a CSV y cargalo en Proyección. Excluye la quincena en curso e incluye el acumulado.</div></div>
+      <button class="icon-x" onclick="closeSql()">✕</button>
+    </div>
+    <pre class="sql-pre"><code id="sql-code"></code></pre>
+    <div class="modal-foot">
+      <button class="btn btn-primary" onclick="copySql(this)">📋 Copiar consulta</button>
+      <button class="btn btn-ghost" onclick="closeSql()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fuente de la consulta (no se ejecuta) -->
+<script type="text/plain" id="sql-source">WITH Procesado_DICOM AS (
+    SELECT
+        CAST([SIZE] AS BIGINT) AS [SIZE_BYTES],
+        CONCAT(FORMAT([INSERT_DATE], 'yyyy-MM'),
+               CASE WHEN DAY([INSERT_DATE]) <= 15 THEN '-Q1 (Días 1-15)' ELSE '-Q2 (Días 16+)' END) AS [Periodo_Quincenal],
+        CAST(CONCAT(FORMAT([INSERT_DATE], 'yyyy-MM'),
+               CASE WHEN DAY([INSERT_DATE]) <= 15 THEN '-1' ELSE '-2' END) AS VARCHAR(20)) AS [Orden_Periodo]
+    FROM [ExtensaPACS].[ExtPacs].[DICOMIMAGES]
+    WHERE [INSERT_DATE] >= '2024-11-01'
+      -- Excluye la quincena en curso (parcial) para no sesgar la tendencia
+      AND [INSERT_DATE] < DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()),
+                                        CASE WHEN DAY(GETDATE()) <= 15 THEN 1 ELSE 16 END)
+),
+Agregado AS (
+    SELECT
+        [Periodo_Quincenal],
+        [Orden_Periodo],
+        COUNT(*)          AS [Total_Imagenes],
+        SUM([SIZE_BYTES]) AS [Tamano_Total_Bytes]
+    FROM Procesado_DICOM
+    GROUP BY [Periodo_Quincenal], [Orden_Periodo]
+)
+SELECT
+    [Periodo_Quincenal],
+    [Total_Imagenes],
+    ROUND([Tamano_Total_Bytes] / 1024.0 / 1024 / 1024, 2)                                    AS [Tamano_GB],
+    ROUND(SUM([Tamano_Total_Bytes]) OVER (ORDER BY [Orden_Periodo] ROWS UNBOUNDED PRECEDING) / 1024.0 / 1024 / 1024, 2) AS [Acumulado_GB]
+FROM Agregado
+ORDER BY [Orden_Periodo] ASC;</script>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+let RAW=[], charts={}, fileName="", LAST=null;
+const nf=new Intl.NumberFormat('es-AR',{maximumFractionDigits:0});
+const nf2=new Intl.NumberFormat('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+/* ═══════════ CARGA ═══════════ */
+const dz=document.getElementById('dropzone');
+['dragover','dragenter'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.add('drag')}));
+['dragleave','drop'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.remove('drag')}));
+dz.addEventListener('drop',ev=>{const f=ev.dataTransfer.files[0];if(f)handleFile(f)});
+
+function handleFile(file){
+  if(!file)return; fileName=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{ parseCSV(decodeBytes(e.target.result)); }
+    catch(err){ toast('No se pudo leer: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);   // leemos bytes y decidimos encoding
+}
+/* Intenta UTF-8 estricto; si falla, cae a Windows-1252 (Latin-1) */
+function decodeBytes(buf){
+  const bytes=new Uint8Array(buf);
+  try{ return new TextDecoder('utf-8',{fatal:true}).decode(bytes); }
+  catch(_){ return new TextDecoder('windows-1252').decode(bytes); }
+}
+
+function parseCSV(text){
+  text=text.replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').trim();
+  const first=text.split('\n')[0];
+  const counts={',':(first.match(/,/g)||[]).length,';':(first.match(/;/g)||[]).length,'\t':(first.match(/\t/g)||[]).length};
+  const delim=Object.keys(counts).reduce((a,b)=>counts[b]>counts[a]?b:a,',');
+  const rows=text.split('\n').map(l=>splitLine(l,delim)).filter(r=>r.length&&r.some(c=>c!==''));
+  if(rows.length<2)throw new Error('sin datos suficientes.');
+  const header=rows[0].map(h=>h.trim().toLowerCase());
+  const idx=detectColumns(header);
+  if(idx.period==null)throw new Error('no encuentro la columna de período.');
+  if(idx.gb==null&&idx.acum==null&&idx.bytes==null)throw new Error('no encuentro columnas de tamaño.');
+  const data=[];
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i]; const label=(r[idx.period]||'').trim(); if(!label)continue;
+    const p=parsePeriod(label); if(!p)continue;
+    let gb=idx.gb!=null?num(r[idx.gb]):null;
+    if(gb==null&&idx.bytes!=null)gb=num(r[idx.bytes])/(1024**3);
+    const acum=idx.acum!=null?num(r[idx.acum]):null;
+    const imagenes=idx.imgs!=null?num(r[idx.imgs]):null;
+    data.push({label,gb,acum,imagenes,...p});
+  }
+  if(!data.length)throw new Error('no pude interpretar ninguna fila.');
+  data.sort((a,b)=>a.sortKey-b.sortKey);
+  let run=0;
+  data.forEach((d,i)=>{
+    if(d.gb==null&&d.acum!=null)d.gb=i===0?d.acum:(d.acum-data[i-1].acum);
+    if(d.gb==null)d.gb=0; run+=d.gb;
+    if(d.acum==null)d.acum=run; d.orden=i;
+  });
+  RAW=data; onLoaded();
+}
+function splitLine(line,delim){const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++}else q=!q}else if(c===delim&&!q){out.push(cur);cur=''}else cur+=c}out.push(cur);return out}
+function detectColumns(h){const find=t=>{for(let i=0;i<h.length;i++)if(t(h[i]))return i;return null};return{
+  period:find(c=>c.includes('period')||c.includes('quincen')||c.includes('período')),
+  acum:find(c=>c.includes('acum')),
+  gb:find(c=>c.includes('gb')&&!c.includes('acum')),
+  bytes:find(c=>c.includes('byte')),
+  imgs:find(c=>c.includes('imag')||c.includes('count')||c.includes('cant'))};}
+function num(v){if(v==null)return null;let s=String(v).trim().replace(/["\s]/g,'');if(s===''||s.toLowerCase()==='null')return null;if(s.includes(',')&&!s.includes('.'))s=s.replace(',','.');else s=s.replace(/,/g,'');const n=parseFloat(s);return isNaN(n)?null:n}
+function parsePeriod(label){
+  const m=label.match(/(\d{4})[-\/](\d{1,2})/); if(!m)return null;
+  const year=+m[1],month=+m[2];
+  const rest=label.slice(m.index+m[0].length);        // texto tras "YYYY-MM" (evita falsos 16 del año)
+  const isQ2=/q\s*2/i.test(label)||/16/.test(rest);
+  const half=isQ2?2:1, day=half===2?23:8;
+  return{ym:year*100+month,half,sortKey:year*10000+month*100+half,repDate:new Date(year,month-1,day)};
+}
+function stepFortnight(y,m,h){if(h===1)return{year:y,month:m,half:2};m++;if(m>12){m=1;y++}return{year:y,month:m,half:1}}
+function fortLabel(y,m,h){return`${y}-${String(m).padStart(2,'0')}-Q${h}`}
+function fortDate(y,m,h){return new Date(y,m-1,h===2?23:8)}
+
+/* ═══════════ TRANSICIÓN ═══════════ */
+function onLoaded(){
+  document.getElementById('range-label').textContent=`${fileName} · ${RAW.length} quincenas · ${RAW[0].label} → ${RAW[RAW.length-1].label}`;
+  recompute();
+  enterApp('forecast');
+  toast('Cargado: '+RAW.length+' quincenas');
+}
+function enterApp(tab){
+  document.getElementById('view-upload').classList.add('hidden');
+  document.getElementById('nav').classList.remove('hidden');
+  document.getElementById('view-app').classList.remove('hidden');
+  const hasCsv=RAW.length>0;
+  document.querySelectorAll('.nav-btn.csv-tab').forEach(b=>b.disabled=!hasCsv);
+  showTab(tab);
+}
+
+/* ═══════════ REGRESIÓN ═══════════ */
+function linreg(xs,ys){let n=xs.length,sx=0,sy=0,sxy=0,sxx=0;for(let i=0;i<n;i++){sx+=xs[i];sy+=ys[i];sxy+=xs[i]*ys[i];sxx+=xs[i]*xs[i]}let den=n*sxx-sx*sx,m=den===0?0:(n*sxy-sx*sy)/den,b=(sy-m*sx)/n,f=x=>m*x+b;return{f,coefs:{m,b},kind:'linear',r2:rsq(xs,ys,f)}}
+function quadreg(xs,ys){let n=xs.length,S0=n,S1=0,S2=0,S3=0,S4=0,T0=0,T1=0,T2=0;for(let i=0;i<n;i++){let x=xs[i],y=ys[i],x2=x*x;S1+=x;S2+=x2;S3+=x2*x;S4+=x2*x2;T0+=y;T1+=x*y;T2+=x2*y}let s=solve3([[S4,S3,S2],[S3,S2,S1],[S2,S1,S0]],[T2,T1,T0]);if(!s)return linreg(xs,ys);let[a,b,c]=s,f=x=>a*x*x+b*x+c;return{f,coefs:{a,b,c},kind:'quad',r2:rsq(xs,ys,f)}}
+function solve3(A,B){const M=A.map((r,i)=>[...r,B[i]]);for(let i=0;i<3;i++){let p=i;for(let k=i+1;k<3;k++)if(Math.abs(M[k][i])>Math.abs(M[p][i]))p=k;if(Math.abs(M[p][i])<1e-12)return null;[M[i],M[p]]=[M[p],M[i]];for(let k=0;k<3;k++){if(k===i)continue;const f=M[k][i]/M[i][i];for(let j=i;j<4;j++)M[k][j]-=f*M[i][j]}}return[M[0][3]/M[0][0],M[1][3]/M[1][1],M[2][3]/M[2][2]]}
+function rsq(xs,ys,f){let mean=ys.reduce((a,b)=>a+b,0)/ys.length,ssr=0,sst=0;for(let i=0;i<xs.length;i++){ssr+=(ys[i]-f(xs[i]))**2;sst+=(ys[i]-mean)**2}return sst===0?1:1-ssr/sst}
+function crossing(model,target,xMin){
+  if(model.kind==='linear'){let{m,b}=model.coefs;if(m<=0)return null;let x=(target-b)/m;return x>xMin?x:null}
+  let{a,b,c}=model.coefs;
+  if(Math.abs(a)<1e-12){if(b<=0)return null;let x=(target-c)/b;return x>xMin?x:null}
+  let disc=b*b-4*a*(c-target);if(disc<0)return null;
+  let r1=(-b+Math.sqrt(disc))/(2*a),r2=(-b-Math.sqrt(disc))/(2*a);
+  let c2=[r1,r2].filter(x=>x>xMin).sort((p,q)=>p-q);return c2.length?c2[0]:null;
+}
+
+/* ═══════════ CÓMPUTO ═══════════ */
+function recompute(){
+  if(!RAW.length)return;
+  const dropLast=document.getElementById('drop-last').checked;
+  const series=dropLast&&RAW.length>3?RAW.slice(0,-1):RAW.slice();
+  const capGB=(parseFloat(document.getElementById('cap-value').value)||0)*(parseFloat(document.getElementById('cap-unit').value)||1);
+  const thr=Math.min(100,Math.max(1,parseFloat(document.getElementById('threshold').value)||80));
+  const horizon=Math.max(2,parseInt(document.getElementById('horizon').value)||24);
+  const modelSel=document.getElementById('model').value;
+
+  const xs=series.map((d,i)=>i), ys=series.map(d=>d.acum);
+  const lin=linreg(xs,ys), qua=quadreg(xs,ys);
+  // ventana reciente
+  const wN=Math.min(8,series.length), rs=series.slice(-wN);
+  const recent=linreg(rs.map((d,i)=>xs[xs.length-wN+i]),rs.map(d=>d.acum));
+  let model = modelSel==='linear'?lin : modelSel==='quad'?qua : modelSel==='recent'?recent : (qua.r2>=lin.r2?qua:lin);
+
+  const lastIdx=series.length-1, last=series[lastIdx];
+  const future=[]; let cur={year:last.repDate.getFullYear(),month:last.repDate.getMonth()+1,half:last.half};
+  for(let k=1;k<=horizon;k++){cur=stepFortnight(cur.year,cur.month,cur.half);const x=lastIdx+k;
+    future.push({label:fortLabel(cur.year,cur.month,cur.half),repDate:fortDate(cur.year,cur.month,cur.half),x,acum:Math.max(0,model.f(x))})}
+
+  const target=capGB*thr/100;
+  const xCross=capGB>0?crossing(model,target,lastIdx):null;
+  let satDate=null,quincenasRest=null;
+  if(xCross!=null){quincenasRest=xCross-lastIdx;satDate=interpDate(series,future,xCross)}
+
+  const recentSlope=recent.coefs.m;
+  const totalGB=last.acum;
+  const idx12=lastIdx+24;                          // 12 meses = 24 quincenas
+  const gb12=model.f(idx12);
+  const proj12mo=gb12-totalGB;
+
+  LAST={series,future,model,lin,recent,capGB,thr,horizon,target,xCross,satDate,quincenasRest,recentSlope,totalGB,proj12mo,gb12,idx12,lastIdx};
+  renderKPIs();renderVerdict();renderForecast();renderGrowth();renderTable();
+}
+function interpDate(series,future,x){
+  const all=series.map((d,i)=>({x:i,t:d.repDate.getTime()})).concat(future.map(f=>({x:f.x,t:f.repDate.getTime()})));
+  if(x<=all[0].x)return new Date(all[0].t);
+  for(let i=0;i<all.length-1;i++)if(x>=all[i].x&&x<=all[i+1].x){const fr=(x-all[i].x)/(all[i+1].x-all[i].x);return new Date(all[i].t+fr*(all[i+1].t-all[i].t))}
+  const a=all[all.length-2],b=all[all.length-1],per=(b.t-a.t)/(b.x-a.x);return new Date(b.t+(x-b.x)*per);
+}
+function fmtGB(gb){return gb>=1024?nf2.format(gb/1024)+' TB':nf2.format(gb)+' GB'}
+function fmtDate(d){return d?d.toLocaleDateString('es-AR',{month:'long',year:'numeric'}):'—'}
+function mesesTxt(q){const m=q/2;if(m<1)return'menos de 1 mes';if(m<12)return`~${nf2.format(m)} meses`;return`~${nf2.format(m/12)} años`}
+
+/* ═══════════ KPIs ═══════════ */
+function renderKPIs(){
+  const L=LAST, usoPct=L.capGB>0?L.totalGB/L.capGB*100:null;
+  let uso='ok'; if(usoPct!=null){if(usoPct>=L.thr)uso='danger';else if(usoPct>=L.thr*.75)uso='warn'}
+  const cards=[
+    {l:'Almacenado hoy',v:fmtGB(L.totalGB),f:'en '+L.series[L.series.length-1].label,c:''},
+    {l:'Ritmo reciente',v:nf2.format(L.recentSlope)+' GB',f:'por quincena · '+nf2.format(L.recentSlope*2)+' GB/mes',c:''},
+    {l:'Próximos 12 meses',v:'+'+fmtGB(Math.max(0,L.proj12mo)),f:'llega a '+fmtGB(L.gb12),c:''},
+  ];
+  if(L.capGB>0){
+    cards.push({l:'Uso de capacidad',v:usoPct!=null?nf2.format(usoPct)+'%':'—',f:'de '+fmtGB(L.capGB),c:uso});
+    cards.push({l:`Saturación (${L.thr}%)`,v:L.satDate?fmtDate(L.satDate):'Sin saturación',
+      f:L.satDate?`${nf2.format(L.quincenasRest)} quincenas · ${mesesTxt(L.quincenasRest)}`:'al ritmo actual',
+      c:L.satDate?(L.quincenasRest<=6?'danger':L.quincenasRest<=12?'warn':'ok'):'ok'});
+  }
+  document.getElementById('kpi-grid').innerHTML=cards.map(c=>`<div class="kpi ${c.c}"><div class="label">${c.l}</div><div class="value">${c.v}</div><div class="foot">${c.f}</div></div>`).join('');
+}
+
+/* ═══════════ VEREDICTO ═══════════ */
+function renderVerdict(){
+  const L=LAST, box=document.getElementById('verdict-box'), note=document.getElementById('verdict-txt');
+  const names={linear:'lineal (histórico completo)',recent:'lineal reciente (últimas 8 quincenas)',quad:'cuadrático (crecimiento acelerado)'};
+  note.textContent=`Modelo ${names[L.model.kind==='quad'?'quad':(document.getElementById('model').value==='recent'?'recent':'linear')]} · ajuste R² = ${nf2.format(L.model.r2)} ${L.model.r2<.85?'(ajuste débil)':''}`;
+  if(L.capGB<=0){box.innerHTML=`<span class="badge warn">Ingresá la capacidad total para estimar la saturación</span>`;return}
+  if(!L.satDate){box.innerHTML=`<span class="badge ok">Sin saturación en el horizonte</span><div class="verdict-txt">Al ritmo actual no se alcanza el ${L.thr}% de ${fmtGB(L.capGB)} dentro de las próximas ${L.horizon} quincenas.</div>`;return}
+  const q=L.quincenasRest, bd=q<=6?'danger':q<=12?'warn':'ok', vb=q<=6?'Acción inmediata':q<=12?'Planificar ampliación':'Bajo control';
+  box.innerHTML=`<span class="badge ${bd}">${vb}</span><div class="verdict-txt">Se estima alcanzar el <strong>${L.thr}%</strong> de <strong>${fmtGB(L.capGB)}</strong> (${fmtGB(L.target)}) alrededor de <strong>${fmtDate(L.satDate)}</strong> — <strong>${mesesTxt(q)}</strong> desde el último dato real.</div>`;
+}
+
+/* ═══════════ CHART: PROYECCIÓN (réplica de referencia) ═══════════ */
+const C={green:'#00E5A0',blue:'#4A8FFF',red:'#FF5C5C',amber:'#FFA940',grid:'rgba(148,163,184,.10)',tick:'#6B6B7A'};
+function renderForecast(){
+  const L=LAST, ctx=document.getElementById('chart-forecast');
+  if(charts.forecast)charts.forecast.destroy();
+  const n=L.series.length;
+  const labels=L.series.map(d=>d.label).concat(L.future.map(f=>f.label));
+  const real=L.series.map(d=>d.acum).concat(L.future.map(()=>null));
+  // tendencia lineal (histórico) — recta roja a lo ancho del histórico
+  const trend=labels.map((_,i)=> i<n ? L.lin.f(i) : null);
+  // proyección — desde el último real hacia adelante
+  const proj=labels.map((_,i)=> i<n-1?null : (i===n-1?L.series[n-1].acum:L.future[i-n].acum));
+  const capLine=L.capGB>0?labels.map(()=>L.capGB):null;
+  const thrLine=L.capGB>0?labels.map(()=>L.target):null;
+
+  document.getElementById('chart-title').textContent=`Proyección a 1 año (Almacenamiento actual: ${fmtGB(L.totalGB)})`;
+
+  const ds=[
+    {label:'Acumulado real (GB)',data:real,borderColor:C.blue,backgroundColor:C.blue,pointRadius:2.5,pointBackgroundColor:C.blue,borderWidth:2,tension:.15,fill:false},
+    {label:`Tendencia (+${nf2.format(L.lin.coefs.m)} GB/Q)`,data:trend,borderColor:C.red,borderWidth:1.5,pointRadius:0,fill:false},
+    {label:'Proyección 12 meses',data:proj,borderColor:C.green,backgroundColor:C.green,borderDash:[7,4],borderWidth:2,pointStyle:'rect',pointRadius:4,pointBackgroundColor:C.green,fill:false},
+  ];
+  if(capLine)ds.push({label:'Capacidad 100%',data:capLine,borderColor:C.red,borderDash:[2,3],borderWidth:1,pointRadius:0,fill:false});
+  if(thrLine)ds.push({label:`Umbral ${L.thr}%`,data:thrLine,borderColor:C.amber,borderDash:[2,3],borderWidth:1,pointRadius:0,fill:false});
+
+  const idx12view=Math.min(n-1+24,labels.length-1);
+  const calloutPlugin={id:'callouts',afterDatasetsDraw(chart){
+    const {ctx:cx,scales:{x,y}}=chart;
+    // Actual (azul)
+    drawCallout(cx,x.getPixelForValue(n-1),y.getPixelForValue(L.series[n-1].acum),['Actual:',fmtGB(L.totalGB)],C.blue,-14,-46);
+    // 12 meses (verde)
+    const y12=L.future[Math.min(23,L.future.length-1)]?.acum ?? L.gb12;
+    drawCallout(cx,x.getPixelForValue(idx12view),y.getPixelForValue(y12),['En 12 meses:',fmtGB(y12)],C.green,-4,-52,true);
+  }};
+
+  charts.forecast=new Chart(ctx,{type:'line',data:{labels,datasets:ds},plugins:[calloutPlugin],options:{
+    responsive:true,maintainAspectRatio:false,
+    layout:{padding:{top:30,right:20}},
+    interaction:{intersect:false,mode:'index'},
+    scales:{
+      x:{grid:{color:C.grid},ticks:{color:C.tick,maxRotation:60,minRotation:35,font:{size:9},autoSkip:true,maxTicksLimit:16}},
+      y:{grid:{color:C.grid},ticks:{color:C.tick,callback:v=>nf.format(v)},title:{display:true,text:'Espacio total ocupado (GB)',color:C.tick},beginAtZero:true}
+    },
+    plugins:{legend:{labels:{color:'#F0F0F2',usePointStyle:true,boxWidth:8,font:{size:11}}},
+      tooltip:{callbacks:{label:c=>c.parsed.y==null?null:c.dataset.label+': '+fmtGB(c.parsed.y)}}}
+  }});
+}
+function drawCallout(cx,px,py,lines,color,dx,dy,right){
+  if(!isFinite(px)||!isFinite(py))return;
+  cx.save();cx.font='700 11px Inter, sans-serif';
+  const w=Math.max(cx.measureText(lines[0]).width,cx.measureText(lines[1]).width)+16;
+  const h=32; let bx=px+dx-(right?w:0), by=py+dy;
+  if(bx<4)bx=4; if(bx+w>cx.canvas.width-4)bx=cx.canvas.width-4-w; if(by<4)by=py+16;
+  // línea guía
+  cx.strokeStyle=color;cx.lineWidth=1.2;cx.beginPath();cx.moveTo(px,py);cx.lineTo(bx+w/2,by+h);cx.stroke();
+  cx.beginPath();cx.arc(px,py,3,0,7);cx.fillStyle=color;cx.fill();
+  // caja
+  cx.fillStyle='rgba(17,17,19,.95)';cx.strokeStyle=color;cx.lineWidth=1.4;roundRect(cx,bx,by,w,h,7);cx.fill();cx.stroke();
+  cx.fillStyle=color;cx.textAlign='left';cx.textBaseline='top';
+  cx.fillText(lines[0],bx+8,by+5);cx.font='800 12px Inter, sans-serif';cx.fillText(lines[1],bx+8,by+17);
+  cx.restore();
+}
+function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+
+/* ═══════════ CHART: CRECIMIENTO ═══════════ */
+function renderGrowth(){
+  const L=LAST, ctx=document.getElementById('chart-growth');
+  if(charts.growth)charts.growth.destroy();
+  charts.growth=new Chart(ctx,{type:'bar',data:{labels:L.series.map(d=>d.label),
+    datasets:[{label:'GB por quincena',data:L.series.map(d=>d.gb),backgroundColor:C.green,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:{grid:{color:C.grid},ticks:{color:C.tick,maxRotation:60,minRotation:35,font:{size:9},autoSkip:true,maxTicksLimit:16}},
+        y:{grid:{color:C.grid},ticks:{color:C.tick,callback:v=>nf.format(v)},beginAtZero:true}},
+      plugins:{legend:{labels:{color:'#F0F0F2',usePointStyle:true,boxWidth:8}},tooltip:{callbacks:{label:c=>fmtGB(c.parsed.y)}}}}});
+}
+
+/* ═══════════ TABLA ═══════════ */
+function renderTable(){
+  const L=LAST;
+  const rows=L.series.map(d=>`<tr><td>${d.label}</td><td>${d.imagenes!=null?nf.format(d.imagenes):'—'}</td><td>${nf2.format(d.gb)}</td><td>${nf2.format(d.acum)}</td></tr>`);
+  let prev=L.series[L.series.length-1].acum;
+  const proj=L.future.map(f=>{const inc=f.acum-prev;prev=f.acum;return`<tr class="proj"><td>${f.label} (proy.)</td><td>—</td><td>${nf2.format(Math.max(0,inc))}</td><td>${nf2.format(f.acum)}</td></tr>`});
+  document.getElementById('data-table').innerHTML=`<thead><tr><th>Período</th><th>Imágenes</th><th>GB período</th><th>GB acumulado</th></tr></thead><tbody>${rows.join('')}${proj.join('')}</tbody>`;
+}
+
+/* ═══════════ NAV ═══════════ */
+function showTab(t){
+  document.querySelectorAll('.tab').forEach(s=>s.classList.add('hidden'));
+  document.getElementById('tab-'+t).classList.remove('hidden');
+  document.querySelectorAll('.nav-btn[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  if(t==='sizing'){ if(!sizingInit){renderModTable();sizingInit=true;} recomputeSizing(); }
+  Object.values(charts).forEach(c=>c&&c.resize());
+}
+function resetApp(){
+  RAW=[];LAST=null;fileName='';Object.values(charts).forEach(c=>c&&c.destroy());charts={};
+  document.getElementById('file-input').value='';
+  document.getElementById('view-app').classList.add('hidden');
+  document.getElementById('nav').classList.add('hidden');
+  document.getElementById('view-upload').classList.remove('hidden');
+}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2600)}
+
+/* ═══════════ MODAL SQL ═══════════ */
+function sqlText(){return document.getElementById('sql-source').textContent.trim()}
+function openSql(){document.getElementById('sql-code').textContent=sqlText();document.getElementById('sql-modal').classList.remove('hidden')}
+function closeSql(){document.getElementById('sql-modal').classList.add('hidden')}
+function copySql(btn){
+  const txt=sqlText();
+  const done=()=>{const o=btn.textContent;btn.textContent='✓ Copiada';toast('Consulta copiada al portapapeles');setTimeout(()=>btn.textContent=o,1600)};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done))}
+  else fallbackCopy(txt,done);
+}
+function fallbackCopy(txt,done){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){toast('No se pudo copiar automáticamente')}document.body.removeChild(ta)}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSql()});
+
+/* ═══════════ DIMENSIONAMIENTO (greenfield) ═══════════ */
+let sizingInit=false, LASTSZ=null;
+let MODS=[
+  {name:'Radiografía (CR/DX)',mb:20,n:800},
+  {name:'Tomografía (CT)',mb:250,n:300},
+  {name:'Resonancia (MR)',mb:80,n:150},
+  {name:'Ecografía (US)',mb:25,n:500},
+  {name:'Mamografía 2D (MG)',mb:60,n:200},
+  {name:'Angiografía / Hemodinamia (XA)',mb:300,n:40},
+];
+const MOD_PALETTE=['#00E5A0','#4A8FFF','#FFA940','#A855F7','#FF5C5C','#22D3EE','#F472B6','#84CC16','#FB923C','#60A5FA'];
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function hexA(hex,a){const h=hex.replace('#','');return`rgba(${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)},${a})`}
+
+function renderModTable(){
+  const rows=MODS.map((m,i)=>`<tr>
+    <td><span class="legend-dot" style="background:${MOD_PALETTE[i%MOD_PALETTE.length]}"></span></td>
+    <td><input type="text" value="${escapeHtml(m.name)}" oninput="MODS[${i}].name=this.value;recomputeSizing()"></td>
+    <td><input class="wn" type="number" min="0" value="${m.n}" oninput="MODS[${i}].n=+this.value||0;recomputeSizing()"></td>
+    <td><input class="wmb" type="number" min="0" step="0.1" value="${m.mb}" oninput="MODS[${i}].mb=+this.value||0;recomputeSizing()"></td>
+    <td class="num" id="mod-gb-${i}">—</td>
+    <td><button class="rm" onclick="removeMod(${i})" title="Quitar">✕</button></td></tr>`).join('');
+  document.getElementById('mod-table').innerHTML=
+    `<thead><tr><th></th><th>Modalidad</th><th>Estudios/mes</th><th>MB/estudio</th><th style="text-align:right">GB/mes</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+}
+function addModality(){MODS.push({name:'Nueva modalidad',mb:50,n:100});renderModTable();recomputeSizing()}
+function removeMod(i){MODS.splice(i,1);renderModTable();recomputeSizing()}
+
+function roundCap(gb,mode){
+  if(mode==='0')return gb;
+  const tb=gb/1024;
+  if(mode==='1')return Math.ceil(tb)*1024;
+  const steps=[1,2,4,6,8,10,12,16,20,24,32,40,48,64,80,96,128,160,192,256];
+  for(const s of steps)if(tb<=s)return s*1024;
+  return Math.ceil(tb/64)*64*1024;
+}
+
+function recomputeSizing(){
+  const years=Math.max(1,parseInt(document.getElementById('sz-years').value)||5);
+  const g=(parseFloat(document.getElementById('sz-growth').value)||0)/100;
+  const comp=Math.min(.9,Math.max(0,(parseFloat(document.getElementById('sz-comp').value)||0)/100));
+  const redun=Math.max(0,(parseFloat(document.getElementById('sz-redun').value)||0)/100);
+  const cont=Math.max(0,(parseFloat(document.getElementById('sz-cont').value)||0)/100);
+  const roundMode=document.getElementById('sz-round').value;
+  const months=years*12;
+  const factor=(1-comp)*(1+redun)*(1+cont);         // multiplicador bruto → dimensionado
+  const perMod=MODS.map((m,i)=>{
+    const base=(m.n||0)*(m.mb||0)/1024;              // GB/mes inicial (bruto)
+    let cum=0; const serie=[];
+    for(let mo=1;mo<=months;mo++){cum+=base*Math.pow(1+g,(mo-1)/12);serie.push(cum);}
+    return {name:m.name,color:MOD_PALETTE[i%MOD_PALETTE.length],base,serie,total:cum};
+  });
+  perMod.forEach((p,i)=>{const el=document.getElementById('mod-gb-'+i);if(el)el.textContent=nf2.format(p.base)});
+  const totalRaw=[]; for(let i=0;i<months;i++)totalRaw.push(perMod.reduce((a,p)=>a+p.serie[i],0));
+  const totalDim=totalRaw.map(v=>v*factor);
+  const monthlyGB0=MODS.reduce((a,m)=>a+(m.n||0)*(m.mb||0)/1024,0);
+  const rawFinal=totalRaw[months-1]||0;
+  // estados de la cascada
+  const netComp=rawFinal*(1-comp);
+  const withRedun=netComp*(1+redun);
+  const dimensioned=withRedun*(1+cont);              // = rawFinal*factor
+  LASTSZ={perMod,totalRaw,totalDim,months,years,g,comp,redun,cont,factor,
+    monthlyGB0,rawFinal,netComp,withRedun,dimensioned,recommended:roundCap(dimensioned,roundMode)};
+  renderSizingKPIs();renderSizingChart();renderComposition();renderSizingBreakdown();
+}
+function renderSizingKPIs(){
+  const S=LASTSZ;
+  const cards=[
+    {l:'Ingesta mensual',v:fmtGB(S.monthlyGB0),f:'inicial · '+fmtGB(S.monthlyGB0*12)+'/año',c:''},
+    {l:`Volumen bruto a ${S.years} años`,v:fmtGB(S.rawFinal),f:'imágenes sin procesar',c:''},
+    {l:'Capacidad dimensionada',v:fmtGB(S.dimensioned),f:`factor total ×${nf2.format(S.factor)}`,c:'warn'},
+    {l:'Capacidad recomendada',v:fmtGB(S.recommended),f:'redondeada para compra',c:'ok'},
+  ];
+  document.getElementById('sz-kpis').innerHTML=cards.map(c=>`<div class="kpi ${c.c}"><div class="label">${c.l}</div><div class="value">${c.v}</div><div class="foot">${c.f}</div></div>`).join('');
+}
+function renderComposition(){
+  const S=LASTSZ, pct=x=>Math.round(x*100);
+  const rows=[];
+  rows.push(`<div class="wf-row base"><span class="wf-lbl">Volumen bruto (${S.years} años)</span><span class="wf-val">${fmtGB(S.rawFinal)}</span></div>`);
+  if(S.comp>0)rows.push(`<div class="wf-row sub"><span class="wf-lbl"><span class="wf-op minus">−</span>Compresión ${pct(S.comp)}%</span><span class="wf-val">−${fmtGB(S.rawFinal-S.netComp)}</span></div>`);
+  if(S.comp>0)rows.push(`<div class="wf-row base"><span class="wf-lbl">Neto almacenado</span><span class="wf-val">${fmtGB(S.netComp)}</span></div>`);
+  if(S.redun>0)rows.push(`<div class="wf-row add"><span class="wf-lbl"><span class="wf-op plus">+</span>Redundancia ${pct(S.redun)}%</span><span class="wf-val">+${fmtGB(S.withRedun-S.netComp)}</span></div>`);
+  if(S.cont>0)rows.push(`<div class="wf-row add"><span class="wf-lbl"><span class="wf-op plus">+</span>Contingencia / headroom ${pct(S.cont)}%</span><span class="wf-val">+${fmtGB(S.dimensioned-S.withRedun)}</span></div>`);
+  rows.push(`<div class="wf-row total"><span class="wf-lbl"><span class="wf-op eq">=</span>Capacidad dimensionada</span><span class="wf-val">${fmtGB(S.dimensioned)}</span></div>`);
+  if(S.recommended!==S.dimensioned)rows.push(`<div class="wf-row rec"><span class="wf-lbl">Capacidad recomendada (redondeo comercial)</span><span class="wf-val">${fmtGB(S.recommended)}</span></div>`);
+  document.getElementById('sz-waterfall').innerHTML=rows.join('');
+}
+function renderSizingChart(){
+  const S=LASTSZ, ctx=document.getElementById('chart-sizing');
+  if(charts.sizing)charts.sizing.destroy();
+  const labels=[]; for(let mo=1;mo<=S.months;mo++)labels.push('Mes '+mo);
+  const ds=S.perMod.map(p=>({label:p.name,data:p.serie,borderColor:p.color,backgroundColor:hexA(p.color,.45),fill:true,pointRadius:0,borderWidth:1,tension:.15}));
+  ds.push({label:'Capacidad dimensionada',data:S.totalDim,borderColor:'#F0F0F2',borderDash:[7,4],borderWidth:2,pointRadius:0,fill:false,yAxisID:'yDim'});
+  const maxV=Math.max(S.rawFinal,S.dimensioned,1)*1.08;
+  document.getElementById('sz-chart-title').textContent=`Almacenamiento proyectado a ${S.years} años`;
+  charts.sizing=new Chart(ctx,{type:'line',data:{labels,datasets:ds},options:{
+    responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
+    scales:{
+      x:{stacked:true,grid:{color:C.grid},ticks:{color:C.tick,autoSkip:true,maxTicksLimit:12,font:{size:9}}},
+      y:{stacked:true,grid:{color:C.grid},ticks:{color:C.tick,callback:v=>nf.format(v)},title:{display:true,text:'GB acumulados',color:C.tick},beginAtZero:true,max:maxV},
+      yDim:{position:'right',display:false,beginAtZero:true,max:maxV}
+    },
+    plugins:{legend:{labels:{color:'#F0F0F2',usePointStyle:true,boxWidth:8,font:{size:10}}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmtGB(c.parsed.y)}}}
+  }});
+}
+function renderSizingBreakdown(){
+  const S=LASTSZ;
+  const rows=S.perMod.map(p=>`<tr><td><span class="legend-dot" style="background:${p.color}"></span>${escapeHtml(p.name)}</td><td>${nf2.format(p.base)}</td><td>${fmtGB(p.total)}</td><td>${S.rawFinal>0?nf2.format(p.total/S.rawFinal*100):'0'}%</td></tr>`).join('');
+  document.getElementById('sz-breakdown').innerHTML=
+    `<thead><tr><th>Modalidad</th><th>GB/mes</th><th>Total ${S.years}a</th><th>% del total</th></tr></thead><tbody>${rows}
+     <tr style="font-weight:700"><td>Volumen bruto</td><td>${nf2.format(S.monthlyGB0)}</td><td>${fmtGB(S.rawFinal)}</td><td>100%</td></tr>
+     <tr style="font-weight:700;color:var(--green)"><td>Capacidad dimensionada (×${nf2.format(S.factor)})</td><td>—</td><td>${fmtGB(S.dimensioned)}</td><td>—</td></tr></tbody>`;
+}
+function exportSizingExcel(){
+  if(!LASTSZ)return;const S=LASTSZ,wb=XLSX.utils.book_new();
+  const cfg=[['Dimensionamiento nueva instalación'],[],['Horizonte (años)',S.years],['Crecimiento anual (%)',Math.round(S.g*100)],
+    ['Compresión (%)',Math.round(S.comp*100)],['Redundancia (%)',Math.round(S.redun*100)],['Contingencia (%)',Math.round(S.cont*100)],['Factor total',round2(S.factor)],[],
+    ['Volumen bruto (GB)',round2(S.rawFinal)],['Neto tras compresión (GB)',round2(S.netComp)],['Con redundancia (GB)',round2(S.withRedun)],
+    ['Capacidad dimensionada (GB)',round2(S.dimensioned)],['Capacidad recomendada (GB)',round2(S.recommended)]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cfg),'Resumen');
+  const md=[['Modalidad','Estudios/mes','MB/estudio','GB/mes',`Total ${S.years}a (GB)`,'% total']];
+  MODS.forEach((m,i)=>md.push([m.name,m.n,m.mb,round2(S.perMod[i].base),round2(S.perMod[i].total),S.rawFinal>0?round2(S.perMod[i].total/S.rawFinal*100):0]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(md),'Modalidades');
+  const ev=[['Mes','Volumen bruto (GB)','Capacidad dimensionada (GB)']];for(let i=0;i<S.months;i++)ev.push([i+1,round2(S.totalRaw[i]),round2(S.totalDim[i])]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ev),'Evolución');
+  XLSX.writeFile(wb,'PACS_Dimensionamiento_'+stamp()+'.xlsx');toast('Excel exportado');
+}
+function exportSizingPDF(){
+  if(!LASTSZ)return;
+  if(!window.jspdf||!window.jspdf.jsPDF){toast('No se pudo cargar la librería PDF (jsPDF)');return;}
+  const S=LASTSZ,{jsPDF}=window.jspdf,doc=new jsPDF('l','mm','a4'),W=doc.internal.pageSize.getWidth();
+  doc.setFillColor(10,10,11);doc.rect(0,0,W,24,'F');
+  doc.setTextColor(0,229,160);doc.setFontSize(15);doc.text('PACS Capacity — Dimensionamiento de nueva instalación',14,11);
+  doc.setFontSize(9);doc.setTextColor(150);doc.text('TecnoMonitor · '+new Date().toLocaleDateString('es-AR'),14,18);
+  doc.setTextColor(30,30,30);doc.setFontSize(10);let y=33;
+  const line=(k,v)=>{doc.setFont(undefined,'bold');doc.text(k,14,y);doc.setFont(undefined,'normal');doc.text(String(v),95,y);y+=6};
+  line('Horizonte:',S.years+' años · crecimiento '+Math.round(S.g*100)+'%/año');
+  line('Ingesta mensual:',fmtGB(S.monthlyGB0)+' ('+fmtGB(S.monthlyGB0*12)+'/año)');
+  line('Volumen bruto a '+S.years+' años:',fmtGB(S.rawFinal));
+  line('Factores:','compresión '+Math.round(S.comp*100)+'% · redundancia '+Math.round(S.redun*100)+'% · contingencia '+Math.round(S.cont*100)+'% (×'+nf2.format(S.factor)+')');
+  line('Capacidad dimensionada:',fmtGB(S.dimensioned));
+  line('Capacidad recomendada:',fmtGB(S.recommended));
+  try{const img=charts.sizing.toBase64Image('image/png',1);doc.addImage(img,'PNG',14,y+2,W-28,84);y+=88}catch(e){}
+  const body=MODS.map((m,i)=>[m.name,nf.format(m.n),nf2.format(m.mb),fmtGB(S.perMod[i].total)]);
+  doc.autoTable({startY:y+2,head:[['Modalidad','Est./mes','MB/est.',`Total ${S.years}a`]],body,styles:{fontSize:8},headStyles:{fillColor:[0,229,160],textColor:[6,35,26]},margin:{left:14,right:14}});
+  doc.save('PACS_Dimensionamiento_'+stamp()+'.pdf');toast('PDF exportado');
+}
+
+/* ═══════════ EXPORT (producción) ═══════════ */
+function round2(v){return v==null?'':Math.round(v*100)/100}
+function stamp(){const d=new Date();return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')}
+function exportExcel(){
+  if(!LAST)return;const L=LAST,wb=XLSX.utils.book_new();
+  const h=[['Período','Imágenes','GB período','GB acumulado']];L.series.forEach(d=>h.push([d.label,d.imagenes,round2(d.gb),round2(d.acum)]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(h),'Histórico');
+  const p=[['Período','GB acumulado proyectado']];L.future.forEach(f=>p.push([f.label,round2(f.acum)]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(p),'Proyección');
+  const r=[['Resumen proyección PACS'],[],['Almacenado hoy (GB)',round2(L.totalGB)],['Ritmo reciente (GB/Q)',round2(L.recentSlope)],
+    ['Crecimiento 12 meses (GB)',round2(L.proj12mo)],['Capacidad total (GB)',round2(L.capGB)],['Umbral (%)',L.thr],
+    ['Modelo',L.model.kind==='quad'?'Cuadrático':(document.getElementById('model').value==='recent'?'Lineal reciente':'Lineal')],
+    ['R²',round2(L.model.r2)],['Saturación estimada',L.satDate?fmtDate(L.satDate):'Sin saturación'],
+    ['Quincenas restantes',L.quincenasRest!=null?round2(L.quincenasRest):'—']];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(r),'Resumen');
+  XLSX.writeFile(wb,'PACS_Capacity_'+stamp()+'.xlsx');toast('Excel exportado');
+}
+function exportPDF(){
+  if(!LAST){toast('Cargá datos primero');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){toast('No se pudo cargar la librería PDF (jsPDF)');return;}
+  try{
+    const L=LAST,{jsPDF}=window.jspdf;
+    const doc=new jsPDF('l','mm','a4');
+    const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight();
+    // encabezado
+    doc.setFillColor(10,10,11);doc.rect(0,0,W,22,'F');
+    doc.setTextColor(0,229,160);doc.setFontSize(15);doc.text('PACS Capacity — Proyección de almacenamiento',14,10);
+    doc.setFontSize(9);doc.setTextColor(160);doc.text('TecnoMonitor · '+new Date().toLocaleDateString('es-AR'),14,17);
+    if(fileName){doc.text('Origen: '+fileName,W-14,17,{align:'right'});}
+    // resumen en dos columnas
+    const rows=[
+      ['Almacenado hoy',fmtGB(L.totalGB)],
+      ['Ritmo reciente',nf2.format(L.recentSlope)+' GB/Q ('+nf2.format(L.recentSlope*2)+' GB/mes)'],
+      ['Crecimiento 12 meses','+'+fmtGB(Math.max(0,L.proj12mo))],
+      ['Modelo',(L.model.kind==='quad'?'Cuadrático':(document.getElementById('model').value==='recent'?'Lineal reciente':'Lineal'))+' · R² '+nf2.format(L.model.r2)],
+    ];
+    if(L.capGB>0){
+      rows.push(['Capacidad',fmtGB(L.capGB)+' (umbral '+L.thr+'%)']);
+      rows.push(['Saturación estimada',L.satDate?fmtDate(L.satDate)+' · '+mesesTxt(L.quincenasRest):'Sin saturación en el horizonte']);
+    }
+    doc.setFontSize(9);const half=Math.ceil(rows.length/2),colX=[14,155];
+    rows.forEach((r,i)=>{
+      const cx=colX[Math.floor(i/half)], yy=30+(i%half)*6.5;
+      doc.setTextColor(30,30,30);doc.setFont(undefined,'bold');doc.text(r[0]+':',cx,yy);
+      doc.setFont(undefined,'normal');doc.text(String(r[1]),cx+38,yy);
+    });
+    const imgY=30+half*6.5+3;
+    // gráfico: respeta proporción y se ajusta al alto restante (una sola hoja)
+    try{
+      const cvs=charts.forecast.canvas, ratio=cvs.height/cvs.width;
+      const maxW=W-28, maxH=H-imgY-8;
+      let iw=maxW, ih=iw*ratio;
+      if(ih>maxH){ih=maxH;iw=ih/ratio;}
+      doc.addImage(charts.forecast.toBase64Image('image/png',2),'PNG',(W-iw)/2,imgY,iw,ih);
+    }catch(e){doc.setTextColor(150);doc.text('(No se pudo incluir el gráfico)',14,imgY+8);}
+    doc.save('PACS_Capacity_'+stamp()+'.pdf');
+    toast('PDF exportado');
+  }catch(err){toast('Error al generar PDF: '+err.message);}
+}
+</script>
+</body>
+</html>
