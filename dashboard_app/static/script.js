@@ -2317,11 +2317,8 @@ function seleccionarTipoInforme(tipo) {
     const cardI = document.getElementById('opt-interno');
 
     if (tipo === 'cliente') {
-        cardC.style.border = '2px solid #9b59b6';
-        cardC.style.background = '#fdfaea';
-        
-        cardI.style.border = '1px solid #ddd';
-        cardI.style.background = '#fff';
+    cardC.style.background = '#fdfaea';   // crema
+    cardI.style.background = '#fff';      // BLANCO
     } else {
         cardI.style.border = '2px solid #9b59b6';
         cardI.style.background = '#fdfaea';
@@ -2521,99 +2518,157 @@ function reintentarSolicitudIA() {
     document.getElementById('modal-ia-options').style.display = 'flex';
 }
 
-// --- RENDER DEL BORRADOR EDITABLE ---
-// Textos editables (según la guía): resumen.texto, infraestructura.mensaje,
-// incidencias.analisis, calidad.caso_destacado, recomendacion.
-// Datos duros (solo lectura): resumen.uptime, incidencias.externas/internas,
-// infraestructura.energia/termica, calidad.estabilidad.
+/* ============================================================================
+ * BORRADOR IA — edición PAGINADA
+ * ----------------------------------------------------------------------------
+ * REEMPLAZA en script.js el bloque de cuatro funciones seguidas:
+ *     renderBorradorIA  ·  _leerEdicionesBorradorIA  ·  guardarBorradorIA  ·  aprobarInformeIA
+ * (dejá intacta descargarPdfIA y todo lo demás).
+ *
+ * Reutiliza tu modal #modal-ia-seguimiento y tus endpoints. Las ediciones se
+ * guardan en memoria (iaSeguimiento.ultimoJson) a medida que se escribe, así
+ * no se pierden al cambiar de página. Para reagrupar secciones en más/menos
+ * páginas, editá SOLO el array IA_BORRADOR_PAGINAS de abajo.
+ * ========================================================================== */
+
+// Config de páginas. Cada campo: path (ruta en el JSON), label, ro (solo lectura), rows.
+const IA_BORRADOR_PAGINAS = [
+    { titulo: 'Resumen ejecutivo', campos: [
+        { path: 'resumen.uptime', label: 'Uptime', ro: true },
+        { path: 'resumen.texto',  label: 'Resumen', rows: 8 },
+    ]},
+    { titulo: 'Infraestructura', campos: [
+        { path: 'infraestructura.mensaje', label: 'Mensaje de infraestructura', rows: 6 },
+    ]},
+    { titulo: 'Incidencias', campos: [
+        { path: 'incidencias.externas', label: 'Incidencias externas', ro: true },
+        { path: 'incidencias.internas', label: 'Incidencias internas', ro: true },
+        { path: 'incidencias.analisis', label: 'Análisis de incidencias', rows: 8 },
+    ]},
+    { titulo: 'Calidad', campos: [
+        { path: 'calidad.caso_destacado', label: 'Caso destacado', rows: 6 },
+    ]},
+    { titulo: 'Recomendación', campos: [
+        { path: 'recomendacion', label: 'Recomendación', rows: 8 },
+    ]},
+];
+
+// --- helpers de path / escape ---
+function _iaGetPath(obj, path) {
+    return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function _iaSetPath(obj, path, val) {
+    const ks = path.split('.'); let o = obj;
+    for (let i = 0; i < ks.length - 1; i++) {
+        if (o[ks[i]] == null || typeof o[ks[i]] !== 'object') o[ks[i]] = {};
+        o = o[ks[i]];
+    }
+    o[ks[ks.length - 1]] = val;
+}
+function _iaEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, m =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+// Cada tecla se guarda en el JSON en memoria (no se pierde al cambiar de página)
+function iaBorradorInput(el) {
+    const p = el.getAttribute('data-path');
+    if (p) _iaSetPath(iaSeguimiento.ultimoJson, p, el.value);
+}
+
+// Cambiar de página (re-renderiza solo el cuerpo del modal)
+function iaBorradorIr(delta) {
+    const total = IA_BORRADOR_PAGINAS.length;
+    let next = (iaSeguimiento.paginaActual || 0) + delta;
+    next = Math.max(0, Math.min(total - 1, next));
+    iaSeguimiento.paginaActual = next;
+    const body = document.getElementById('seg-ia-body');
+    if (body) body.innerHTML = _iaBorradorHtml();
+}
+
+// Punto de entrada que usa renderEstadoSeguimientoIA: fija el JSON y arranca en la página 0
 function renderBorradorIA(data) {
-    const g = (obj, path, def) => path.split('.').reduce((o,k)=> (o||{})[k], obj) ?? def;
-    const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    iaSeguimiento.ultimoJson = data || {};
+    iaSeguimiento.paginaActual = 0;
+    return _iaBorradorHtml();
+}
+
+// Construye el HTML de la página actual
+function _iaBorradorHtml() {
+    const data = iaSeguimiento.ultimoJson || {};
+    const total = IA_BORRADOR_PAGINAS.length;
+    const i = Math.min(iaSeguimiento.paginaActual || 0, total - 1);
+    const pag = IA_BORRADOR_PAGINAS[i];
+
+    // barra de progreso
+    let dots = '';
+    for (let k = 0; k < total; k++) {
+        const on = k <= i;
+        dots += `<span style="flex:1;height:4px;border-radius:2px;background:${on ? 'var(--purple)' : 'var(--surface2)'};opacity:${k === i ? '1' : (on ? '.55' : '1')}"></span>`;
+    }
+
+    // nota solo en la primera página
+    const nota = i === 0
+        ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:.85em">
+             <span style="color:var(--muted)">Este es un BORRADOR generado por IA.</span> Revisá y editá los textos antes de aprobar. Los datos numéricos vienen de la telemetría y no son editables.
+           </div>`
+        : '';
+
+    // campos de la página
+    const campos = pag.campos.map(c => {
+        const val = _iaGetPath(data, c.path);
+        if (c.ro) {
+            return `<div class="input-group" style="margin-bottom:14px">
+                        <label>${_iaEsc(c.label)} <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
+                        <input type="text" value="${_iaEsc(val)}" disabled style="opacity:.7">
+                    </div>`;
+        }
+        return `<div class="input-group" style="margin-bottom:14px">
+                    <label>${_iaEsc(c.label)}</label>
+                    <textarea data-path="${c.path}" rows="${c.rows || 4}" oninput="iaBorradorInput(this)" style="resize:vertical">${_iaEsc(val)}</textarea>
+                </div>`;
+    }).join('');
+
+    const esUltima = i === total - 1;
+    const prevDisabled = i === 0;
+    const btnPrev = `<button class="btn-action" style="background:var(--surface2);width:auto${prevDisabled ? ';opacity:.4' : ''}" ${prevDisabled ? 'disabled' : ''} onclick="iaBorradorIr(-1)">← Anterior</button>`;
+    const btnDerecha = esUltima
+        ? `<button class="btn-action" style="background:var(--purple);width:auto" onclick="aprobarInformeIA()">✅ Aprobar (irreversible)</button>`
+        : `<button class="btn-action" style="background:var(--purple);width:auto" onclick="iaBorradorIr(1)">Siguiente →</button>`;
 
     return `
-    <div style="max-height:420px;overflow-y:auto;padding-right:6px">
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:.85em">
-            <span style="color:var(--muted)">Este es un BORRADOR generado por IA.</span> Revisá y editá los textos antes de aprobar. Los datos numéricos vienen calculados de la telemetría y no son editables.
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:.78em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Paso ${i + 1} de ${total}</span>
+            <span style="font-weight:700;color:var(--text)">${_iaEsc(pag.titulo)}</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:16px">${dots}</div>
+
+        <div style="max-height:46vh;overflow-y:auto;padding-right:4px">
+            ${nota}
+            ${campos}
         </div>
 
-        <div class="input-group" style="margin-bottom:12px">
-            <label>Uptime <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
-            <input type="text" value="${esc(g(data,'resumen.uptime',''))}" disabled style="opacity:.7">
-        </div>
-        <div class="input-group" style="margin-bottom:16px">
-            <label>Resumen</label>
-            <textarea id="ia-edit-resumen-texto" rows="3">${esc(g(data,'resumen.texto',''))}</textarea>
-        </div>
-
-        <div style="display:flex;gap:10px;margin-bottom:12px">
-            <div class="input-group" style="flex:1">
-                <label>Incidencias externas <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
-                <input type="text" value="${esc(g(data,'incidencias.externas',''))}" disabled style="opacity:.7">
-            </div>
-            <div class="input-group" style="flex:1">
-                <label>Incidencias internas <span style="color:var(--muted);font-weight:400">(solo lectura)</span></label>
-                <input type="text" value="${esc(g(data,'incidencias.internas',''))}" disabled style="opacity:.7">
-            </div>
-        </div>
-        <div class="input-group" style="margin-bottom:16px">
-            <label>Análisis de incidencias</label>
-            <textarea id="ia-edit-incidencias-analisis" rows="3">${esc(g(data,'incidencias.analisis',''))}</textarea>
-        </div>
-
-        <div class="input-group" style="margin-bottom:16px">
-            <label>Infraestructura — mensaje</label>
-            <textarea id="ia-edit-infra-mensaje" rows="2">${esc(g(data,'infraestructura.mensaje',''))}</textarea>
-        </div>
-
-        <div class="input-group" style="margin-bottom:16px">
-            <label>Caso destacado (calidad)</label>
-            <textarea id="ia-edit-calidad-caso" rows="2">${esc(g(data,'calidad.caso_destacado',''))}</textarea>
-        </div>
-
-        <div class="input-group" style="margin-bottom:6px">
-            <label>Recomendación</label>
-            <textarea id="ia-edit-recomendacion" rows="3">${esc(g(data,'recomendacion',''))}</textarea>
-        </div>
-    </div>
-
-    <div style="display:flex;gap:10px;margin-top:16px">
-        <button class="btn-action" style="background:var(--muted);width:auto;flex:1" onclick="guardarBorradorIA()">Guardar cambios</button>
-        <button class="btn-action" style="flex:2;background:var(--purple)" onclick="aprobarInformeIA()">✅ Aprobar (irreversible)</button>
-    </div>`;
+        <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+            ${btnPrev}
+            <span style="flex:1"></span>
+            <button class="btn-action" style="background:var(--muted);width:auto" onclick="guardarBorradorIA()">Guardar</button>
+            ${btnDerecha}
+        </div>`;
 }
 
-function _leerEdicionesBorradorIA() {
-    // Parte del último JSON conocido y solo pisa los campos de texto editados,
-    // para no perder ninguna clave que no mostramos en el formulario.
-    const data = JSON.parse(JSON.stringify(iaSeguimiento.ultimoJson || {}));
-    data.resumen = data.resumen || {};
-    data.infraestructura = data.infraestructura || {};
-    data.incidencias = data.incidencias || {};
-    data.calidad = data.calidad || {};
-
-    data.resumen.texto = document.getElementById('ia-edit-resumen-texto').value;
-    data.incidencias.analisis = document.getElementById('ia-edit-incidencias-analisis').value;
-    data.infraestructura.mensaje = document.getElementById('ia-edit-infra-mensaje').value;
-    data.calidad.caso_destacado = document.getElementById('ia-edit-calidad-caso').value;
-    data.recomendacion = document.getElementById('ia-edit-recomendacion').value;
-    return data;
-}
-
+// --- Guardar el borrador (PUT {data:{...}}) ---
 async function guardarBorradorIA() {
     if (!iaSeguimiento.reportId) return;
-    const dataEditada = _leerEdicionesBorradorIA();
-
     try {
         const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/json`, {
             method: 'PUT',
-            body: JSON.stringify({ data: dataEditada }),
+            body: JSON.stringify({ data: iaSeguimiento.ultimoJson || {} }),
         });
         if (!res.ok) {
-            const err = await res.json().catch(()=>({}));
+            const err = await res.json().catch(() => ({}));
             alert("Error al guardar: " + (err.detail || `HTTP ${res.status}`));
             return;
         }
-        iaSeguimiento.ultimoJson = dataEditada;
         alert("✓ Cambios guardados.");
     } catch (e) {
         console.error(e);
@@ -2621,29 +2676,24 @@ async function guardarBorradorIA() {
     }
 }
 
+// --- Aprobar (guarda lo pendiente y luego aprueba: irreversible) ---
 async function aprobarInformeIA() {
     if (!iaSeguimiento.reportId) return;
     if (!confirm("Aprobar es IRREVERSIBLE: no se podrá volver a editar este informe. ¿Confirmás?")) return;
-
-    // Guardamos cualquier edición pendiente antes de aprobar, para no perderla.
-    const dataEditada = _leerEdicionesBorradorIA();
     try {
         const saveRes = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/json`, {
             method: 'PUT',
-            body: JSON.stringify({ data: dataEditada }),
+            body: JSON.stringify({ data: iaSeguimiento.ultimoJson || {} }),
         });
         if (!saveRes.ok) {
-            const err = await saveRes.json().catch(()=>({}));
+            const err = await saveRes.json().catch(() => ({}));
             alert("No se pudo guardar antes de aprobar: " + (err.detail || `HTTP ${saveRes.status}`));
             return;
         }
-        iaSeguimiento.ultimoJson = dataEditada;
-
-        const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/aprobar`, {
-            method: 'POST',
-        });
+        const res = await authFetch(`/api/informes-ia/reportes/${iaSeguimiento.reportId}/aprobar`, { method: 'POST' });
         if (!res.ok) {
-            const err = await res.json().catch(()=>({}));
+            const err = await res.json().catch(() => ({}));
+            // 403 = tu rol no puede aprobar (el endpoint lo restringe a Admin)
             alert("Error al aprobar: " + (err.detail || `HTTP ${res.status}`));
             return;
         }

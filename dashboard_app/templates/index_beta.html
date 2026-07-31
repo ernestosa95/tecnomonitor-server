@@ -4311,7 +4311,27 @@ window.usrConfirmarAprobarCliente = usrConfirmarAprobarCliente;
     if (o) o.addEventListener('click', function(e){ if (e.target === o) o.classList.remove('show'); });
 });
 
+// Fix de contraste del modal "Configurar Informe IA":
+// la seleccionarTipoInforme de script.js hardcodea colores del tema claro
+// (#fff / #fdfaea) que en la beta oscura dejan texto claro sobre fondo blanco.
+// Acá ambas tarjetas quedan sobre --surface2 y la seleccionada se distingue
+// por borde + realce, no por fondo blanco.
+window.seleccionarTipoInforme = function (tipo) {
+    try { tipoInformeSeleccionado = tipo; } catch (e) {}
+    window.tipoInformeSeleccionado = tipo;
+    [['opt-cliente', tipo === 'cliente'], ['opt-interno', tipo === 'interno']].forEach(function (par) {
+        var el = document.getElementById(par[0]);
+        if (!el) return;
+        var on = par[1];
+        el.style.background = on ? 'rgba(155,89,182,0.14)' : 'var(--surface2)';
+        el.style.border     = on ? '2px solid var(--purple)' : '1px solid var(--border)';
+        el.style.boxShadow  = on ? '0 0 0 3px rgba(155,89,182,0.18)' : 'none';
+        el.classList.toggle('selected', on);
+    });
+};
+
 </script>
 <script src="/static/refresco-vivo.js"></script>
+<script src="/static/revision-borrador-ia.js"></script>
 </body>
 </html>
