@@ -173,11 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         cambiarTipoProcesamiento('pdf');
     }, 50);
-    
-    // 4. Intervalos de Refresco
-    setInterval(() => { if(document.getElementById('view-dashboard').classList.contains('active')) cargarDatos(); }, 30000);
-    setInterval(() => { if(document.getElementById('view-mapa').classList.contains('active')) cargarDatosMapa(); }, 60000);
-    
+     
     initWebSocket();
     chequearAlertasBackground();
 
@@ -226,6 +222,10 @@ function initWebSocket() {
     // Construimos la URL del WS dinámicamente según el entorno (http/https)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     wsAlertas = new WebSocket(`${protocol}//${window.location.host}/ws/alertas`);
+
+    wsAlertas.onopen = function () {
+        if (typeof window.refrescarDatosAhora === 'function') window.refrescarDatosAhora();
+    };
     
     wsAlertas.onmessage = function(event) {
         const data = JSON.parse(event.data);
