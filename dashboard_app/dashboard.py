@@ -1293,6 +1293,10 @@ async def get_hl7_analytics(request: Request):
 async def get_pacs_capacity(request: Request):
     return templates.TemplateResponse("solucion3.html", {"request": request})
 
+@app.get("/salta-project")
+def landing_salta():
+    return FileResponse("dashboard_app/templates/solucion4.html")
+
 # --- Landing temporal para testeo de gerencia (acceso público, SIN login) ---
 @app.get("/demo-pacs")
 def landing_demo_pacs():
