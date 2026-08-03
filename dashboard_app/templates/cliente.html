@@ -157,7 +157,15 @@ body{
       <div class="glow"></div>
       <div class="wm">TI</div>
       <div class="h-name" id="cl-h-name">—</div>
+      <div class="h-status">
+        <div class="h-ball"></div>
+        <div class="h-label" id="cl-h-label">Cargando…</div>
+      </div>
       <div class="h-meta" id="cl-h-meta">Consultando el estado…</div>
+      <div class="h-incident">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span id="cl-h-incident-text"></span>
+      </div>
   </div>
 
   <div class="cl-cards" id="cl-cards"></div>
@@ -230,9 +238,20 @@ body{
 </div>
 
 <script>
-var clFetch=function(p,o){o=o||{};return fetch(p,Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}},o));};
+// ── Petición autenticada. Ahora intercepta el 401: si la sesión venció,
+//    limpia y manda al login en vez de dejar la UI mostrando "hospital caído". ──
+var clFetch=function(p,o){
+  o=o||{};
+  return fetch(p,Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}},o))
+    .then(function(r){
+      if(r.status===401){ sessionStorage.clear(); location.href='/'; throw new Error('Sesión expirada'); }
+      return r;
+    });
+};
 var clUser=null, clPerms=null, clChart=null, clForzado=false;
 function clEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+// Helper defensivo: setear texto sin reventar si el elemento no está en el DOM.
+function clSet(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; }
 
 // ── Guard: solo Cliente ──
 (function(){
@@ -320,34 +339,52 @@ function clRenderSelector(sedes){
     });
   });
 }
+
 function clHeroVacio(msg){
-  var hero=document.getElementById('cl-hero'); hero.className='cl-hero s-load';
-  document.getElementById('cl-h-label').textContent='—';
-  document.getElementById('cl-h-meta').textContent=msg;
-  document.getElementById('cl-cards').innerHTML='';
-  document.getElementById('cl-kpi').classList.add('hidden');
+  var hero=document.getElementById('cl-hero'); if(hero) hero.className='cl-hero s-load';
+  clSet('cl-h-label','—');
+  clSet('cl-h-meta',msg);
+  var cards=document.getElementById('cl-cards'); if(cards) cards.innerHTML='';
+  var kpi=document.getElementById('cl-kpi'); if(kpi) kpi.classList.add('hidden');
 }
 
 function clCargarHospital(sede, idx){
   var hid=sede.hospital_id, tabs=sede.tabs||{infra:true,software:true,kpis:true};
-  var hero=document.getElementById('cl-hero'); hero.className='cl-hero s-load';
-  document.getElementById('cl-h-name').textContent=(sede.nombre||hid);
-  document.getElementById('cl-h-label').textContent='Cargando…';
-  document.getElementById('cl-h-meta').textContent='Consultando el estado…';
-  document.getElementById('cl-cards').innerHTML='';
+  var hero=document.getElementById('cl-hero'); if(hero) hero.className='cl-hero s-load';
+  clSet('cl-h-name', sede.nombre||hid);
+  clSet('cl-h-label','Cargando…');
+  clSet('cl-h-meta','Consultando el estado…');
+  var cards=document.getElementById('cl-cards'); if(cards) cards.innerHTML='';
 
-  var jobs=[ clFetch('/api/hospital/'+encodeURIComponent(hid)).then(clJson).catch(function(){return null;}) ];
-  jobs.push(tabs.software ? clFetch('/api/hospital/'+encodeURIComponent(hid)+'/software').then(clJson).catch(function(){return null;}) : Promise.resolve(null));
+  // Cada endpoint SOLO si su pestaña está habilitada (evita 403 innecesarios).
+  var jobDetalle = tabs.infra
+    ? clFetch('/api/hospital/'+encodeURIComponent(hid)).then(clJson).catch(function(){return null;})
+    : Promise.resolve(null);
+  var jobSoft = tabs.software
+    ? clFetch('/api/hospital/'+encodeURIComponent(hid)+'/software').then(clJson).catch(function(){return null;})
+    : Promise.resolve(null);
 
-  Promise.all(jobs).then(function(res){
+  Promise.all([jobDetalle, jobSoft]).then(function(res){
     var detalle=res[0], soft=res[1];
-    var estado=clDerivarEstado(detalle, soft);
+    var estado=clDerivarEstado(detalle, soft, tabs);
     clRenderHero(estado, detalle);
     clRenderCards(tabs, detalle, soft, estado);
-    clCargarCasos(hid);   // 👈 nuevo — corre después de que exista #cl-casos-list en el DOM
-    if(tabs.kpis){ document.getElementById('cl-kpi').classList.remove('hidden'); clKpiInit(hid); } else { document.getElementById('cl-kpi').classList.add('hidden'); }
+    clCargarCasos(hid);
+    if(tabs.kpis){ var k=document.getElementById('cl-kpi'); if(k) k.classList.remove('hidden'); clKpiInit(hid); }
+    else { var k2=document.getElementById('cl-kpi'); if(k2) k2.classList.add('hidden'); }
     // semáforo en selector
-    if(typeof idx==='number'){ var d=document.querySelectorAll('#cl-sedes .cl-sede')[idx]; if(d){ var dot=d.querySelector('.dot'); var st=d.querySelector('.st'); dot.className='dot '+({ok:'dot-green',warn:'dot-amber',down:'dot-red'}[estado.nivel]||'dot-muted'); st.textContent=estado.label; } }
+    if(typeof idx==='number'){
+      var d=document.querySelectorAll('#cl-sedes .cl-sede')[idx];
+      if(d){
+        var dot=d.querySelector('.dot'), st=d.querySelector('.st');
+        if(dot) dot.className='dot '+({ok:'dot-green',warn:'dot-amber',down:'dot-red'}[estado.nivel]||'dot-muted');
+        if(st) st.textContent=estado.label;
+      }
+    }
+  }).catch(function(e){
+    // Si algo del render falla, mostramos un cartel en vez de dejar el spinner colgado.
+    console.error('Error cargando hospital:', e);
+    clHeroVacio('No se pudo cargar el estado de este hospital. Reintentá en unos minutos.');
   });
 }
 
@@ -374,36 +411,44 @@ function clCanalCaido(c){
   return !!cs && cs!=='started' && cs!=='running';
 }
 
-function clDerivarEstado(d, soft){
-  if(!d || d.error){ return {nivel:'down', label:'Fuera de servicio', detalle:'No estamos recibiendo datos del hospital.'}; }
+function clDerivarEstado(d, soft, tabs){
+  tabs = tabs || {infra:true, software:true, kpis:true};
   var problemas=[];
-  // VMs / servicios
-  var vms = d.virtual_layer || d.vms || {};
-  var lista = Array.isArray(vms) ? vms : Object.keys(vms).map(function(k){ return Object.assign({id:k}, vms[k]); });
-  lista.forEach(function(vm){
-    var st=(vm.state||vm.status||'').toString().toLowerCase();
-    if(st && ['running','online','ok','started','up'].indexOf(st)<0){ problemas.push('Servicio '+(vm.id||'VM')+' detenido'); }
-    var servicios=(vm.metrics&&vm.metrics.servicios)|| (vm.telemetry&&vm.telemetry.servicios) || {};
-    Object.keys(servicios||{}).forEach(function(sn){
-      var sv=servicios[sn]; var ss=(typeof sv==='string'?sv:(sv&&sv.status)||'').toString().toLowerCase();
-      if(ss && ['running','ok','started','up','online'].indexOf(ss)<0){ problemas.push('Servicio '+sn+' detenido'); }
+
+  // Infra / VMs / servicios: solo si la pestaña infra está habilitada.
+  if(tabs.infra){
+    if(!d || d.error){ return {nivel:'down', label:'Fuera de servicio', detalle:'No estamos recibiendo datos del hospital.'}; }
+    var vms = d.virtual_layer || d.vms || {};
+    var lista = Array.isArray(vms) ? vms : Object.keys(vms).map(function(k){ return Object.assign({id:k}, vms[k]); });
+    lista.forEach(function(vm){
+      var st=(vm.state||vm.status||'').toString().toLowerCase();
+      if(st && ['running','online','ok','started','up'].indexOf(st)<0){ problemas.push('Servicio '+(vm.id||'VM')+' detenido'); }
+      var servicios=(vm.metrics&&vm.metrics.servicios)|| (vm.telemetry&&vm.telemetry.servicios) || {};
+      Object.keys(servicios||{}).forEach(function(sn){
+        var sv=servicios[sn]; var ss=(typeof sv==='string'?sv:(sv&&sv.status)||'').toString().toLowerCase();
+        if(ss && ['running','ok','started','up','online'].indexOf(ss)<0){ problemas.push('Servicio '+sn+' detenido'); }
+      });
     });
-  });
-  // Mirth
-  if(soft){
+  }
+
+  // Mirth: solo si la pestaña software está habilitada.
+  if(tabs.software && soft){
     clMirthCanales(soft).forEach(function(c){
       if(clCanalCaido(c)){ problemas.push('Canal de integración '+(c.channel||'')+' '+(c.status||c.state||c.estado)); }
     });
   }
+
   if(problemas.length) return {nivel:'warn', label:'Con incidencias', detalle:problemas[0]};
   return {nivel:'ok', label:'Operativo', detalle:'Todos los sistemas funcionando.'};
 }
 
 function clRenderHero(estado, d){
   var hero=document.getElementById('cl-hero');
-  hero.className='cl-hero s-'+(estado.nivel==='ok'?'ok':estado.nivel==='warn'?'warn':'down');
+  if(hero) hero.className='cl-hero s-'+(estado.nivel==='ok'?'ok':estado.nivel==='warn'?'warn':'down');
+  clSet('cl-h-label', estado.label);
+  clSet('cl-h-incident-text', estado.detalle||'');
   var ts = d && (d.db_timestamp || d.timestamp);
-  document.getElementById('cl-h-meta').textContent = ts ? ('Último reporte: '+clEsc(ts)) : 'Sin datos de reporte disponibles';
+  clSet('cl-h-meta', ts ? ('Último reporte: '+clEsc(ts)) : 'Sin datos de reporte disponibles');
 }
 
 function clRenderCards(tabs, d, soft, estado){
@@ -417,7 +462,7 @@ function clRenderCards(tabs, d, soft, estado){
       +clRowVal('Energía / clima', d&&!d.error?'Normal':'Sin datos', d&&!d.error?'on':'')
       +'</div>';
   }
-  
+
   if(tabs.kpis){
     html += '<div class="cl-card"><div class="c-head"><div class="c-title">'+clIco('caso')+'Casos abiertos</div><span class="cl-state muted" id="cl-casos-badge"><i></i>—</span></div>'
   + '<div id="cl-casos-list"><div class="cl-loading" style="padding:10px 0"><span class="cl-spin"></span> cargando…</div></div></div>';

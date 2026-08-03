@@ -277,11 +277,11 @@ body{
             if (data.success) {
                 sessionStorage.setItem('tecnomonitor_token', data.token);
                 sessionStorage.setItem('tecnomonitor_user', JSON.stringify(data.user));
-
+                // Enrutamiento por rol: el Cliente va DIRECTO a su portal.
                 if (data.user.role === 'Cliente') {
-                    window.location.href = '/monitor';   // rebota internamente a /cliente
+                    window.location.href = '/cliente';
                 } else {
-                    abrirModalVersion();   // 👈 pregunta solo a roles internos
+                    window.location.href = '/beta';   // internos, como hasta ahora
                 }
             } else {
                 mostrarError(data.message || "Credenciales incorrectas");
