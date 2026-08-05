@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>TecnoMonitor · Cobertura por Provincia</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#0a0a0b;--surface:#141417;--surface2:#1c1c21;--border:#2a2a30;
+  --green:#00e5a0;--blue:#4a8fff;--amber:#ffb020;--red:#ff5c5c;--purple:#a97bff;
+  --txt:#f4f4f6;--muted:#8a8a94;--radius2:16px;
+  font-family:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden}
+.screen{display:none;height:100vh}
+.screen.active{display:flex;flex-direction:column}
+
+/* ---- HOME ---- */
+#home{justify-content:flex-end;padding:0 40px 48px;position:relative;
+  background:radial-gradient(circle at 25% 20%,rgba(74,143,255,0.08),transparent 45%),
+             radial-gradient(circle at 80% 70%,rgba(0,229,160,0.07),transparent 45%),var(--bg);}
+.home-h{margin-bottom:24px}
+.home-h h1{font-size:2.2rem;font-weight:800;margin:0 0 6px}
+.home-h p{color:var(--muted);margin:0;max-width:520px}
+.home-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:1100px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:20px;position:relative;overflow:hidden}
+.prov-cta{grid-column:span 2;cursor:pointer;transition:transform .2s,border-color .2s;
+  background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%);}
+.prov-cta:hover{transform:translateY(-4px);border-color:var(--green)}
+.prov-cta::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green)}
+.cta-top{display:flex;justify-content:space-between;align-items:flex-start}
+.cta-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.cta-arrow{color:var(--green);font-size:1.4rem;line-height:1}
+.cta-stats{display:flex;gap:28px;margin-top:14px}
+.cta-stat .n{font-size:2.1rem;font-weight:800;line-height:1}
+.cta-stat .l{font-size:11px;color:var(--muted);margin-top:4px}
+.kpi-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.kpi-num{font-size:1.9rem;font-weight:800;line-height:1}
+.kpi-hint{font-size:11px;color:var(--muted);margin-top:6px}
+.mini-ico{position:absolute;right:16px;bottom:10px;font-size:2.2rem;opacity:.12}
+
+/* ---- PROV VIEW ---- */
+#prov{padding:0}
+.pv-top{height:64px;flex-shrink:0;display:flex;align-items:center;gap:14px;padding:0 24px;border-bottom:1px solid var(--border)}
+.back-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:var(--surface);
+  border:1px solid var(--border);color:var(--txt);cursor:pointer;font-size:13px;transition:all .2s}
+.back-btn:hover{border-color:var(--blue);color:var(--blue)}
+.pv-top h2{font-size:1.05rem;font-weight:700;margin:0}
+.pv-top .sub{font-size:12px;color:var(--muted)}
+.pv-body{flex:1;display:grid;grid-template-columns:1fr 2fr;gap:14px;padding:14px 24px 24px;min-height:0}
+.map-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden;display:flex;flex-direction:column}
+.map-card .mc-head{padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+#map{flex:1;background:#0d1117}
+.leaflet-container{background:#0d1117}
+.detail-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.dc-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.dc-head h3{margin:0;font-size:1.2rem;font-weight:800}
+.dc-head .badge{font-size:11px;color:var(--muted)}
+.dc-body{flex:1;overflow-y:auto;padding:18px 20px}
+.kgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kbox{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.kbox .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.kbox .v{font-size:1.4rem;font-weight:800;margin-top:6px}
+.kbox.green .v{color:var(--green)}.kbox.blue .v{color:var(--blue)}.kbox.amber .v{color:var(--amber)}.kbox.purple .v{color:var(--purple)}
+.hlist-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:right;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+tr:hover td{background:var(--surface2)}
+.hosp-name{font-weight:600}
+.empty-detail{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);gap:10px;text-align:center}
+.empty-detail .big{font-size:2.4rem;opacity:.4}
+.leaflet-popup-content-wrapper{background:var(--surface2);color:var(--txt);border-radius:10px}
+.leaflet-popup-tip{background:var(--surface2)}
+.leaflet-popup-content{margin:10px 12px;font-size:12px}
+.leaflet-popup-content b{color:var(--green)}
+</style>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<section id="home" class="screen active">
+  <div class="home-h">
+    <h1>Panel Nacional</h1>
+    <p>Resumen de la red hospitalaria monitoreada por TecnoMonitor.</p>
+  </div>
+  <div class="home-cards">
+    <div class="card prov-cta" onclick="openProv()">
+      <div class="cta-top">
+        <div class="cta-label">Cobertura por provincia</div>
+        <div class="cta-arrow">&#8599;</div>
+      </div>
+      <div class="cta-stats">
+        <div class="cta-stat"><div class="n" id="h-prov" style="color:var(--green)">0</div><div class="l">Provincias</div></div>
+        <div class="cta-stat"><div class="n" id="h-hosp" style="color:var(--blue)">0</div><div class="l">Hospitales</div></div>
+        <div class="cta-stat"><div class="n" id="h-est">0</div><div class="l">Estudios almacenados</div></div>
+      </div>
+      <div class="mini-ico">&#128506;</div>
+    </div>
+    <div class="card">
+      <div class="kpi-label">Procesamientos IA</div>
+      <div class="kpi-num" style="color:var(--purple)" id="h-ia">0</div>
+      <div class="kpi-hint">Estudios de modalidades ENT</div>
+      <div class="mini-ico">&#129504;</div>
+    </div>
+    <div class="card">
+      <div class="kpi-label">Equipos que almacenan</div>
+      <div class="kpi-num" style="color:var(--amber)" id="h-eq">0</div>
+      <div class="kpi-hint">AE Titles activos en PACS</div>
+      <div class="mini-ico">&#128225;</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROV VIEW ============ -->
+<section id="prov" class="screen">
+  <div class="pv-top">
+    <button class="back-btn" onclick="goHome()">&#8592; Volver</button>
+    <div>
+      <h2>Cobertura por Provincia</h2>
+      <div class="sub">Seleccioná una provincia en el mapa para ver sus hospitales</div>
+    </div>
+  </div>
+  <div class="pv-body">
+    <div class="map-card">
+      <div class="mc-head">Mapa &#183; Argentina</div>
+      <div id="map"></div>
+    </div>
+    <div class="detail-card">
+      <div class="dc-head">
+        <h3 id="d-name">Seleccioná una provincia</h3>
+        <div class="badge" id="d-badge"></div>
+      </div>
+      <div class="dc-body" id="d-body">
+        <div class="empty-detail">
+          <div class="big">&#128072;</div>
+          <div>Hacé click en un punto del mapa<br/>para ver el detalle de la provincia.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const PROV = [{"provincia": "Buenos Aires", "n_hospitales": 13, "estudios": 409401, "admitidas": 147694, "asociadas": 134047, "definitivas": 14070, "ia": 3682, "equipos": 124, "tb_alm": 19.81, "tb_disp": 580.19, "ram": 52.1, "hospitales": [{"id": "H34", "nombre": "H. Oñativia", "go_live": "12/26/2024", "admitidas": 47934, "asociadas": 45820, "definitivas": 4185, "estudios": 71003, "ia": 0, "equipos": 5, "tb_alm": 2.41, "tb_disp": 57.59, "ram": 58.2}, {"id": "H16", "nombre": "H. Gandulfo", "go_live": "4/1/2025", "admitidas": 2, "asociadas": 0, "definitivas": 0, "estudios": 69046, "ia": 895, "equipos": 12, "tb_alm": 5.64, "tb_disp": 54.36, "ram": 54.6}, {"id": "H33", "nombre": "H. L. Guemes", "go_live": "1/17/2025", "admitidas": 6, "asociadas": 3, "definitivas": 3, "estudios": 60278, "ia": 1284, "equipos": 10, "tb_alm": 2.19, "tb_disp": 57.81, "ram": 65.0}, {"id": "H18", "nombre": "H. Paroissien", "go_live": "3/11/2025", "admitidas": 10514, "asociadas": 8611, "definitivas": 2222, "estudios": 38270, "ia": 0, "equipos": 12, "tb_alm": 2.57, "tb_disp": 57.43, "ram": 56.5}, {"id": "H31", "nombre": "H. Mi Pueblo", "go_live": "4/9/2025", "admitidas": 9663, "asociadas": 8001, "definitivas": 344, "estudios": 35174, "ia": 0, "equipos": 8, "tb_alm": 1.27, "tb_disp": 58.73, "ram": 62.6}, {"id": "H17", "nombre": "H. Fioritto", "go_live": "9/1/2025", "admitidas": 1, "asociadas": 0, "definitivas": 0, "estudios": 28682, "ia": 528, "equipos": 8, "tb_alm": 1.67, "tb_disp": 58.33, "ram": 60.0}, {"id": "H32", "nombre": "H. P. de Cordero", "go_live": "4/1/2025", "admitidas": 4198, "asociadas": 3841, "definitivas": 106, "estudios": 27870, "ia": 1, "equipos": 9, "tb_alm": 2.43, "tb_disp": 57.57, "ram": 55.9}, {"id": "HEMDQ", "nombre": "H. Español de Mar del Plata", "go_live": "12/1/2023", "admitidas": 27070, "asociadas": 24534, "definitivas": 387, "estudios": 25475, "ia": 0, "equipos": 6, "tb_alm": null, "tb_disp": null, "ram": 0.0}, {"id": "P02", "nombre": "H. S. Martin de la Plata", "go_live": "11/3/2025", "admitidas": 19629, "asociadas": 16530, "definitivas": 1, "estudios": 18661, "ia": 81, "equipos": 17, "tb_alm": 0.87, "tb_disp": 59.13, "ram": 78.6}, {"id": "PMHBI", "nombre": "H. Ituzaingo - PAMI", "go_live": "2/7/2024", "admitidas": 13001, "asociadas": 12072, "definitivas": 1181, "estudios": 13463, "ia": 0, "equipos": 13, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "PMHY", "nombre": "H. Houssay - PAMI", "go_live": "8/1/2024", "admitidas": 12669, "asociadas": 12174, "definitivas": 3891, "estudios": 10736, "ia": 0, "equipos": 3, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "P03", "nombre": "H. Penna", "go_live": "9/3/2025", "admitidas": 72, "asociadas": 21, "definitivas": 23, "estudios": 7343, "ia": 0, "equipos": 12, "tb_alm": 0.56, "tb_disp": 59.44, "ram": 82.1}, {"id": "P01", "nombre": "H. Posadas", "go_live": "1/2/2026", "admitidas": 2935, "asociadas": 2440, "definitivas": 1727, "estudios": 3400, "ia": 893, "equipos": 9, "tb_alm": 0.2, "tb_disp": 59.8, "ram": 0.0}]}, {"provincia": "CABA", "n_hospitales": 7, "estudios": 354304, "admitidas": 252041, "asociadas": 224971, "definitivas": 22212, "ia": 7410, "equipos": 81, "tb_alm": 19.81, "tb_disp": 340.19, "ram": 51.7, "hospitales": [{"id": "H02", "nombre": "H. Pirovano", "go_live": "10/8/2024", "admitidas": 88782, "asociadas": 84197, "definitivas": 10596, "estudios": 135869, "ia": 2166, "equipos": 23, "tb_alm": 9.38, "tb_disp": 50.62, "ram": 0.0}, {"id": "H01", "nombre": "H. Piñero", "go_live": "11/7/2024", "admitidas": 57410, "asociadas": 54453, "definitivas": 7118, "estudios": 56258, "ia": 1000, "equipos": 8, "tb_alm": 1.12, "tb_disp": 58.88, "ram": 63.3}, {"id": "H03", "nombre": "H. Rivadavia", "go_live": "1/14/2025", "admitidas": 54651, "asociadas": 51783, "definitivas": 2634, "estudios": 54247, "ia": 2185, "equipos": 10, "tb_alm": 5.53, "tb_disp": 54.47, "ram": 0.0}, {"id": "P04", "nombre": "H. Santojanni", "go_live": "8/1/2025", "admitidas": 28666, "asociadas": 16446, "definitivas": 3, "estudios": 52861, "ia": 1561, "equipos": 15, "tb_alm": 3.55, "tb_disp": 56.45, "ram": 83.8}, {"id": "PMMN", "nombre": "H. Milstein - PAMI", "go_live": "6/1/2024", "admitidas": 20303, "asociadas": 16173, "definitivas": 1847, "estudios": 50719, "ia": 0, "equipos": 17, "tb_alm": null, "tb_disp": null, "ram": 83.6}, {"id": "P22", "nombre": "H. R. Mejia", "go_live": "12/1/2025", "admitidas": 2229, "asociadas": 1919, "definitivas": 14, "estudios": 4350, "ia": 498, "equipos": 8, "tb_alm": 0.22, "tb_disp": 59.78, "ram": 79.6}, {"id": "DEMO", "nombre": "Demo Tecnoimagen", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": 0.01, "tb_disp": 59.99, "ram": null}]}, {"provincia": "Tucumán", "n_hospitales": 4, "estudios": 192365, "admitidas": 81, "asociadas": 49, "definitivas": 8, "ia": 3267, "equipos": 53, "tb_alm": 22.28, "tb_disp": 157.72, "ram": 62.8, "hospitales": [{"id": "H45", "nombre": "H. Padilla", "go_live": "12/2/2024", "admitidas": 48, "asociadas": 25, "definitivas": 4, "estudios": 93335, "ia": 157, "equipos": 22, "tb_alm": 12.24, "tb_disp": 47.76, "ram": 61.0}, {"id": "H44", "nombre": "H. C. de Salud", "go_live": "4/11/2025", "admitidas": 15, "asociadas": 11, "definitivas": 1, "estudios": 62814, "ia": 27, "equipos": 10, "tb_alm": 5.45, "tb_disp": 54.55, "ram": 55.3}, {"id": "H46", "nombre": "H. Avellaneda", "go_live": "1/28/2025", "admitidas": 17, "asociadas": 12, "definitivas": 2, "estudios": 26028, "ia": 1719, "equipos": 13, "tb_alm": 4.59, "tb_disp": 55.41, "ram": 55.2}, {"id": "P26", "nombre": "H. Las Mercedes", "go_live": "1/2/2026", "admitidas": 1, "asociadas": 1, "definitivas": 1, "estudios": 10188, "ia": 1364, "equipos": 8, "tb_alm": null, "tb_disp": null, "ram": 79.7}]}, {"provincia": "Entre Ríos", "n_hospitales": 3, "estudios": 158473, "admitidas": 43046, "asociadas": 42147, "definitivas": 6989, "ia": 1625, "equipos": 38, "tb_alm": 5.2, "tb_disp": 174.8, "ram": 75.4, "hospitales": [{"id": "P10", "nombre": "H. S. Martin", "go_live": "11/18/2025", "admitidas": 17, "asociadas": 9, "definitivas": 1, "estudios": 124192, "ia": 918, "equipos": 22, "tb_alm": 4.7, "tb_disp": 55.3, "ram": 80.2}, {"id": "H09", "nombre": "H. S. Benjamin", "go_live": "11/13/2024", "admitidas": 17958, "asociadas": 17419, "definitivas": 6866, "estudios": 17988, "ia": 450, "equipos": 9, "tb_alm": 0.23, "tb_disp": 59.77, "ram": 78.0}, {"id": "H10", "nombre": "H. Santa Rosa", "go_live": "2/1/2025", "admitidas": 25071, "asociadas": 24719, "definitivas": 122, "estudios": 16293, "ia": 257, "equipos": 7, "tb_alm": 0.27, "tb_disp": 59.73, "ram": 68.0}]}, {"provincia": "Santa Fe", "n_hospitales": 5, "estudios": 113082, "admitidas": 112144, "asociadas": 106764, "definitivas": 9538, "ia": 1409, "equipos": 35, "tb_alm": 4.51, "tb_disp": 175.49, "ram": 76.6, "hospitales": [{"id": "PMP2", "nombre": "H. Pol. PAMI 2", "go_live": "7/1/2024", "admitidas": 40482, "asociadas": 38791, "definitivas": 191, "estudios": 42362, "ia": 0, "equipos": 8, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "PMP1", "nombre": "H. Pol. Pami 1", "go_live": "8/1/2024", "admitidas": 45458, "asociadas": 47520, "definitivas": 2296, "estudios": 29184, "ia": 0, "equipos": 9, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "H12", "nombre": "H. P. Rosario", "go_live": "1/1/2025", "admitidas": 7467, "asociadas": 4068, "definitivas": 1, "estudios": 22656, "ia": 1409, "equipos": 6, "tb_alm": 2.21, "tb_disp": 57.79, "ram": 74.1}, {"id": "P23", "nombre": "H. Alassia", "go_live": "10/9/2025", "admitidas": 18737, "asociadas": 16385, "definitivas": 7050, "estudios": 18880, "ia": 0, "equipos": 12, "tb_alm": 0.81, "tb_disp": 59.19, "ram": null}, {"id": "H13", "nombre": "H. Eva Peron", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": 1.49, "tb_disp": 58.51, "ram": 79.1}]}, {"provincia": "Jujuy", "n_hospitales": 3, "estudios": 111155, "admitidas": 79096, "asociadas": 68434, "definitivas": 9251, "ia": 2554, "equipos": 24, "tb_alm": 3.84, "tb_disp": 116.16, "ram": 56.5, "hospitales": [{"id": "H27", "nombre": "H. Paterson", "go_live": "1/2/2025", "admitidas": 55316, "asociadas": 48602, "definitivas": 9239, "estudios": 84247, "ia": 1013, "equipos": 8, "tb_alm": 3.05, "tb_disp": 56.95, "ram": 59.1}, {"id": "H35", "nombre": "H. O. Orias", "go_live": "3/5/2025", "admitidas": 16885, "asociadas": 15171, "definitivas": 4, "estudios": 17262, "ia": 781, "equipos": 5, "tb_alm": 0.79, "tb_disp": 59.21, "ram": 53.9}, {"id": "P12", "nombre": "H. Soria", "go_live": "8/12/2025", "admitidas": 6895, "asociadas": 4661, "definitivas": 8, "estudios": 9646, "ia": 760, "equipos": 11, "tb_alm": null, "tb_disp": null, "ram": null}]}, {"provincia": "Mendoza", "n_hospitales": 3, "estudios": 81663, "admitidas": 52282, "asociadas": 39151, "definitivas": 17145, "ia": 1775, "equipos": 23, "tb_alm": 2.81, "tb_disp": 177.19, "ram": 73.2, "hospitales": [{"id": "H23", "nombre": "H. Sacaravelli", "go_live": "11/19/2024", "admitidas": 41207, "asociadas": 29468, "definitivas": 12821, "estudios": 41072, "ia": 1185, "equipos": 8, "tb_alm": 0.7, "tb_disp": 59.3, "ram": 78.9}, {"id": "P15", "nombre": "H. Central de Mendoza", "go_live": "11/4/2025", "admitidas": 28, "asociadas": 10, "definitivas": 1, "estudios": 30588, "ia": 247, "equipos": 7, "tb_alm": 1.95, "tb_disp": 58.05, "ram": 80.7}, {"id": "H22", "nombre": "H. Regional de Malargue", "go_live": "11/14/2024", "admitidas": 11047, "asociadas": 9673, "definitivas": 4323, "estudios": 10003, "ia": 343, "equipos": 8, "tb_alm": 0.16, "tb_disp": 59.84, "ram": 59.9}]}, {"provincia": "Chubut", "n_hospitales": 3, "estudios": 64604, "admitidas": 65160, "asociadas": 65105, "definitivas": 5981, "ia": 894, "equipos": 29, "tb_alm": 2.91, "tb_disp": 177.09, "ram": 80.5, "hospitales": [{"id": "H41", "nombre": "H. Sanguinetti", "go_live": "1/3/2025", "admitidas": 38436, "asociadas": 36078, "definitivas": 774, "estudios": 38530, "ia": 359, "equipos": 10, "tb_alm": 1.71, "tb_disp": 58.29, "ram": 74.9}, {"id": "H36", "nombre": "H. S. Teresita", "go_live": "8/20/2025", "admitidas": 11043, "asociadas": 13621, "definitivas": 5, "estudios": 13906, "ia": 375, "equipos": 7, "tb_alm": 0.6, "tb_disp": 59.4, "ram": 75.2}, {"id": "P07", "nombre": "H. Alvear", "go_live": "9/3/2025", "admitidas": 15681, "asociadas": 15406, "definitivas": 5202, "estudios": 12168, "ia": 160, "equipos": 12, "tb_alm": 0.6, "tb_disp": 59.4, "ram": 91.4}]}, {"provincia": "Río Negro", "n_hospitales": 2, "estudios": 45383, "admitidas": 43982, "asociadas": 34697, "definitivas": 4081, "ia": 1793, "equipos": 21, "tb_alm": 5.4, "tb_disp": 114.6, "ram": 79.3, "hospitales": [{"id": "H07", "nombre": "H. Zatti", "go_live": "2/1/2025", "admitidas": 39017, "asociadas": 29923, "definitivas": 2541, "estudios": 39187, "ia": 846, "equipos": 12, "tb_alm": 2.27, "tb_disp": 57.73, "ram": 79.3}, {"id": "P18", "nombre": "H. R. Carrillo", "go_live": "9/11/2025", "admitidas": 4965, "asociadas": 4774, "definitivas": 1540, "estudios": 6196, "ia": 947, "equipos": 9, "tb_alm": 3.13, "tb_disp": 56.87, "ram": null}]}, {"provincia": "Salta", "n_hospitales": 3, "estudios": 42906, "admitidas": 43464, "asociadas": 41841, "definitivas": 858, "ia": 910, "equipos": 21, "tb_alm": 0.55, "tb_disp": 179.45, "ram": 48.9, "hospitales": [{"id": "H30", "nombre": "H. S. Vicente de Paul", "go_live": "1/16/2025", "admitidas": 17595, "asociadas": 17183, "definitivas": 3, "estudios": 17278, "ia": 337, "equipos": 6, "tb_alm": 0.12, "tb_disp": 59.88, "ram": 0.0}, {"id": "P19", "nombre": "H. S. Bernardo", "go_live": "1/23/2026", "admitidas": 13224, "asociadas": 12644, "definitivas": 771, "estudios": 15455, "ia": 331, "equipos": 11, "tb_alm": 0.25, "tb_disp": 59.75, "ram": 79.8}, {"id": "H43", "nombre": "H. S. del Rosario", "go_live": "3/10/2025", "admitidas": 12645, "asociadas": 12014, "definitivas": 84, "estudios": 10173, "ia": 242, "equipos": 4, "tb_alm": 0.18, "tb_disp": 59.82, "ram": 66.8}]}, {"provincia": "Tierra del Fuego", "n_hospitales": 2, "estudios": 37478, "admitidas": 45477, "asociadas": 36957, "definitivas": 7344, "ia": 750, "equipos": 25, "tb_alm": 1.94, "tb_disp": 118.06, "ram": 81.8, "hospitales": [{"id": "H05", "nombre": "H. Ernesto Campos", "go_live": "12/1/2024", "admitidas": 30048, "asociadas": 27336, "definitivas": 7334, "estudios": 28708, "ia": 577, "equipos": 10, "tb_alm": 1.67, "tb_disp": 58.33, "ram": null}, {"id": "P25", "nombre": "H. La Candelaria", "go_live": "1/2/2026", "admitidas": 15429, "asociadas": 9621, "definitivas": 10, "estudios": 8770, "ia": 173, "equipos": 15, "tb_alm": 0.27, "tb_disp": 59.73, "ram": 81.8}]}, {"provincia": "Chaco", "n_hospitales": 2, "estudios": 32119, "admitidas": 32431, "asociadas": 30984, "definitivas": 1291, "ia": 949, "equipos": 12, "tb_alm": 0.83, "tb_disp": 119.17, "ram": 70.9, "hospitales": [{"id": "H19", "nombre": "H. Ramon Carillo", "go_live": "2/3/2025", "admitidas": 32216, "asociadas": 30794, "definitivas": 1291, "estudios": 31799, "ia": 949, "equipos": 7, "tb_alm": 0.69, "tb_disp": 59.31, "ram": 62.3}, {"id": "P06", "nombre": "H. Julio Perrando", "go_live": "5/4/2026", "admitidas": 215, "asociadas": 190, "definitivas": 0, "estudios": 320, "ia": 0, "equipos": 5, "tb_alm": 0.14, "tb_disp": 59.86, "ram": 79.5}]}, {"provincia": "Santiago del Estero", "n_hospitales": 1, "estudios": 29249, "admitidas": 99, "asociadas": 54, "definitivas": 2, "ia": 494, "equipos": 8, "tb_alm": 0.51, "tb_disp": 59.49, "ram": 65.4, "hospitales": [{"id": "H15", "nombre": "H. Independencia", "go_live": "12/6/2024", "admitidas": 99, "asociadas": 54, "definitivas": 2, "estudios": 29249, "ia": 494, "equipos": 8, "tb_alm": 0.51, "tb_disp": 59.49, "ram": 65.4}]}, {"provincia": "Catamarca", "n_hospitales": 3, "estudios": 28410, "admitidas": 16435, "asociadas": 15974, "definitivas": 1483, "ia": 753, "equipos": 31, "tb_alm": 1.45, "tb_disp": 178.55, "ram": 69.9, "hospitales": [{"id": "P05", "nombre": "H. S. J. Bautista", "go_live": "10/17/2025", "admitidas": 4898, "asociadas": 4537, "definitivas": 2, "estudios": 17458, "ia": 14, "equipos": 18, "tb_alm": 1.25, "tb_disp": 58.75, "ram": 80.6}, {"id": "H25", "nombre": "H. S. J. Bautista", "go_live": "3/6/2025", "admitidas": 8459, "asociadas": 8365, "definitivas": 218, "estudios": 7292, "ia": 98, "equipos": 6, "tb_alm": 0.12, "tb_disp": 59.88, "ram": null}, {"id": "H26", "nombre": "H. Maternidad", "go_live": "12/4/2024", "admitidas": 3078, "asociadas": 3072, "definitivas": 1263, "estudios": 3660, "ia": 641, "equipos": 7, "tb_alm": 0.08, "tb_disp": 59.92, "ram": 59.2}]}, {"provincia": "Neuquén", "n_hospitales": 3, "estudios": 24872, "admitidas": 12435, "asociadas": 8937, "definitivas": 1695, "ia": 2569, "equipos": 18, "tb_alm": 1.39, "tb_disp": 178.61, "ram": 61.6, "hospitales": [{"id": "H08", "nombre": "H. J. J. Pose", "go_live": "11/21/2024", "admitidas": 12413, "asociadas": 8921, "definitivas": 1691, "estudios": 16599, "ia": 614, "equipos": 6, "tb_alm": 0.94, "tb_disp": 59.06, "ram": 63.8}, {"id": "P17", "nombre": "H. Castro Rendon", "go_live": "10/1/2025", "admitidas": 4, "asociadas": 2, "definitivas": 1, "estudios": 4419, "ia": 740, "equipos": 8, "tb_alm": 0.24, "tb_disp": 59.76, "ram": null}, {"id": "H37", "nombre": "H. Heller", "go_live": "2/13/2025", "admitidas": 18, "asociadas": 14, "definitivas": 3, "estudios": 3854, "ia": 1215, "equipos": 4, "tb_alm": 0.21, "tb_disp": 59.79, "ram": 59.4}]}, {"provincia": "San Juan", "n_hospitales": 2, "estudios": 19980, "admitidas": 8918, "asociadas": 8593, "definitivas": 0, "ia": 549, "equipos": 22, "tb_alm": 0.53, "tb_disp": 119.47, "ram": 55.9, "hospitales": [{"id": "H06", "nombre": "H. S. Roque de Jachal", "go_live": "1/9/2025", "admitidas": 6929, "asociadas": 6748, "definitivas": 0, "estudios": 10693, "ia": 311, "equipos": 14, "tb_alm": 0.39, "tb_disp": 59.61, "ram": 56.8}, {"id": "H38", "nombre": "H. Aguilar", "go_live": "5/5/2025", "admitidas": 1989, "asociadas": 1845, "definitivas": 0, "estudios": 9287, "ia": 238, "equipos": 8, "tb_alm": 0.14, "tb_disp": 59.86, "ram": 55.0}]}, {"provincia": "La Rioja", "n_hospitales": 3, "estudios": 12817, "admitidas": 12394, "asociadas": 11411, "definitivas": 11, "ia": 183, "equipos": 15, "tb_alm": 0.17, "tb_disp": 179.83, "ram": 0.0, "hospitales": [{"id": "H28", "nombre": "H. Luis Pasteur", "go_live": "12/2/2024", "admitidas": 7877, "asociadas": 7382, "definitivas": 3, "estudios": 7963, "ia": 172, "equipos": 4, "tb_alm": 0.06, "tb_disp": 59.94, "ram": null}, {"id": "H29", "nombre": "H. Eduardo Neira", "go_live": "2/2/2025", "admitidas": 4091, "asociadas": 3992, "definitivas": 0, "estudios": 4694, "ia": 0, "equipos": 3, "tb_alm": 0.1, "tb_disp": 59.9, "ram": 0.0}, {"id": "P14", "nombre": "H. Vera Varros", "go_live": "10/23/2025", "admitidas": 426, "asociadas": 37, "definitivas": 8, "estudios": 160, "ia": 11, "equipos": 8, "tb_alm": 0.01, "tb_disp": 59.99, "ram": null}]}, {"provincia": "Corrientes", "n_hospitales": 2, "estudios": 10798, "admitidas": 9560, "asociadas": 8607, "definitivas": 8, "ia": 784, "equipos": 13, "tb_alm": 0.13, "tb_disp": 119.87, "ram": 64.4, "hospitales": [{"id": "H14", "nombre": "H. Las Mercedes", "go_live": "12/10/2024", "admitidas": 9082, "asociadas": 8222, "definitivas": 3, "estudios": 10295, "ia": 770, "equipos": 6, "tb_alm": 0.1, "tb_disp": 59.9, "ram": 64.4}, {"id": "P09", "nombre": "H. San Martin", "go_live": "11/26/2025", "admitidas": 478, "asociadas": 385, "definitivas": 5, "estudios": 503, "ia": 14, "equipos": 7, "tb_alm": 0.03, "tb_disp": 59.97, "ram": null}]}, {"provincia": "Misiones", "n_hospitales": 1, "estudios": 10003, "admitidas": 11019, "asociadas": 9127, "definitivas": 266, "ia": 470, "equipos": 5, "tb_alm": 0.14, "tb_disp": 59.86, "ram": 60.9, "hospitales": [{"id": "H11", "nombre": "H. S. Vicente", "go_live": "12/6/2024", "admitidas": 11019, "asociadas": 9127, "definitivas": 266, "estudios": 10003, "ia": 470, "equipos": 5, "tb_alm": 0.14, "tb_disp": 59.86, "ram": 60.9}]}, {"provincia": "Santa Cruz", "n_hospitales": 1, "estudios": 6934, "admitidas": 11012, "asociadas": 11198, "definitivas": 7, "ia": 392, "equipos": 6, "tb_alm": 0.14, "tb_disp": 59.86, "ram": 57.9, "hospitales": [{"id": "H42", "nombre": "H. San Lucas", "go_live": "1/14/2025", "admitidas": 11012, "asociadas": 11198, "definitivas": 7, "estudios": 6934, "ia": 392, "equipos": 6, "tb_alm": 0.14, "tb_disp": 59.86, "ram": 57.9}]}, {"provincia": "San Luis", "n_hospitales": 1, "estudios": 2270, "admitidas": 2256, "asociadas": 2228, "definitivas": 592, "ia": 238, "equipos": 6, "tb_alm": 0.27, "tb_disp": 59.73, "ram": 0.0, "hospitales": [{"id": "H24", "nombre": "H. San Martin", "go_live": "2/4/2025", "admitidas": 2256, "asociadas": 2228, "definitivas": 592, "estudios": 2270, "ia": 238, "equipos": 6, "tb_alm": 0.27, "tb_disp": 59.73, "ram": 0.0}]}, {"provincia": "Formosa", "n_hospitales": 2, "estudios": 1957, "admitidas": 1, "asociadas": 0, "definitivas": 2, "ia": 323, "equipos": 6, "tb_alm": 0.24, "tb_disp": 119.76, "ram": 68.4, "hospitales": [{"id": "P11", "nombre": "H. De la madre y la mujer", "go_live": "1/8/2026", "admitidas": 1, "asociadas": 0, "definitivas": 2, "estudios": 1957, "ia": 323, "equipos": 6, "tb_alm": 0.12, "tb_disp": 59.88, "ram": 79.1}, {"id": "H20", "nombre": "H. De la madre y el niño", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": 0.12, "tb_disp": 59.88, "ram": 57.8}]}, {"provincia": "Córdoba", "n_hospitales": 3, "estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0, "ia": 0, "equipos": 0, "tb_alm": 0.0, "tb_disp": 0.0, "ram": null, "hospitales": [{"id": "GWNCORDOBA", "nombre": "Dominis Sede Nueva Cordoba", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "GWCCORDOBA", "nombre": "Dominis Sede del Cerro", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "HUPC", "nombre": "H. Univ. Priv. de Cordoba", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": null, "tb_disp": null, "ram": null}]}, {"provincia": "", "n_hospitales": 2, "estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0, "ia": 0, "equipos": 0, "tb_alm": 0.0, "tb_disp": 0.0, "ram": 0.0, "hospitales": [{"id": "GW Nueva Cordoba", "nombre": "GW Nueva Cordoba", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": null, "tb_disp": null, "ram": null}, {"id": "UNKNOWN", "nombre": "UNKNOWN", "go_live": "", "admitidas": 0, "asociadas": 0, "definitivas": 0, "estudios": 0, "ia": 0, "equipos": 0, "tb_alm": null, "tb_disp": null, "ram": 0.0}]}];
+const CENT = {"Buenos Aires": [-36.5, -60.2], "CABA": [-34.61, -58.38], "Córdoba": [-32.0, -63.5], "Santa Fe": [-30.7, -60.9], "Tucumán": [-26.9, -65.2], "Chubut": [-43.8, -68.5], "Neuquén": [-38.9, -69.8], "Mendoza": [-34.9, -68.5], "Catamarca": [-27.3, -66.9], "Jujuy": [-23.3, -65.8], "Entre Ríos": [-32.0, -59.2], "Salta": [-24.3, -64.8], "San Juan": [-30.8, -68.9], "Formosa": [-24.9, -59.9], "La Rioja": [-29.7, -67.0], "Tierra del Fuego": [-53.8, -67.9], "Chaco": [-26.4, -60.5], "Corrientes": [-28.7, -57.8], "Río Negro": [-40.2, -67.2], "Santiago del Estero": [-27.8, -63.2], "Misiones": [-26.9, -54.5], "Santa Cruz": [-48.6, -70.0], "San Luis": [-33.7, -66.0], "La Pampa": [-37.2, -65.5]};
+const fmt = n => (n==null?'&#8212;':n.toLocaleString('es-AR'));
+
+// Home totals
+(function(){
+  let hosp=0,est=0,ia=0,eq=0;
+  PROV.forEach(p=>{hosp+=p.n_hospitales;est+=p.estudios;ia+=p.ia;eq+=p.equipos;});
+  document.getElementById('h-prov').textContent=PROV.length;
+  document.getElementById('h-hosp').textContent=hosp;
+  document.getElementById('h-est').textContent=est.toLocaleString('es-AR');
+  document.getElementById('h-ia').textContent=ia.toLocaleString('es-AR');
+  document.getElementById('h-eq').textContent=eq.toLocaleString('es-AR');
+})();
+
+let map, markers=[];
+function openProv(){
+  document.getElementById('home').classList.remove('active');
+  document.getElementById('prov').classList.add('active');
+  setTimeout(initMap,60);
+}
+function goHome(){
+  document.getElementById('prov').classList.remove('active');
+  document.getElementById('home').classList.add('active');
+}
+
+function initMap(){
+  if(map){map.invalidateSize();return;}
+  map=L.map('map',{zoomControl:true,attributionControl:false}).setView([-40,-64],4);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:12}).addTo(map);
+  const maxEst=Math.max(...PROV.map(p=>p.estudios),1);
+  PROV.forEach(p=>{
+    const c=CENT[p.provincia]; if(!c) return;
+    const r=8+22*Math.sqrt(p.estudios/maxEst);
+    const m=L.circleMarker(c,{radius:r,color:'#00e5a0',weight:1.5,fillColor:'#00e5a0',fillOpacity:.35})
+      .addTo(map)
+      .bindPopup('<b>'+p.provincia+'</b><br>'+p.n_hospitales+' hospitales<br>'+p.estudios.toLocaleString('es-AR')+' estudios');
+    m.on('click',()=>showProv(p));
+    m.on('mouseover',function(){this.setStyle({fillOpacity:.65})});
+    m.on('mouseout',function(){this.setStyle({fillOpacity:.35})});
+    markers.push(m);
+  });
+}
+
+function kbox(label,val,cls){return '<div class="kbox '+(cls||'')+'"><div class="l">'+label+'</div><div class="v">'+val+'</div></div>';}
+
+function showProv(p){
+  document.getElementById('d-name').textContent=p.provincia;
+  document.getElementById('d-badge').textContent=p.n_hospitales+' hospitales';
+  const k=[
+    kbox('Estudios',p.estudios.toLocaleString('es-AR'),'green'),
+    kbox('Ó. admitidas',p.admitidas.toLocaleString('es-AR'),'blue'),
+    kbox('Ó. asociadas',p.asociadas.toLocaleString('es-AR'),'blue'),
+    kbox('Ó. definitivas',p.definitivas.toLocaleString('es-AR'),'blue'),
+    kbox('Estudios IA',p.ia.toLocaleString('es-AR'),'purple'),
+    kbox('Equipos',p.equipos,'amber'),
+    kbox('TB almacenados',(p.tb_alm!=null?p.tb_alm:'-'),'amber'),
+    kbox('RAM prom.',(p.ram!=null?p.ram+'%':'-'),''),
+  ].join('');
+  let rows=p.hospitales.map(h=>'<tr>'
+    +'<td class="hosp-name">'+h.nombre+'</td>'
+    +'<td>'+h.estudios.toLocaleString('es-AR')+'</td>'
+    +'<td>'+h.admitidas.toLocaleString('es-AR')+'</td>'
+    +'<td>'+h.ia.toLocaleString('es-AR')+'</td>'
+    +'<td>'+h.equipos+'</td>'
+    +'<td>'+(h.tb_alm!=null?h.tb_alm:'-')+'</td>'
+    +'<td>'+(h.ram!=null?h.ram+'%':'-')+'</td>'
+    +'</tr>').join('');
+  document.getElementById('d-body').innerHTML=
+    '<div class="kgrid">'+k+'</div>'
+    +'<p class="hlist-title">Hospitales de '+p.provincia+'</p>'
+    +'<table><thead><tr><th>Hospital</th><th>Estudios</th><th>Admitidas</th><th>IA</th><th>Equipos</th><th>TB</th><th>RAM</th></tr></thead><tbody>'
+    +rows+'</tbody></table>';
+}
+</script>
+</body>
+</html>

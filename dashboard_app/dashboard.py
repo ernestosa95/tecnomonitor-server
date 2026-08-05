@@ -1285,6 +1285,10 @@ async def get_herramientas(request: Request):
 async def get_ris_analytics(request: Request):
     return templates.TemplateResponse("solucion2.html", {"request": request})
 
+@app.get("/prov-analytics")
+async def prov_analytics(request: Request):
+    return templates.TemplateResponse("vista_provincias_prototipo.html", {"request": request})
+
 @app.get("/hl7-analytics")
 async def get_hl7_analytics(request: Request):
     return templates.TemplateResponse("solucion1.html", {"request": request})

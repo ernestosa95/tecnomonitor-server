@@ -3,8 +3,12 @@ import sys
 import os
 import asyncio 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Request, HTTPException
 from contextlib import asynccontextmanager 
+from provincias_endpoint import router as provincias_router
 import maintenance
+
+#app.include_router(provincias_router)
 
 # --- IMPORTACIÓN DEL SCRIPT DE LIMPIEZA ---
 try:
@@ -200,7 +204,11 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @master_app.post("/api/internal/trigger-ws")
-async def trigger_websocket_update():
+async def trigger_websocket_update(request: Request):
+    # Solo se acepta desde el propio server (alerts_engine lo llama vía 127.0.0.1).
+    # Un pedido externo entra por Nginx con la IP real y se rechaza.
+    if request.client.host != "127.0.0.1":
+        raise HTTPException(status_code=403, detail="Forbidden")
     await manager.broadcast({"type": "ALERTA_UPDATE", "msg": "Hay cambios en las alertas"})
     return {"status": "ok"}
 
@@ -211,5 +219,12 @@ if informes_ia_disponible:
 master_app.mount("/", dashboard_app)
  
 # --- EJECUTAR ---
+# --- EJECUTAR ---
 if __name__ == "__main__":
-    uvicorn.run(master_app, host="0.0.0.0", port=8001)
+    uvicorn.run(
+        master_app,
+        host="0.0.0.0",
+        port=8001,
+        proxy_headers=True,                  # ← lee el X-Forwarded-For
+        forwarded_allow_ips="127.0.0.1",     # ← confía solo en tu Nginx local
+    )
