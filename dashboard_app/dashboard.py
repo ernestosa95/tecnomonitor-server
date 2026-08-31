@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
 import io
+from typing import Optional
 import matplotlib
 matplotlib.use('Agg') # Crucial para servidores: dibuja sin abrir ventanas
 import matplotlib.pyplot as plt
@@ -38,6 +39,8 @@ import re
 from fastapi import Response
 from fastapi.middleware.gzip import GZipMiddleware
 import generator_report
+from fastapi import FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import tempfile
 from fastapi import BackgroundTasks
@@ -149,11 +152,15 @@ async def add_security_headers(request: Request, call_next):
     
     # Content-Security-Policy (CSP)
     # Adaptado específicamente para permitir Chart.js, Leaflet y los estilos inline de tu index.html
+    # Content-Security-Policy (CSP)
+    # Se agrega http://localhost:8501 a frame-src para permitir el embebido de Streamlit
     csp = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
-        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
-        "img-src 'self' data: https://a.basemaps.cartocdn.com https://b.basemaps.cartocdn.com https://c.basemaps.cartocdn.com https://d.basemaps.cartocdn.com;"
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://netdna.bootstrapcdn.com https://unpkg.com; "
+        "img-src 'self' data: https://a.basemaps.cartocdn.com https://b.basemaps.cartocdn.com https://c.basemaps.cartocdn.com https://d.basemaps.cartocdn.com; "
+        "connect-src 'self' https://cdn.jsdelivr.net; "
+        "frame-src 'self' http://localhost:8501;"
     )
     response.headers["Content-Security-Policy"] = csp
     
@@ -202,6 +209,17 @@ class ConfigRequest(BaseModel):
     mirth_alert_enabled: bool
     mirth_queued_threshold: int
     mirth_responsible_email: str
+
+class ExclusionRequest(BaseModel):
+    hospital_id: str = "*"
+    patron: str
+    modo_match: str = "prefix"      # exact | prefix | contains | regex
+    accion: str = "total"           # total | silencioso
+    nivel_max: str = "CRITICAL"     # NOTICE | WARNING | CRITICAL
+    motivo: Optional[str] = None
+    enabled: bool = True
+    expires_at: Optional[str] = None    # "YYYY-MM-DD" o None
+    cerrar_existentes: bool = True
 
 class LoginRequest(BaseModel):
     email: str
@@ -1301,6 +1319,10 @@ async def get_pacs_capacity(request: Request):
 def landing_salta():
     return FileResponse("dashboard_app/templates/solucion4.html")
 
+@app.get("/renovacion")
+async def renovacion(request: Request):
+    return templates.TemplateResponse("calculadora_local.html", {"request": request})
+
 # --- Landing temporal para testeo de gerencia (acceso público, SIN login) ---
 @app.get("/demo-pacs")
 def landing_demo_pacs():
@@ -2267,3 +2289,230 @@ def listar_casos_cliente(hospital_id: str, db: Session = Depends(get_db),
         return []
 
     return asana_conector.listar_casos_abiertos(hosp.asana_project_id)
+
+
+# dashboard_app/dashboard.py
+
+@app.get("/api/v1/nodos-hospitalarios")
+async def get_nodos(current_user: dict = Depends(auth.get_current_user)):
+    # Reutiliza tu lógica de conexión a DB existente (ej. Accesorios/actualizar_db.py)
+    return obtener_nodos_desde_db()
+
+from fastapi.responses import HTMLResponse
+
+@app.get("/beta/simulador", response_class=HTMLResponse)
+async def simulador_iframe(current_user: dict = Depends(auth.get_current_user)):
+    return """
+    <html>
+        <head>
+            <title>Simulador C-Level</title>
+            <style>
+                body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #fff; }
+                iframe { width: 100%; height: 100%; border: none; }
+            </style>
+        </head>
+        <body>
+            <!-- Apunta al puerto donde corre Streamlit internamente en el servidor -->
+            <iframe src="http://localhost:8501"></iframe>
+        </body>
+    </html>
+    """
+
+_MODOS_MATCH = {"exact", "prefix", "contains", "regex"}
+_ACCIONES = {"total", "silencioso"}
+_NIVELES = {"NOTICE", "WARNING", "CRITICAL"}
+
+
+def _validar_exclusion(req: ExclusionRequest):
+    if not (req.patron or "").strip():
+        raise HTTPException(status_code=400, detail="El patrón no puede estar vacío.")
+    if req.modo_match not in _MODOS_MATCH:
+        raise HTTPException(status_code=400, detail=f"modo_match inválido: {req.modo_match}")
+    if req.accion not in _ACCIONES:
+        raise HTTPException(status_code=400, detail=f"acción inválida: {req.accion}")
+    if req.nivel_max not in _NIVELES:
+        raise HTTPException(status_code=400, detail=f"nivel_max inválido: {req.nivel_max}")
+    if req.modo_match == "regex":
+        try:
+            re.compile(req.patron)
+        except re.error as e:
+            raise HTTPException(status_code=400, detail=f"Regex inválida: {e}")
+    # Un patrón vacío o de 1 carácter en modo prefix apagaría medio motor.
+    if req.modo_match in ("prefix", "contains") and len(req.patron.strip()) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail="El patrón debe tener al menos 3 caracteres en modo prefijo/contiene."
+        )
+
+
+def _parse_expira(valor):
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(valor, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha de vencimiento inválida (usar YYYY-MM-DD).")
+
+
+@app.get("/api/exclusiones")
+def listar_exclusiones(db: Session = Depends(get_db),
+                       current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    filas = db.query(database.AlertExclusionModel).order_by(
+        database.AlertExclusionModel.created_at.desc()
+    ).all()
+    ahora = datetime.now()
+    return [{
+        "id": f.id,
+        "hospital_id": f.hospital_id,
+        "patron": f.patron,
+        "modo_match": f.modo_match,
+        "accion": f.accion,
+        "nivel_max": f.nivel_max,
+        "motivo": f.motivo,
+        "enabled": bool(f.enabled),
+        "expires_at": f.expires_at.strftime("%Y-%m-%d") if f.expires_at else None,
+        "vencida": bool(f.expires_at and f.expires_at <= ahora),
+        "created_by": f.created_by,
+        "created_at": f.created_at.strftime("%Y-%m-%d %H:%M") if f.created_at else None,
+        "hits": f.hits or 0,
+        "last_hit": f.last_hit.strftime("%Y-%m-%d %H:%M") if f.last_hit else None,
+    } for f in filas]
+
+
+@app.post("/api/exclusiones/preview")
+def preview_exclusion(req: ExclusionRequest, db: Session = Depends(get_db),
+                      current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    """
+    Antes de guardar: qué alertas ACTIVAS quedarían suprimidas por esta regla.
+    Sirve para no descubrir después que apagaste medio hospital.
+    """
+    _validar_exclusion(req)
+
+    q = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1)
+    if req.hospital_id != "*":
+        q = q.filter(database.AlertaModel.hospital_id == req.hospital_id)
+
+    regla = {
+        "patron_lower": req.patron.strip().lower(),
+        "modo_match": req.modo_match,
+        "rx": re.compile(req.patron, re.IGNORECASE) if req.modo_match == "regex" else None,
+    }
+
+    afectadas = [
+        {"hospital_id": a.hospital_id, "tipo": a.tipo, "mensaje": a.mensaje}
+        for a in q.all()
+        if alerts_engine._match_patron(a.tipo, regla)
+    ]
+    return {"total": len(afectadas), "alertas": afectadas[:50]}
+
+
+@app.post("/api/exclusiones")
+def crear_exclusion(req: ExclusionRequest, db: Session = Depends(get_db),
+                    current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    _validar_exclusion(req)
+
+    nueva = database.AlertExclusionModel(
+        hospital_id=(req.hospital_id or "*").strip(),
+        patron=req.patron.strip(),
+        modo_match=req.modo_match,
+        accion=req.accion,
+        nivel_max=req.nivel_max,
+        motivo=(req.motivo or "").strip() or None,
+        enabled=req.enabled,
+        expires_at=_parse_expira(req.expires_at),
+        created_by=current_user.get("email"),
+    )
+    db.add(nueva)
+    db.commit()
+    db.refresh(nueva)
+
+    cerradas = 0
+    if req.cerrar_existentes:
+        cerradas = _cerrar_alertas_por_regla(db, nueva)
+
+    # El motor releva las reglas en el próximo tick; forzamos para no esperar 60s
+    try:
+        alerts_engine.cargar_exclusiones(db)
+    except Exception:
+        pass
+
+    return {"status": "ok", "id": nueva.id, "alertas_cerradas": cerradas}
+
+
+@app.put("/api/exclusiones/{excl_id}")
+def actualizar_exclusion(excl_id: int, req: ExclusionRequest, db: Session = Depends(get_db),
+                         current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    _validar_exclusion(req)
+    f = db.query(database.AlertExclusionModel).filter_by(id=excl_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
+    f.hospital_id = (req.hospital_id or "*").strip()
+    f.patron = req.patron.strip()
+    f.modo_match = req.modo_match
+    f.accion = req.accion
+    f.nivel_max = req.nivel_max
+    f.motivo = (req.motivo or "").strip() or None
+    f.enabled = req.enabled
+    f.expires_at = _parse_expira(req.expires_at)
+    db.commit()
+
+    try:
+        alerts_engine.cargar_exclusiones(db)
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
+@app.delete("/api/exclusiones/{excl_id}")
+def borrar_exclusion(excl_id: int, db: Session = Depends(get_db),
+                     current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    f = db.query(database.AlertExclusionModel).filter_by(id=excl_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+    db.delete(f)
+    db.commit()
+
+    try:
+        alerts_engine.cargar_exclusiones(db)
+    except Exception:
+        pass
+    # Ojo: al borrar la regla, las alertas vuelven a levantarse en el próximo tick.
+    return {"status": "ok"}
+
+
+def _cerrar_alertas_por_regla(db, fila):
+    """Cierra (y cierra en Asana) las alertas activas que matchean la regla recién creada."""
+    q = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1)
+    if fila.hospital_id != "*":
+        q = q.filter(database.AlertaModel.hospital_id == fila.hospital_id)
+
+    regla = {
+        "patron_lower": fila.patron.lower(),
+        "modo_match": fila.modo_match,
+        "rx": re.compile(fila.patron, re.IGNORECASE) if fila.modo_match == "regex" else None,
+    }
+
+    ahora = datetime.now()
+    n = 0
+    for a in q.all():
+        if not alerts_engine._match_patron(a.tipo, regla):
+            continue
+        if a.asana_task_gid:
+            try:
+                asana_conector.cerrar_tarea_asana(a.asana_task_gid, a.hospital_id, a.tipo, ahora)
+            except Exception as e:
+                print(f"⚠️ [Exclusiones] No se pudo cerrar en Asana {a.asana_task_gid}: {e}")
+        a.is_active = 0
+        a.end_time = ahora
+        a.mensaje = f"[EXCLUIDA] Regla #{fila.id}: {a.mensaje}"
+        n += 1
+    db.commit()
+
+    if n:
+        try:
+            requests.post("http://127.0.0.1:8001/api/internal/trigger-ws", timeout=1)
+        except Exception:
+            pass
+    return n
+

@@ -4733,3 +4733,197 @@ function guardarKPIConfig() {
         alert("Ocurrió un error al intentar guardar la configuración.");
     });
 }
+
+// ══════════════════════════════════════════════
+// EXCLUSIONES DE ALERTAS
+// ══════════════════════════════════════════════
+
+const EXCL_MODO_LABEL  = { prefix: 'Empieza con', exact: 'Exacto', contains: 'Contiene', regex: 'Regex' };
+const EXCL_ACCION_LABEL = { total: 'No registra', silencioso: 'Sin ticket' };
+
+async function listarExclusiones() {
+    const tbody = document.getElementById('exclusiones-body');
+    if (!tbody) return;
+    try {
+        const res = await authFetch('/api/exclusiones');
+        const data = await res.json();
+
+        if (!data.length) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">' +
+                'No hay reglas cargadas. Todas las alertas del motor se están generando.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(function(r) {
+            const off = (!r.enabled || r.vencida);
+            const estadoTxt = r.vencida ? 'vencida' : (r.enabled ? '' : 'pausada');
+            return `
+            <tr style="${off ? 'opacity:.5' : ''}">
+                <td>${r.hospital_id === '*' ? '<em>Todos</em>' : r.hospital_id}</td>
+                <td><code style="font-size:12px">${escapeHtml(r.patron)}</code>
+                    ${estadoTxt ? `<span class="badge-wip">${estadoTxt}</span>` : ''}
+                    ${r.motivo ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">${escapeHtml(r.motivo)}</div>` : ''}
+                </td>
+                <td>${EXCL_MODO_LABEL[r.modo_match] || r.modo_match}</td>
+                <td>${EXCL_ACCION_LABEL[r.accion] || r.accion}</td>
+                <td>${r.nivel_max}</td>
+                <td>${r.expires_at || '—'}</td>
+                <td style="text-align:center" title="${r.last_hit ? 'Último: ' + r.last_hit : 'Nunca aplicó'}">${r.hits}</td>
+                <td style="text-align:right;white-space:nowrap">
+                    <button onclick='editarExclusion(${JSON.stringify(r)})' class="btn-icon" title="Editar">✏️</button>
+                    <button onclick="toggleExclusion(${r.id}, ${!r.enabled})" class="btn-icon" title="${r.enabled ? 'Pausar' : 'Activar'}">${r.enabled ? '⏸' : '▶'}</button>
+                    <button onclick="borrarExclusion(${r.id})" class="btn-icon" title="Eliminar">🗑️</button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--red);padding:20px">Error al cargar las reglas.</td></tr>';
+    }
+}
+
+function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+async function abrirModalExclusion(prefill) {
+    document.getElementById('excl-id').value = '';
+    document.getElementById('excl-patron').value = (prefill && prefill.patron) || '';
+    document.getElementById('excl-motivo').value = '';
+    document.getElementById('excl-expira').value = '';
+    document.getElementById('excl-modo').value = 'prefix';
+    document.getElementById('excl-accion').value = 'total';
+    document.getElementById('excl-nivel').value = 'CRITICAL';
+    document.getElementById('excl-cerrar').checked = true;
+    document.getElementById('excl-preview').textContent = '';
+    document.getElementById('excl-modal-title').textContent = 'Nueva regla de exclusión';
+
+    await poblarSelectHospitales('excl-hospital');
+    if (prefill && prefill.hospital_id) document.getElementById('excl-hospital').value = prefill.hospital_id;
+
+    document.getElementById('modalExclusion').style.display = 'flex';
+    if (prefill) previewExclusion();
+}
+
+async function poblarSelectHospitales(selectId) {
+    const sel = document.getElementById(selectId);
+    if (!sel || sel.dataset.cargado === '1') return;
+    try {
+        const res = await authFetch('/api/resumen-hospitales');
+        const data = await res.json();
+        const ids = [...new Set(data.map(h => h.hospital_id))].sort();
+        sel.innerHTML = '<option value="*">Todos los hospitales</option>' +
+            ids.map(id => `<option value="${id}">${id}</option>`).join('');
+        sel.dataset.cargado = '1';
+    } catch (e) { /* queda solo la opción global */ }
+}
+
+function editarExclusion(r) {
+    abrirModalExclusion().then(function() {
+        document.getElementById('excl-id').value = r.id;
+        document.getElementById('excl-hospital').value = r.hospital_id;
+        document.getElementById('excl-patron').value = r.patron;
+        document.getElementById('excl-modo').value = r.modo_match;
+        document.getElementById('excl-accion').value = r.accion;
+        document.getElementById('excl-nivel').value = r.nivel_max;
+        document.getElementById('excl-motivo').value = r.motivo || '';
+        document.getElementById('excl-expira').value = r.expires_at || '';
+        document.getElementById('excl-modal-title').textContent = 'Editar regla de exclusión';
+        previewExclusion();
+    });
+}
+
+function cerrarModalExclusion() {
+    document.getElementById('modalExclusion').style.display = 'none';
+}
+
+function _payloadExclusion() {
+    return {
+        hospital_id: document.getElementById('excl-hospital').value,
+        patron: document.getElementById('excl-patron').value.trim(),
+        modo_match: document.getElementById('excl-modo').value,
+        accion: document.getElementById('excl-accion').value,
+        nivel_max: document.getElementById('excl-nivel').value,
+        motivo: document.getElementById('excl-motivo').value.trim(),
+        expires_at: document.getElementById('excl-expira').value || null,
+        cerrar_existentes: document.getElementById('excl-cerrar').checked,
+        enabled: true
+    };
+}
+
+let _exclTimer = null;
+function previewExclusionDebounced() {
+    clearTimeout(_exclTimer);
+    _exclTimer = setTimeout(previewExclusion, 400);
+}
+
+async function previewExclusion() {
+    const el = document.getElementById('excl-preview');
+    const p = _payloadExclusion();
+    if (p.patron.length < 3) { el.textContent = ''; return; }
+    try {
+        const res = await authFetch('/api/exclusiones/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p)
+        });
+        if (!res.ok) { el.textContent = ''; return; }
+        const data = await res.json();
+        el.style.color = data.total > 0 ? 'var(--amber)' : 'var(--muted)';
+        el.textContent = data.total === 0
+            ? 'No coincide con ninguna alerta activa en este momento.'
+            : `Afecta a ${data.total} alerta(s) activa(s): ` +
+              data.alertas.slice(0, 4).map(a => a.tipo).join(', ') + (data.total > 4 ? '…' : '');
+    } catch (e) { el.textContent = ''; }
+}
+
+async function guardarExclusion() {
+    const p = _payloadExclusion();
+    if (p.patron.length < 3) { alert('El patrón debe tener al menos 3 caracteres.'); return; }
+
+    const id = document.getElementById('excl-id').value;
+    const url = id ? `/api/exclusiones/${id}` : '/api/exclusiones';
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+        const res = await authFetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p)
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.detail || 'Error al guardar la regla.'); return; }
+
+        cerrarModalExclusion();
+        listarExclusiones();
+        if (typeof cargarAlertas === 'function') cargarAlertas();
+        if (data.alertas_cerradas) {
+            alert(`✅ Regla guardada. Se cerraron ${data.alertas_cerradas} alerta(s) activa(s).`);
+        }
+    } catch (e) { alert('Error de conexión.'); }
+}
+
+async function toggleExclusion(id, activar) {
+    const res = await authFetch('/api/exclusiones');
+    const reglas = await res.json();
+    const r = reglas.find(x => x.id === id);
+    if (!r) return;
+
+    await authFetch(`/api/exclusiones/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            hospital_id: r.hospital_id, patron: r.patron, modo_match: r.modo_match,
+            accion: r.accion, nivel_max: r.nivel_max, motivo: r.motivo,
+            expires_at: r.expires_at, enabled: activar, cerrar_existentes: false
+        })
+    });
+    listarExclusiones();
+}
+
+async function borrarExclusion(id) {
+    if (!confirm('¿Eliminar esta regla? Las alertas que suprimía volverán a generarse en el próximo ciclo.')) return;
+    await authFetch(`/api/exclusiones/${id}`, { method: 'DELETE' });
+    listarExclusiones();
+}

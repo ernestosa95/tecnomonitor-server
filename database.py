@@ -192,4 +192,51 @@ class AccessRequestModel(Base):
     revisado_por = Column(String, nullable=True)
     revisado_en = Column(DateTime, nullable=True)
 
+class AlertExclusionModel(Base):
+    """
+    Reglas de supresión de alertas.
+
+    Un hallazgo del motor puede ser técnicamente correcto (cumple el umbral)
+    y aun así no merecer un ticket: discos de imágenes que viven al 92% por
+    diseño, VMs de laboratorio, sensores rotos que reportan basura.
+    Esta tabla es la lista de "sí, ya lo sé, no me avises".
+    """
+    __tablename__ = "alert_exclusions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # '*' = aplica a TODOS los hospitales. Si no, el hospital_id puntual.
+    hospital_id = Column(String, index=True, nullable=False, default="*")
+
+    # Patrón contra el campo `tipo` de AlertaModel (ej: "DISK_GMS-APP-PACS_E:")
+    patron = Column(String, nullable=False)
+
+    # exact | prefix | contains | regex
+    modo_match = Column(String, nullable=False, default="prefix")
+
+    # total = no se registra nada | silencioso = se guarda en DB, no va a Asana
+    accion = Column(String, nullable=False, default="total")
+
+    # Excluye hallazgos de severidad <= a este nivel.
+    # CRITICAL (default) excluye todo. WARNING deja pasar los CRITICAL.
+    nivel_max = Column(String, nullable=False, default="CRITICAL")
+
+    motivo = Column(Text, nullable=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+
+    # Ventana de mantenimiento: NULL = permanente
+    expires_at = Column(DateTime, nullable=True)
+
+    created_by = Column(String, nullable=True)   # email del usuario
+    created_at = Column(DateTime, default=datetime.now)
+
+    # Telemetría de la propia regla: cuántas veces frenó algo y cuándo
+    hits = Column(Integer, default=0, nullable=False)
+    last_hit = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_excl_hospital_enabled", "hospital_id", "enabled"),
+    )
+
+# --- FINAL DEL ARCHIVO: SE CREAN TODAS LAS TABLAS REGISTRADAS EN 'Base' ---
 Base.metadata.create_all(bind=engine)

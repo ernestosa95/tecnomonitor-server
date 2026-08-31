@@ -1790,6 +1790,15 @@ canvas{color-scheme:dark}
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:.6"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </a>
                 </div>
+                <!-- En tu index_beta.html -->
+                <a href="/renovacion" target="_blank" class="home-tools-btn">
+                    <!-- Icono sugerido -->
+                    <svg width="13" height="13" viewBox="0 0 24 24" ...></svg>
+                    <span>
+                        <strong style="display:block;font-size:12px;font-weight:700;line-height:1.2">Calculadora Renovación</strong>
+                        <span style="font-size:10px;font-weight:400;opacity:.75">Simulación C-Level · 2027</span>
+                    </span>
+                </a>
             </div>
 
             <!-- KPI cards en fila con scroll automático -->
@@ -2418,6 +2427,10 @@ canvas{color-scheme:dark}
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                         Usuarios
                     </button>
+                    <button class="conf-tab" onclick="switchConfTab('tab-exclusiones', this)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                        Exclusiones
+                    </button>
                 </div>
 
                 <!-- ── TAB: PERSONAL ── -->
@@ -2614,11 +2627,42 @@ canvas{color-scheme:dark}
                         </table>
                     </div>
                 </div>
+                
+                <!-- ── TAB: EXCLUSIONES ── -->
+                <div id="tab-exclusiones" class="conf-tab-panel">
+                    <div class="conf-section-block">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                            <div>
+                                <div class="conf-section-title" style="margin:0;padding:0;border:none">Reglas de exclusión</div>
+                                <p style="font-size:12px;color:var(--muted);margin:6px 0 0">
+                                    Silencian hallazgos que el motor detecta correctamente pero que no deben generar tickets.
+                                </p>
+                            </div>
+                            <button class="btn-action" onclick="abrirModalExclusion()"
+                                    style="width:auto;padding:7px 16px;font-size:.85em;border-radius:50px">
+                                + Nueva regla
+                            </button>
+                        </div>
 
-                <!-- ════════════════════════════════════════════════════════
-     TAB: CLIENTES  (solo Admin)  ·  pegar dentro de .conf-card,
-     después del panel #tab-hospitales
-     ════════════════════════════════════════════════════════ -->
+                        <table class="table-clean" style="width:100%">
+                            <thead>
+                                <tr style="text-align:left">
+                                    <th>Hospital</th>
+                                    <th>Patrón</th>
+                                    <th>Match</th>
+                                    <th>Acción</th>
+                                    <th>Hasta nivel</th>
+                                    <th>Vence</th>
+                                    <th style="text-align:center">Hits</th>
+                                    <th style="text-align:right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exclusiones-body">
+                                <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 <style>
 /* ===== CLIENTES (cli-*) — tema oscuro beta ===== */
 .cli-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap}
@@ -3386,6 +3430,78 @@ window.cliCopiarPw = cliCopiarPw;
     </div>
 </div>
 
+<div id="modalExclusion" class="modal-overlay" style="display:none;z-index:5000" onclick="if(event.target===this) cerrarModalExclusion()">
+  <div class="modal-content" style="max-width:560px">
+    <h3 id="excl-modal-title" style="margin:0 0 4px">Nueva regla de exclusión</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 18px">
+        El patrón se compara contra el identificador de la alerta (ej. <code>DISK_GMS-APP-PACS_E:</code>).
+    </p>
+
+    <input type="hidden" id="excl-id">
+
+    <div class="grid-2-col">
+        <div class="input-group">
+            <label>Hospital</label>
+            <select id="excl-hospital"><option value="*">Todos los hospitales</option></select>
+        </div>
+        <div class="input-group">
+            <label>Tipo de coincidencia</label>
+            <select id="excl-modo">
+                <option value="prefix">Empieza con</option>
+                <option value="exact">Exacto</option>
+                <option value="contains">Contiene</option>
+                <option value="regex">Regex</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <label>Patrón</label>
+        <input type="text" id="excl-patron" placeholder="DISK_GMS-APP-PACS_" oninput="previewExclusionDebounced()">
+        <small id="excl-preview" style="font-size:11px;color:var(--muted);display:block;margin-top:6px"></small>
+    </div>
+
+    <div class="grid-2-col">
+        <div class="input-group">
+            <label>Acción</label>
+            <select id="excl-accion">
+                <option value="total">No registrar (ruido cero)</option>
+                <option value="silencioso">Registrar sin ticket de Asana</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label>Excluir hasta nivel</label>
+            <select id="excl-nivel">
+                <option value="CRITICAL">Todos (incl. CRITICAL)</option>
+                <option value="WARNING">Hasta WARNING</option>
+                <option value="NOTICE">Solo NOTICE</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="grid-2-col">
+        <div class="input-group">
+            <label>Vence el (opcional)</label>
+            <input type="date" id="excl-expira">
+        </div>
+        <div class="input-group" style="display:flex;align-items:flex-end;gap:8px;padding-bottom:10px">
+            <input type="checkbox" id="excl-cerrar" checked style="width:auto">
+            <label style="margin:0">Cerrar alertas activas que matcheen</label>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <label>Motivo</label>
+        <input type="text" id="excl-motivo" placeholder="Disco de imágenes, opera al 90% por diseño">
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+        <button onclick="cerrarModalExclusion()" style="padding:9px 20px;border-radius:50px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Cancelar</button>
+        <button class="btn-action" onclick="guardarExclusion()" style="width:auto;padding:9px 24px;border-radius:50px">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── ALERTAS: reorganizar columnas de incidentes en curso ──
 (function() {
@@ -3826,6 +3942,7 @@ function switchConfTab(tabId, btn) {
     if (panel) panel.classList.add('active');
     if (btn) btn.classList.add('active');
     if (tabId === 'tab-personal') cargarPerfil();
+    if (tabId === 'tab-exclusiones' && typeof listarExclusiones === 'function') listarExclusiones();
     if (tabId === 'tab-alertas') {
         // Pequeño delay para asegurar que script.js terminó de inicializar authFetch
         setTimeout(function() {
@@ -4129,6 +4246,10 @@ window._nuestroVolverAlDashboard = function() {
         const user = JSON.parse(userData);
         if (user.role === 'Cliente') {
             window.location.href = '/cliente';
+        } 
+        else if (user.role === 'decision_lider') {
+        // Por seguridad adicional, si un usuario de este tipo llega a cargar esta vista, se redirige
+        window.location.href = 'https://tecnomonitor.tecnoimagen.com.ar/prov-analytics';
         } else {
             aplicarRestriccionesUI(user.role);
             // Cargar alertas de una vez: en index_beta todas las secciones están

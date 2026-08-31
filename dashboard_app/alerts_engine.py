@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
 import requests
+import re
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database
@@ -20,6 +21,12 @@ except ImportError as e:
 # están hardcodeados en _evaluar_reglas_v3 (200 ms NOTICE / 500 ms CRITICAL).
 # Se conserva por compatibilidad con posibles imports externos.
 UMBRAL_LATENCIA_MS = 50.0
+
+# Cache de exclusiones: se refresca una vez por tick, no por hospital.
+_EXCLUSIONES_CACHE = []
+_EXCLUSIONES_TS = None
+
+_ORDEN_NIVEL = {"OK": 0, "NOTICE": 1, "WARNING": 2, "CRITICAL": 3}
 
 
 # =====================================================================
@@ -173,6 +180,7 @@ def analizar_reporte(hospital_id, json_data_v3, db: Session):
 
 def procesar_offline(db: Session):
     config = cargar_config(db)
+    cargar_exclusiones(db)
 
     # --- IDs de Asana Globales (Infraestructura) ---
     global_asana_followers = _followers_de(db, config, 'global_alert_responsible_email')
@@ -242,7 +250,8 @@ def procesar_offline(db: Session):
     print(
         f"🩺 [Vigilancia] Tick | hospitales={total} evaluados={evaluados} "
         f"omitidos={omitidos} con_error={con_error} "
-        f"hallazgos_no_ok={total_hallazgos} alertas_activas={activas_ahora}"
+        f"hallazgos_no_ok={total_hallazgos} alertas_activas={activas_ahora} "
+        f"reglas_exclusion={len(_EXCLUSIONES_CACHE)}"
     )
 
 
@@ -450,6 +459,44 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         database.AlertaModel.hospital_id == hid,
         database.AlertaModel.tipo == tipo_unico
     ).order_by(database.AlertaModel.id.desc()).first()
+
+    # --- CASO 0: EXCLUSIÓN ---
+    regla = evaluar_exclusion(hid, tipo_unico, nivel)
+    if regla:
+        _registrar_hit(db, regla["id"])
+
+        # Si venía una alerta abierta de antes, se cierra: dejarla colgada
+        # significaría un ticket de Asana vivo para siempre.
+        if alerta and alerta.is_active == 1:
+            print(f"🔇 EXCLUIDA (cierre): {hid} -> {tipo_unico} [regla #{regla['id']}]")
+            if alerta.asana_task_gid and asana_conector:
+                asana_conector.cerrar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, ahora)
+            alerta.end_time = ahora
+            alerta.is_active = 0
+            alerta.mensaje = f"[EXCLUIDA] Regla #{regla['id']}: {mensaje}"
+            db.commit()
+            try:
+                requests.post("http://127.0.0.1:8001/api/internal/trigger-ws", timeout=1)
+            except Exception:
+                pass
+            return
+
+        if regla["accion"] == "total":
+            return  # ruido cero: ni DB ni Asana
+
+        # accion == "silencioso": queda el registro local, sin ticket
+        if not alerta or alerta.is_active == 0:
+            nueva = database.AlertaModel(
+                hospital_id=hid,
+                tipo=tipo_unico,
+                mensaje=f"[SILENCIADA][{nivel}] {mensaje}",
+                start_time=ahora,
+                is_active=1,
+                asana_task_gid=None,
+            )
+            db.add(nueva)
+            db.commit()
+        return
 
     # CASO A: PARAMETRO NORMALIZADO (OK)
     if nivel == "OK":
@@ -827,3 +874,107 @@ def verificar_estado_software(db: Session):
                 asana_proj_id=hosp.asana_project_id,
                 asana_followers=asana_followers
             )
+
+# =====================================================================
+# MOTOR DE EXCLUSIONES
+# =====================================================================
+
+def cargar_exclusiones(db):
+    """
+    Trae las reglas activas y no vencidas, ya compiladas.
+    Se llama UNA vez por tick desde procesar_offline().
+    """
+    global _EXCLUSIONES_CACHE, _EXCLUSIONES_TS
+    ahora = datetime.now()
+    reglas = []
+
+    try:
+        filas = db.query(database.AlertExclusionModel).filter(
+            database.AlertExclusionModel.enabled == True  # noqa: E712
+        ).all()
+    except Exception as e:
+        print(f"⚠️ [Exclusiones] No se pudieron cargar: {repr(e)}")
+        _EXCLUSIONES_CACHE = []
+        return []
+
+    for f in filas:
+        # Vencidas: se ignoran en caliente, no se borran (queda la auditoría)
+        if f.expires_at and f.expires_at <= ahora:
+            continue
+
+        compilado = None
+        if f.modo_match == "regex":
+            try:
+                compilado = re.compile(f.patron, re.IGNORECASE)
+            except re.error as e:
+                print(f"⚠️ [Exclusiones] Regla #{f.id} con regex inválida, se saltea: {e}")
+                continue
+
+        reglas.append({
+            "id": f.id,
+            "hospital_id": (f.hospital_id or "*").strip(),
+            "patron": (f.patron or "").strip(),
+            "patron_lower": (f.patron or "").strip().lower(),
+            "modo_match": f.modo_match or "prefix",
+            "accion": f.accion or "total",
+            "nivel_max": _ORDEN_NIVEL.get(f.nivel_max, 3),
+            "rx": compilado,
+        })
+
+    _EXCLUSIONES_CACHE = reglas
+    _EXCLUSIONES_TS = ahora
+    return reglas
+
+
+def _match_patron(tipo, regla):
+    t = (tipo or "").lower()
+    p = regla["patron_lower"]
+    modo = regla["modo_match"]
+
+    if modo == "exact":
+        return t == p
+    if modo == "contains":
+        return p in t
+    if modo == "regex":
+        return bool(regla["rx"] and regla["rx"].search(tipo or ""))
+    # default: prefix
+    return t.startswith(p)
+
+
+def evaluar_exclusion(hid, tipo, nivel):
+    """
+    Devuelve la regla que aplica, o None.
+
+    Gana la primera que matchea por especificidad: las reglas de hospital
+    puntual se evalúan antes que las globales ('*'), así una regla amplia
+    no pisa el criterio fino de un hospital.
+    """
+    if nivel == "OK" or not _EXCLUSIONES_CACHE:
+        return None
+
+    sev = _ORDEN_NIVEL.get(nivel, 3)
+
+    especificas = [r for r in _EXCLUSIONES_CACHE if r["hospital_id"] == hid]
+    globales = [r for r in _EXCLUSIONES_CACHE if r["hospital_id"] == "*"]
+
+    for regla in especificas + globales:
+        if sev > regla["nivel_max"]:
+            continue  # el hallazgo es más grave de lo que la regla suprime
+        if _match_patron(tipo, regla):
+            return regla
+    return None
+
+
+def _registrar_hit(db, regla_id):
+    """Contador de uso de la regla. Best-effort: si falla, no rompe el tick."""
+    try:
+        r = db.query(database.AlertExclusionModel).filter_by(id=regla_id).first()
+        if r:
+            r.hits = (r.hits or 0) + 1
+            r.last_hit = datetime.now()
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
