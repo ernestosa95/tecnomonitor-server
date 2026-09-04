@@ -391,7 +391,6 @@ async function cargarConfigUI() {
         const modsGuardadas = data.kpi_rad_modalities || "DX,CR,MG";
         kpiSelectedMods = modsGuardadas.split(',').map(m => m.trim()).filter(m => m);
 
-        // 🛠️ FIX 1: Faltaba cargar los campos de la Alerta 2 (Mamografía)
         const chkMamo = document.getElementById('kpi-mamo-enabled');
         if(chkMamo) chkMamo.checked = data.kpi_mamo_alert_enabled;
 
@@ -405,14 +404,20 @@ async function cargarConfigUI() {
         const inpMirthQueue = document.getElementById('mirth-queued-threshold');
         if(inpMirthQueue) inpMirthQueue.value = data.mirth_queued_threshold || 100;
 
-        // 🛠️ FIX 2: Llamar a esta función UNA SOLA VEZ con los 3 grupos de correos
+        // --- CAMPOS DICOM ---
+        const chkDicom = document.getElementById('dicom-alert-enabled');
+        if(chkDicom) chkDicom.checked = data.dicom_alert_enabled;
+
+        const inpDicomWarn = document.getElementById('dicom-warn-min');
+        if(inpDicomWarn) inpDicomWarn.value = data.dicom_stall_warning_minutes || 45;
+
+        const inpDicomCrit = document.getElementById('dicom-crit-min');
+        if(inpDicomCrit) inpDicomCrit.value = data.dicom_stall_critical_minutes || 120;
+
         cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email);
         
         renderKpiModsChips();
         initKpiModsSelector();
-        
-        // (SE ELIMINÓ LA LLAMADA REPETIDA A cargarUsuariosResponsables QUE BORRABA LA CONFIGURACIÓN DE MIRTH)
-        
         listarHospitalesConfig();
     } catch (e) { console.error(e); }
 }
@@ -445,11 +450,16 @@ async function guardarConfig() {
         kpi_mamo_alert_enabled: document.getElementById('kpi-mamo-enabled').checked,
         kpi_mamo_threshold_days: parseInt(document.getElementById('kpi-mamo-days').value) || 7,
 
-        // Dentro de la constante payload en guardarConfig()
         mirth_alert_enabled: document.getElementById('mirth-alert-enabled').checked,
         mirth_queued_threshold: parseInt(document.getElementById('mirth-queued-threshold').value) || 100,
         mirth_responsible_email: mirthSelectedUsers.join(','),
+
+        // --- CAMPOS DICOM ---
+        dicom_alert_enabled: document.getElementById('dicom-alert-enabled')?.checked || false,
+        dicom_stall_warning_minutes: parseInt(document.getElementById('dicom-warn-min')?.value) || 45,
+        dicom_stall_critical_minutes: parseInt(document.getElementById('dicom-crit-min')?.value) || 120,
     };
+    
     try {
         await authFetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         limitOfflineMinutes = payload.offline_minutes; 
@@ -3573,7 +3583,6 @@ function renderizarSoftware(data) {
 
     if (!container) return;
     
-    // Ocultamos la botonera vieja si existe suelta en el HTML
     const viejaBotonera = document.querySelector('#tab-logs > .chart-toggles');
     if (viejaBotonera) viejaBotonera.style.display = 'none';
 
@@ -3586,11 +3595,11 @@ function renderizarSoftware(data) {
         else if (data.metadata.minutos === 10080) textoTiempo = 'los últimos 7 días';
         
         if (data.metadata.minutos === 0) {
-            legend.innerHTML = `Tráfico <b style="color:#27ae60">${textoTiempo}</b> acumulado desde el último reinicio del servicio.`;
+            legend.innerHTML = `Tráfico <b style="color:var(--green)">${textoTiempo}</b> acumulado desde el último reinicio del servicio.`;
         } else if (!data.metadata.is_historical) {
             legend.innerHTML = `⚠️ Sin historial suficiente en este período. Mostrando solo valores actuales.`;
         } else {
-            legend.innerHTML = `Visualización en tiempo real de infraestructura, certificados y alertas.">${textoTiempo}</b>`;
+            legend.innerHTML = `<span style="color:var(--text);">Visualización de métricas y alertas para</span> <b style="color:var(--green)">${textoTiempo}</b>`;
         }
     }
 
@@ -3599,14 +3608,13 @@ function renderizarSoftware(data) {
     
     const hasMirth = data.mirth && Object.keys(data.mirth).length > 0;
     const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
-    const hasDicom = data.dicom_routing && data.dicom_routing.length > 0;   // 🆕 DICOM
-
+    const hasDicom = data.dicom_routing && data.dicom_routing.length > 0;
 
     if (!hasMirth && !hasSSL && !hasElastic && !hasDicom) {
         container.innerHTML = `
-            <div style="padding: 60px 20px; text-align: center; color: #7f8c8d;">
-                <h3 style="margin-top: 20px;">Sin Reportes</h3>
-                <p style="font-style: italic;">Este hospital no tiene moniteos de soft. actualmente.</p>
+            <div style="padding: 60px 20px; text-align: center; color: var(--muted);">
+                <h3 style="margin-top: 20px; color: var(--text);">Sin Reportes</h3>
+                <p style="font-style: italic;">Este hospital no tiene monitoreos de software actualmente.</p>
             </div>
         `;
         return;
@@ -3614,46 +3622,51 @@ function renderizarSoftware(data) {
 
     const isDark = document.body.classList.contains('dark-theme');
     const theadBg = isDark ? 'transparent' : '#fdfdfd';
+    
+    // Ícono Chevron reutilizable para el colapso
+    const chevronSvg = `<svg class="card-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.3s ease; margin-left:10px; color: var(--muted);"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 
     // ==========================================
     // --- 1. RENDER DE CERTIFICADOS SSL ---
     // ==========================================
     if (hasSSL) {
         let sslHtml = `
-            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #3498db;">
-                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; gap: 10px;" class="detail-card-header">
-                    <span style="font-size: 1.5em;">🔒</span>
-                    <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Certificados de Seguridad (SSL)</h3>
+            <div class="detail-card collapsed" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid var(--blue);">
+                <div style="padding: 15px 20px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content: space-between; cursor: pointer;" class="detail-card-header" onclick="toggleCard(this.parentElement)">
+                    <div style="display:flex; align-items:center; gap: 10px;">
+                        <span style="font-size: 1.5em;">🔒</span>
+                        <h3 style="margin:0; font-size:1.1em; color:var(--text); text-transform:none;">Certificados de Seguridad (SSL)</h3>
+                    </div>
+                    ${chevronSvg}
                 </div>
-                <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
-                    <table class="table-clean" style="margin:0; width:100%;">
-                        <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
-                            <tr>
-                                <th style="padding: 12px 20px;">URL / Dominio</th>
-                                <th style="padding: 12px 20px; text-align: center;">Estado</th>
-                                <th style="padding: 12px 20px;">Emisor</th>
-                                <th style="padding: 12px 20px;">Expiración</th>
-                                <th style="padding: 12px 20px; text-align: right;">Días Restantes</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                <div class="detail-card-body" style="padding: 0;">
+                    <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
+                        <table class="table-clean" style="margin:0; width:100%;">
+                            <thead style="background: var(--surface2); border-bottom: 1px solid var(--border);">
+                                <tr>
+                                    <th style="padding: 12px 20px; color: var(--muted2);">URL / Dominio</th>
+                                    <th style="padding: 12px 20px; text-align: center; color: var(--muted2);">Estado</th>
+                                    <th style="padding: 12px 20px; color: var(--muted2);">Emisor</th>
+                                    <th style="padding: 12px 20px; color: var(--muted2);">Expiración</th>
+                                    <th style="padding: 12px 20px; text-align: right; color: var(--muted2);">Días Restantes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
         `;
         
         data.ssl_certificates.forEach(cert => {
             const days = cert.days_remaining;
-            let daysColor = '#27ae60'; let daysBg = 'rgba(39, 174, 96, 0.15)';
+            let daysColor = 'var(--green)'; let daysBg = 'rgba(0, 229, 160, 0.12)';
             let statusText = cert.status || 'OK';
             
-            // Lógica de Semáforo de días restantes
             if (days < 15 || statusText.toUpperCase() !== 'OK') {
-                daysColor = '#e74c3c'; daysBg = 'rgba(231, 76, 60, 0.15)';
+                daysColor = 'var(--red)'; daysBg = 'rgba(255, 92, 92, 0.12)';
                 if(statusText.toUpperCase() === 'OK') statusText = 'CRITICAL';
             } else if (days <= 30) {
-                daysColor = '#f39c12'; daysBg = 'rgba(243, 156, 18, 0.15)';
+                daysColor = 'var(--amber)'; daysBg = 'rgba(255, 169, 64, 0.12)';
                 if(statusText.toUpperCase() === 'OK') statusText = 'WARNING';
             }
 
-            // Formateo visual de fecha
             let expDateVisual = cert.expiration_date;
             if (expDateVisual) {
                 try {
@@ -3663,20 +3676,20 @@ function renderizarSoftware(data) {
             }
 
             sslHtml += `
-                <tr style="border-bottom: 1px solid #f1f5f8;">
-                    <td style="padding: 12px 20px; font-weight: 600; color: #2c3e50;">${cert.url}</td>
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding: 12px 20px; font-weight: 600; color: var(--text);">${cert.url}</td>
                     <td style="padding: 12px 20px; text-align: center;">
                         <span style="color: ${daysColor}; background: ${daysBg}; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; border: 1px solid ${daysColor}40;">${statusText}</span>
                     </td>
-                    <td style="padding: 12px 20px; color: #7f8c8d;">${cert.issuer || '-'}</td>
-                    <td style="padding: 12px 20px; color: #34495e; font-family: monospace;">${expDateVisual || '-'}</td>
+                    <td style="padding: 12px 20px; color: var(--muted);">${cert.issuer || '-'}</td>
+                    <td style="padding: 12px 20px; color: var(--text); font-family: monospace;">${expDateVisual || '-'}</td>
                     <td style="padding: 12px 20px; text-align: right;">
                         <span style="color: ${daysColor}; font-weight: 900; font-size: 1.1em;">${days}</span>
                     </td>
                 </tr>
             `;
         });
-        sslHtml += `</tbody></table></div></div>`;
+        sslHtml += `</tbody></table></div></div></div>`;
         html += sslHtml;
     }
 
@@ -3687,17 +3700,15 @@ function renderizarSoftware(data) {
         Object.keys(data.mirth).forEach(instancia => {
             const canales = data.mirth[instancia];
             
-            // 1. Tarjeta, Cabecera y Botones Integrados (Métrica + Tiempo)
             html += `
-                <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #f39c12;">
-                    <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;" class="detail-card-header">
+                <div class="detail-card collapsed" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid var(--amber);">
+                    <div style="padding: 15px 20px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px; cursor: pointer;" class="detail-card-header" onclick="toggleCard(this.parentElement)">
                         <div style="display:flex; align-items:center; gap: 10px;">
                             <span style="font-size: 1.5em;">🔄</span>
-                            <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Mirth Connect: <span style="color: #f39c12;">${instancia}</span></h3>
+                            <h3 style="margin:0; font-size:1.1em; color:var(--text); text-transform:none;">Mirth Connect: <span style="color: var(--amber);">${instancia}</span></h3>
                         </div>
                         
-                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
-                            
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
                             <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
                                 <button class="chart-btn mirth-metric-btn_${instancia} active" onclick="seleccionarMetricaMirth('traffic', '${instancia}', this)">Tráfico</button>
                                 <button class="chart-btn mirth-metric-btn_${instancia}" onclick="seleccionarMetricaMirth('queued', '${instancia}', this)">Encolados</button>
@@ -3710,36 +3721,33 @@ function renderizarSoftware(data) {
                                 <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
                                 <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
                             </div>
+                            ${chevronSvg}
                         </div>
                     </div>
                     
-                    <div style="padding: 20px; border-bottom: 1px solid #eee;">
-                        <div style="height: 250px; width: 100%; position: relative;">
-                            ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(255,255,255,0.8); z-index:10; color:#7f8c8d; font-weight:bold;">Seleccione un rango de tiempo para ver la evolución gráfica.</div>' : ''}
-                            <canvas id="mirthChart_${instancia}"></canvas>
+                    <div class="detail-card-body" style="padding: 0;">
+                        <div style="padding: 20px; border-bottom: 1px solid var(--border);">
+                            <div style="height: 250px; width: 100%; position: relative;">
+                                ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); z-index:10; color:var(--text); font-weight:bold;">Seleccione un rango de tiempo para ver la evolución gráfica.</div>' : ''}
+                                <canvas id="mirthChart_${instancia}"></canvas>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="mirth-pills-grid">
+                        <div class="mirth-pills-grid">
             `;
             
-            // 2. Grilla de Estado Actual (Pills)
             canales.forEach(c => {
                 const status = (c.status || '').toUpperCase();
-                let dotColor = '#95a5a6';
-                if (status === 'STARTED') dotColor = '#27ae60';
-                else if (status === 'STOPPED') dotColor = '#e74c3c';
-                else if (status === 'PAUSED') dotColor = '#f39c12';
-                else if (status === 'ERROR') dotColor = '#c0392b';
+                let dotColor = 'var(--muted2)';
+                if (status === 'STARTED') dotColor = 'var(--green)';
+                else if (status === 'STOPPED') dotColor = 'var(--red)';
+                else if (status === 'PAUSED') dotColor = 'var(--amber)';
+                else if (status === 'ERROR') dotColor = 'var(--red)';
                 
-                // Si hay encolados, el fondo pasa a rojo para alertar
-                const qBg = c.queued > 0 ? '#e74c3c' : '#ecf0f1';
-                const qColor = c.queued > 0 ? 'white' : '#7f8c8d';
+                const qBg = c.queued > 0 ? 'var(--red-dim)' : 'var(--surface2)';
+                const qColor = c.queued > 0 ? 'var(--red)' : 'var(--muted)';
 
-                // Texto base de Tráfico
                 let badgeText = `Rec.: ${c.received.toLocaleString('es-AR')} | Env.: ${c.sent.toLocaleString('es-AR')}`;
-                
-                // Si hay encolados sumamos la alerta
                 if (c.queued > 0) {
                     badgeText += ` 🚨 (Encolados: ${c.queued.toLocaleString('es-AR')})`;
                 }
@@ -3756,7 +3764,7 @@ function renderizarSoftware(data) {
                     </div>
                 `;
             });
-            html += `</div></div>`; // Cierre grid y card
+            html += `</div></div></div>`; 
         });
     }
 
@@ -3765,54 +3773,54 @@ function renderizarSoftware(data) {
     // ==========================================
     if (hasElastic) {
         let esHtml = `
-            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #8e44ad;">
-                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;" class="detail-card-header">
+            <div class="detail-card collapsed" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid var(--purple);">
+                <div style="padding: 15px 20px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px; cursor: pointer;" class="detail-card-header" onclick="toggleCard(this.parentElement)">
                     <div style="display:flex; align-items:center; gap: 10px;">
                         <span style="font-size: 1.5em;">🔎</span>
-                        <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Logs de Suitestensa (ElasticSearch)</h3>
+                        <h3 style="margin:0; font-size:1.1em; color:var(--text); text-transform:none;">Logs de Suitestensa (ElasticSearch)</h3>
                     </div>
                     
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
                         <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
                             <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
                             <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
                             <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
                             <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
                         </div>
+                        ${chevronSvg}
                     </div>
                 </div>
                 
-                <div style="padding: 20px; border-bottom: 1px solid #eee;">
-                    <div style="height: 250px; width: 100%; position: relative;">
-                        ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(255,255,255,0.8); z-index:10; color:#7f8c8d; font-weight:bold;">Seleccione un rango de tiempo para ver la evolución gráfica.</div>' : ''}
-                        <canvas id="elasticChart"></canvas>
+                <div class="detail-card-body" style="padding: 0;">
+                    <div style="padding: 20px; border-bottom: 1px solid var(--border);">
+                        <div style="height: 250px; width: 100%; position: relative;">
+                            ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); z-index:10; color:var(--text); font-weight:bold;">Seleccione un rango de tiempo para ver la evolución gráfica.</div>' : ''}
+                            <canvas id="elasticChart"></canvas>
+                        </div>
                     </div>
-                </div>
 
-                <div class="mirth-pills-grid">
+                    <div class="mirth-pills-grid">
         `;
         
         data.elasticsearch.forEach(log => {
-            let sevColor = '#3498db'; let sevBg = '#ecf0f1';
+            let sevColor = 'var(--blue)'; let sevBg = 'rgba(74, 143, 255, 0.12)';
             const sev = (log.severity || '').toUpperCase();
             
-            // Lógica de semáforo de colores según criticidad
-            if (sev === 'HIGH' || sev === 'CRITICAL') { sevColor = '#e74c3c'; sevBg = '#fdedec'; }
-            else if (sev === 'MEDIUM' || sev === 'WARNING') { sevColor = '#f39c12'; sevBg = '#fef5e7'; }
-            else if (sev === 'LOW' || sev === 'INFO') { sevColor = '#27ae60'; sevBg = '#eafaf1'; }
+            if (sev === 'HIGH' || sev === 'CRITICAL') { sevColor = 'var(--red)'; sevBg = 'var(--red-dim)'; }
+            else if (sev === 'MEDIUM' || sev === 'WARNING') { sevColor = 'var(--amber)'; sevBg = 'var(--amber-dim)'; }
+            else if (sev === 'LOW' || sev === 'INFO') { sevColor = 'var(--green)'; sevBg = 'var(--green-dim)'; }
 
-            // Generar pastilla (pill) para cada error con flexbox interno y botón integrado
             esHtml += `
                 <div class="mirth-pill" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px;">
                     <div style="display:flex; align-items: center; gap: 10px; overflow:hidden; flex-grow: 1;">
                         <div class="mirth-dot" style="background: ${sevColor}; flex-shrink: 0;" title="Severidad: ${sev}"></div>
-                        <span class="mirth-pill-name" style="font-family: monospace; font-weight: bold; color: #2c3e50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${log.rule_id}</span>
+                        <span class="mirth-pill-name" style="font-family: monospace; font-weight: bold; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${log.rule_id}</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                         <div style="background: ${sevBg}; color: ${sevColor}; padding: 3px 8px; border-radius: 12px; font-size: 0.75em; font-weight: bold; white-space: nowrap;">
                             Eventos: ${log.count}
                         </div>
-                        <button onclick="abrirModalDetalleLog('${log.rule_id}')" class="chart-btn" style="padding: 3px 8px; font-size: 0.75em; margin: 0; background: #34495e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: 0.2s;" onmouseover="this.style.background='#2c3e50'" onmouseout="this.style.background='#34495e'">
+                        <button onclick="abrirModalDetalleLog('${log.rule_id}')" class="chart-btn" style="padding: 3px 8px; font-size: 0.75em; margin: 0; background: var(--surface3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-weight: 600; transition: 0.2s;" onmouseover="this.style.background='var(--blue)'; this.style.color='#fff';" onmouseout="this.style.background='var(--surface3)'; this.style.color='var(--text)';">
                             Ver detalles
                         </button>
                     </div>
@@ -3820,7 +3828,7 @@ function renderizarSoftware(data) {
             `;
         });
         
-        esHtml += `</div></div>`; // Cierra grid y card
+        esHtml += `</div></div></div>`; 
         html += esHtml;
     }
 
@@ -3829,101 +3837,107 @@ function renderizarSoftware(data) {
     // ==========================================
     if (hasDicom) {
         let dicomHtml = `
-            <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid #16a085;">
-                <div style="padding: 15px 20px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;" class="detail-card-header">
+            <div class="detail-card collapsed" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid var(--green);">
+                <div style="padding: 15px 20px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px; cursor: pointer;" class="detail-card-header" onclick="toggleCard(this.parentElement)">
                     <div style="display:flex; align-items:center; gap: 10px;">
                         <span style="font-size: 1.5em;">📡</span>
-                        <h3 style="margin:0; font-size:1.1em; color:#2c3e50;">Auto-Enrutado DICOM <span style="color:#16a085;">(Colas de envío)</span></h3>
+                        <h3 style="margin:0; font-size:1.1em; color:var(--text); text-transform:none;">Auto-Enrutado DICOM <span style="color:var(--green);">(Colas de envío)</span></h3>
                     </div>
-                    <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
-                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
-                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
-                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
-                        <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
-                    </div>
-                </div>
-
-                <div style="padding: 20px; border-bottom: 1px solid #eee;">
-                    <div style="height: 260px; width: 100%; position: relative;">
-                        ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(255,255,255,0.8); z-index:10; color:#7f8c8d; font-weight:bold; text-align:center; padding:0 20px;">Seleccione un rango de tiempo para ver la evolución de las colas.</div>' : ''}
-                        <canvas id="dicomChart"></canvas>
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
+                        <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
+                        </div>
+                        ${chevronSvg}
                     </div>
                 </div>
 
-                <div class="table-container-island" style="margin:0; padding: 0; box-shadow: none; border-radius: 0;">
-                    <table class="table-clean" style="margin:0; width:100%;">
-                        <thead style="background: ${theadBg}; border-bottom: 2px solid #eee;">
-                            <tr>
-                                <th style="padding: 12px 20px;">Regla</th>
-                                <th style="padding: 12px 20px;">Origen → Destino</th>
-                                <th style="padding: 12px 20px; text-align: center;">Pendientes</th>
-                                <th style="padding: 12px 20px; text-align: center;">Pico</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                <div class="detail-card-body" style="padding: 0;">
+                    <div style="padding: 20px; border-bottom: 1px solid var(--border);">
+                        <div style="height: 260px; width: 100%; position: relative;">
+                            ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); z-index:10; color:var(--text); font-weight:bold; text-align:center; padding:0 20px;">Seleccione un rango de tiempo para ver la evolución de las colas.</div>' : ''}
+                            <canvas id="dicomChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 12px; padding: 16px; max-height: 340px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; background: var(--bg);">
         `;
 
-        // Ordenamos por pendientes desc para que lo problemático quede arriba
         const reglasOrdenadas = [...data.dicom_routing].sort((a, b) => (b.pending_instances || 0) - (a.pending_instances || 0));
 
         reglasOrdenadas.forEach(regla => {
             const pend = regla.pending_instances || 0;
-            const estado = (regla.status || 'OK').toUpperCase();
+            const estado = (regla.status || 'SIN_DATOS').toUpperCase();
 
-            // Semáforo
-            let color = '#27ae60', bg = 'rgba(39, 174, 96, 0.15)';
-            if (estado === 'CRITICAL') { color = '#e74c3c'; bg = 'rgba(231, 76, 60, 0.15)'; }
-            else if (estado === 'WARNING') { color = '#f39c12'; bg = 'rgba(243, 156, 18, 0.15)'; }
+            let color = 'var(--muted)', bg = 'var(--surface)'; 
+            if (estado === 'OK') { 
+                color = 'var(--green)'; 
+                bg = 'rgba(0, 229, 160, 0.08)'; 
+            } else if (estado === 'WARNING') { 
+                color = 'var(--amber)'; 
+                bg = 'rgba(255, 169, 64, 0.08)'; 
+            } else if (estado === 'CRITICAL') { 
+                color = 'var(--red)'; 
+                bg = 'rgba(255, 92, 92, 0.08)'; 
+            }
 
             const oNick = (regla.from_node && (regla.from_node.nickname || regla.from_node.hostname)) || '?';
             const oHost = (regla.from_node && regla.from_node.hostname) || '';
             const dNick = (regla.to_node && (regla.to_node.nickname || regla.to_node.hostname)) || '?';
             const dHost = (regla.to_node && regla.to_node.hostname) || '';
 
-            // Badge de estancamiento: la señal realmente valiosa
             const estancadaBadge = regla.estancada
-                ? `<span title="La cola no se mueve: mismo valor sostenido" style="display:inline-block; margin-left:6px; background:#e74c3c; color:white; padding:2px 8px; border-radius:10px; font-size:0.7em; font-weight:bold;">⚠ ESTANCADA</span>`
+                ? `<span title="La cola no se mueve" style="display:inline-block; margin-left:6px; background:var(--red); color:#000; padding:2px 6px; border-radius:4px; font-size:0.7em; font-weight:800;">⚠ ESTANCADA</span>`
                 : '';
 
             dicomHtml += `
-                <tr style="border-bottom: 1px solid #f1f5f8;">
-                    <td style="padding: 12px 20px; font-family: monospace; font-weight: 700; color: #16a085;">#${regla.id_rule}</td>
-                    <td style="padding: 12px 20px; color:#2c3e50;">
-                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            <div>
-                                <div style="font-weight:600;">${oNick}</div>
-                                <div style="font-size:0.78em; color:#95a5a6; font-family:monospace;">${oHost}</div>
-                            </div>
-                            <span style="color:#16a085; font-size:1.2em; font-weight:bold;">→</span>
-                            <div>
-                                <div style="font-weight:600;">${dNick}</div>
-                                <div style="font-size:0.78em; color:#95a5a6; font-family:monospace;">${dHost}</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td style="padding: 12px 20px; text-align:center;">
-                        <span style="color:${color}; background:${bg}; padding:4px 12px; border-radius:12px; font-weight:900; font-size:1.05em; border:1px solid ${color}40;">${pend.toLocaleString('es-AR')}</span>
-                    </td>
-                    <td style="padding: 12px 20px; text-align:center; color:#7f8c8d; font-weight:600;">${(regla.pico || 0).toLocaleString('es-AR')}</td>
+                <div class="mirth-pill" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; width: 100%; box-sizing: border-box; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius2); transition: border-color 0.2s, transform 0.2s;" onmouseover="this.style.borderColor='${color}'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)'; this.style.transform='none'">
                     
-                </tr>
+                    <div style="display:flex; align-items: center; gap: 10px; overflow:hidden; flex-grow: 1;">
+                        <div class="mirth-dot" style="background: ${color}; flex-shrink: 0; box-shadow: 0 0 6px ${color}80;" title="Estado: ${estado}"></div>
+                        <span style="font-family: monospace; font-weight: 800; color: var(--green); white-space: nowrap; font-size: 0.9em;">#${regla.id_rule}</span>
+                        
+                        <div style="display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; font-size: 0.85em; margin-left: 4px;">
+                            <div style="display:flex; align-items:baseline; gap:4px;">
+                                <span style="font-weight:600; color: var(--text);">${oNick}</span>
+                                <span style="font-size:0.85em; color:var(--muted); font-family:monospace;">${oHost}</span>
+                            </div>
+                            <span style="color:var(--muted); font-size:0.9em; font-weight:bold;">→</span>
+                            <div style="display:flex; align-items:baseline; gap:4px;">
+                                <span style="font-weight:600; color: var(--text);">${dNick}</span>
+                                <span style="font-size:0.85em; color:var(--muted); font-family:monospace;">${dHost}</span>
+                            </div>
+                            ${estancadaBadge}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                        <div style="color: var(--muted); font-size: 0.8em; font-weight: 600; white-space: nowrap;">
+                            Pico: ${(regla.pico || 0).toLocaleString('es-AR')}
+                        </div>
+                        <div style="background: ${bg}; color: ${color}; padding: 4px 10px; border-radius: 6px; font-size: 0.85em; font-weight: 800; white-space: nowrap; border: 1px solid ${color}40;">
+                            Pendientes: ${pend.toLocaleString('es-AR')}
+                        </div>
+                    </div>
+
+                </div>
             `;
         });
 
-        dicomHtml += `</tbody></table></div></div>`;
+        dicomHtml += `</div></div></div>`;
         html += dicomHtml;
     }
     
-    container.innerHTML += html; // Añade el HTML al DOM
+    container.innerHTML += html;
     
-    // Disparamos el dibujo del gráfico una vez que el canvas existe en el DOM
     if (hasMirth) {
         Object.keys(data.mirth).forEach(instancia => {
             dibujarGraficoMirth(instancia);
         });
     }
     
-    // --- AGREGAR LLAMADA AL GRÁFICO ELASTIC ---
     if (hasElastic) {
         dibujarGraficoElastic(data);
     }

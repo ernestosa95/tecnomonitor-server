@@ -97,7 +97,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
             h_id = raw_body.get("envelope", {}).get("hospital_id")
             if h_id == "H45":
                 logger.info("🔔 [DEBUG H45] Capturado reporte entrante:")
-                print(json.dumps(raw_body, indent=2))
+                # print(json.dumps(raw_body, indent=2))
         # =========================================================
     except ClientDisconnect:
         logger.warning("⚠️ [Ingesta] Cliente desconectado a mitad del envío.")

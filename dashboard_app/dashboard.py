@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import requests   # usado en _cerrar_alertas_por_regla() para el trigger del WebSocket
 import database
 import matplotlib.dates as mdates
 from database import HospitalMetadata, HistorialReportes, AlertaModel, ReporteModel
@@ -209,6 +210,16 @@ class ConfigRequest(BaseModel):
     mirth_alert_enabled: bool
     mirth_queued_threshold: int
     mirth_responsible_email: str
+
+    # --- Parametros Autoenrute DICOM ---
+    # Con default: un cliente viejo (script.js sin actualizar) sigue pudiendo
+    # guardar la configuración sin recibir un 422 por campos faltantes.
+    dicom_alert_enabled: bool = False
+    dicom_stall_warning_minutes: int = 45
+    dicom_stall_critical_minutes: int = 120
+    dicom_min_instances: int = 50
+    dicom_drain_percent: int = 70
+    dicom_responsible_email: str = ""
 
 class ExclusionRequest(BaseModel):
     hospital_id: str = "*"
@@ -710,7 +721,17 @@ def obtener_configuracion(db: Session = Depends(get_db),
         # --- NUEVAS CONFIGURACIONES DE MIRTH ---
         "mirth_alert_enabled": g("mirth_alert_enabled", False, is_bool=True),
         "mirth_queued_threshold": g("mirth_queued_threshold", 100),
-        "mirth_responsible_email": g("mirth_responsible_email", "")
+        "mirth_responsible_email": g("mirth_responsible_email", ""),
+
+        # --- AUTOENRUTE DICOM ---
+        # ⚠️ Estos defaults DEBEN coincidir con los de alerts_engine.cargar_config().
+        # Si divergen, el panel muestra un número y el motor usa otro.
+        "dicom_alert_enabled": g("dicom_alert_enabled", False, is_bool=True),
+        "dicom_stall_warning_minutes": g("dicom_stall_warning_minutes", 45),
+        "dicom_stall_critical_minutes": g("dicom_stall_critical_minutes", 120),
+        "dicom_min_instances": g("dicom_min_instances", 50),
+        "dicom_drain_percent": g("dicom_drain_percent", 70),
+        "dicom_responsible_email": g("dicom_responsible_email", "")
     }
 
 
@@ -748,6 +769,14 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("mirth_alert_enabled", cfg.mirth_alert_enabled)
     s("mirth_queued_threshold", cfg.mirth_queued_threshold)
     s("mirth_responsible_email", cfg.mirth_responsible_email)
+
+    # --- GUARDAR CONFIGURACIONES DE AUTOENRUTE DICOM ---
+    s("dicom_alert_enabled", cfg.dicom_alert_enabled)
+    s("dicom_stall_warning_minutes", cfg.dicom_stall_warning_minutes)
+    s("dicom_stall_critical_minutes", cfg.dicom_stall_critical_minutes)
+    s("dicom_min_instances", cfg.dicom_min_instances)
+    s("dicom_drain_percent", cfg.dicom_drain_percent)
+    s("dicom_responsible_email", cfg.dicom_responsible_email)
     
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}
@@ -1450,6 +1479,105 @@ def solicitar_acceso(req: UserAccessRequest):
     else:
         raise HTTPException(status_code=500, detail="Error al conectar con Asana")
 
+
+# ============================================================
+# ESTADO DE SALUD DE LAS COLAS DE AUTOENRUTE DICOM
+# ------------------------------------------------------------
+# Por qué esto vive en su propia función y con su propia query:
+#
+# 1) El estado NO puede depender del filtro de tiempo del panel. Antes se
+#    calculaba sobre `history`, que es el resultado de la query filtrada por
+#    `minutos`; con `minutos == 0` esa query devuelve UN registro por regla
+#    (rn = 1), así que el estancamiento no se evaluaba nunca, y al pasar de
+#    24H a 7D el mismo hospital podía mostrar estados distintos en el mismo
+#    instante. La salud de una ruta no cambia según el zoom.
+#
+# 2) El criterio lo pone alerts_engine.evaluar_cola_dicom(), no una copia
+#    local. Si el panel recalculara con su propia lógica, tarde o temprano
+#    mostraría verde con un ticket abierto en Asana, o al revés.
+# ============================================================
+def _estado_colas_dicom(db: Session, hospital_id: str):
+    """
+    Devuelve {component_id: {"status", "estancada", "creciendo", "sin_datos"}}
+    con ventana fija, independiente de lo que esté mirando el usuario.
+    """
+    try:
+        cfg = alerts_engine.cargar_config(db)
+    except Exception:
+        cfg = {}
+
+    win_crit = int(cfg.get('dicom_stall_critical_minutes', 120) or 120)
+    win_warn = int(cfg.get('dicom_stall_warning_minutes', 45) or 45)
+    min_inst = int(cfg.get('dicom_min_instances', 50) or 0)
+    drain_pct = int(cfg.get('dicom_drain_percent', 70) or 70)
+
+    ahora = datetime.now()
+    desde = ahora - timedelta(minutes=win_crit * 1.5)
+
+    filas = db.execute(text("""
+        SELECT component_id, metric_value, timestamp
+        FROM software_monitoring
+        WHERE hospital_id = :hid
+          AND app_name = 'dicom_routing'
+          AND timestamp >= :desde
+        ORDER BY component_id, timestamp ASC
+    """), {"hid": hospital_id, "desde": desde}).fetchall()
+
+    por_regla = {}
+    for f in filas:
+        por_regla.setdefault(f.component_id, []).append(f)
+
+    estados = {}
+    for id_rule, historia in por_regla.items():
+        valores, timestamps = alerts_engine._serie_de(historia)
+        
+        nivel = None
+        det = {"estancada": False, "creciendo": False, "minimo_ventana": 0, "ventana_minutos": win_warn}
+        
+        if not valores:
+            estados[id_rule] = {"status": "SIN_DATOS", "estancada": False, "creciendo": False, "minimo_ventana": 0, "ventana_minutos": win_warn, "sin_datos": True}
+            continue
+            
+        actual = valores[-1]
+        
+        if actual <= 0 or actual < min_inst:
+            nivel = "OK"
+        else:
+            v_crit, cubre_crit = alerts_engine._ventana(valores, timestamps, win_crit, ahora)
+            v_warn, cubre_warn = alerts_engine._ventana(valores, timestamps, win_warn, ahora)
+            
+            if not cubre_warn:
+                nivel = None  # SIN_DATOS
+            else:
+                drena_warn = alerts_engine._drena(v_warn, drain_pct)
+                drena_crit = alerts_engine._drena(v_crit, drain_pct) if cubre_crit else True
+                
+                det["minimo_ventana"] = min(v_warn) if v_warn else 0
+                
+                if not drena_crit:
+                    nivel = "CRITICAL"
+                    det["creciendo"] = actual >= v_crit[0] if v_crit else False
+                    det["estancada"] = not det["creciendo"]
+                    det["ventana_minutos"] = win_crit
+                    det["minimo_ventana"] = min(v_crit) if v_crit else 0
+                elif not drena_warn:
+                    nivel = "WARNING"
+                    det["creciendo"] = actual >= v_warn[0] if v_warn else False
+                    det["estancada"] = not det["creciendo"]
+                else:
+                    nivel = "OK"
+
+        estados[id_rule] = {
+            "status": nivel or "SIN_DATOS",
+            "estancada": bool(det.get("estancada")),
+            "creciendo": bool(det.get("creciendo")),
+            "minimo_ventana": det.get("minimo_ventana"),
+            "ventana_minutos": det.get("ventana_minutos"),
+            "sin_datos": nivel is None,
+        }
+        
+    return estados
+
 @app.get("/api/hospital/{hospital_id}/software")
 def obtener_estado_software(hospital_id: str, minutos: int = 0,
                             db: Session = Depends(get_db),
@@ -1600,7 +1728,9 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
     # 5. PROCESAMOS ELASTICSEARCH
     for rule_id, history in elastic_logs.items():
         if not history: continue
-        history.sort(key=lambda x: x.timestamp if x.timestamp else datetime.min)
+        
+        # FIX: Se convierte explícitamente a string para evitar el TypeError
+        history.sort(key=lambda x: str(x.timestamp) if x.timestamp else "")
 
         actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
@@ -1636,23 +1766,27 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             "history": historial_regla
         })
 
+    # ==========================================================
     # 6. 🆕 DICOM — COLAS DE AUTO-ENRUTADO
-    #    pending_instances es un GAUGE (nivel actual), no un contador acumulado:
-    #    NO se calculan deltas como en Mirth. Serie = valor absoluto.
-    conf_w = db.execute(text("SELECT valor FROM configuracion WHERE clave = 'dicom_routing_warning'")).fetchone()
-    conf_c = db.execute(text("SELECT valor FROM configuracion WHERE clave = 'dicom_routing_critical'")).fetchone()
-    try:
-        WARN = int(conf_w.valor) if conf_w and conf_w.valor is not None else 50
-    except (ValueError, TypeError):
-        WARN = 50
-    try:
-        CRIT = int(conf_c.valor) if conf_c and conf_c.valor is not None else 200
-    except (ValueError, TypeError):
-        CRIT = 200
+    # ----------------------------------------------------------
+    # pending_instances es un GAUGE (nivel actual), no un contador acumulado:
+    # NO se calculan deltas como en Mirth. La serie es el valor absoluto.
+    #
+    # El ESTADO sale de _estado_colas_dicom() (ventana fija + criterio del
+    # motor de alertas). La serie del gráfico sí respeta el filtro de tiempo,
+    # porque ahí el usuario efectivamente elige qué período mirar.
+    # ==========================================================
+    estados_dicom = _estado_colas_dicom(db, hospital_id) if colas_dicom else {}
+
+    # Etiqueta del rango visible, para que "Pico" no se lea como valor actual.
+    _LABEL_RANGO = {0: "histórico", 30: "30 min", 60: "1 h", 1440: "24 h", 10080: "7 días"}
+    pico_label = _LABEL_RANGO.get(minutos, f"{minutos} min")
 
     for id_rule, history in colas_dicom.items():
         if not history: continue
-        history.sort(key=lambda x: x.timestamp if x.timestamp else datetime.min)
+        
+        # FIX: Se convierte explícitamente a string para evitar el TypeError
+        history.sort(key=lambda x: str(x.timestamp) if x.timestamp else "")
 
         actual = history[-1]
         extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
@@ -1662,16 +1796,9 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         except (ValueError, TypeError):
             pendientes = 0
 
-        # Estancamiento: mismo valor > 0 sostenido en los últimos snapshots = la cola no drena
-        ultimos = []
-        for h in history[-6:]:
-            try:
-                ultimos.append(int(h.metric_value or 0))
-            except (ValueError, TypeError):
-                ultimos.append(0)
-        estancada = len(ultimos) >= 3 and pendientes > 0 and len(set(ultimos)) == 1
-
-        # Serie histórica (valor absoluto)
+        # Serie histórica (valor absoluto). Los huecos NO se rellenan con 0:
+        # una caída a cero en el gráfico se lee como "la cola se destrabó",
+        # que es exactamente lo contrario de lo que pasó.
         historial_regla = []
         for row in history:
             ts_str = ""
@@ -1683,7 +1810,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             try:
                 v = int(row.metric_value or 0)
             except (ValueError, TypeError):
-                v = 0
+                v = None
             historial_regla.append({"ts": ts_str, "pending": v})
 
         try:
@@ -1691,12 +1818,8 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         except (ValueError, TypeError):
             pico = pendientes
 
-        if pendientes >= CRIT or estancada:
-            estado = "CRITICAL"
-        elif pendientes >= WARN:
-            estado = "WARNING"
-        else:
-            estado = "OK"
+        est = estados_dicom.get(id_rule, {})
+        estado = est.get("status", "SIN_DATOS")
 
         software_data["dicom_routing"].append({
             "id_rule": id_rule,
@@ -1711,12 +1834,18 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             },
             "pending_instances": pendientes,
             "status": estado,
-            "estancada": estancada,
+            "estancada": est.get("estancada", False),
+            "creciendo": est.get("creciendo", False),
+            "sin_datos": est.get("sin_datos", True),
+            "minimo_ventana": est.get("minimo_ventana"),
+            "ventana_minutos": est.get("ventana_minutos"),
             "pico": pico,
+            "pico_label": pico_label,
             "history": historial_regla
         })
 
     return software_data
+
 
 @app.post("/v1/generar-reporte-ris")
 async def api_generar_reporte_ris(
@@ -2515,4 +2644,3 @@ def _cerrar_alertas_por_regla(db, fila):
         except Exception:
             pass
     return n
-
