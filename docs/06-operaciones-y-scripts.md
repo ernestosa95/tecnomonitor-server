@@ -109,3 +109,10 @@ archivo de 2910 líneas) se reorganizó en `dashboard_app/core.py` + 10 módulos
 [01-arquitectura.md §2bis](01-arquitectura.md#2bis-cómo-está-organizado-dashboard_app-por-dentro)
 para el resumen. Al desplegar cambios sobre el dashboard web, tené en cuenta que el archivo
 relevante para una ruta puntual probablemente ya no sea `dashboard.py`.
+
+Mismo criterio aplicado al motor de alertas: `dashboard_app/alerts_engine.py` (era un
+único archivo de 1226 líneas) ahora es el paquete `dashboard_app/alerts_engine/`
+(`config.py`, `estado.py`, `exclusiones.py`, `infra.py`, `kpis_negocio/`, `software/`,
+`orquestador.py`). El archivo viejo ya no existe -- si el despliegue es por copia de
+archivos (no git), hay que borrarlo del servidor explícitamente, no alcanza con subir la
+carpeta nueva al lado. Ver [09-plan-refactor-alertas.md](09-plan-refactor-alertas.md).

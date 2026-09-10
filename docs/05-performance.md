@@ -38,7 +38,9 @@ requests HTTP y los WebSockets del proceso.
 
 Estas tres funciones hacen consultas SQL síncronas (`sqlalchemy` con SQLite, rápidas en
 general) **y llamadas HTTP síncronas a la API de Asana** vía
-`asana_conector.crear_tarea_alerta` (`dashboard_app/alerts_engine.py:548,564,590,600,810`),
+`asana_conector.crear_tarea_alerta` (llamado desde `dashboard_app/alerts_engine/estado.py`
+y `kpis_negocio/_runner.py` tras la reorganización en paquete — ver
+[09-plan-refactor-alertas.md](09-plan-refactor-alertas.md)),
 usando el SDK sync de `asana` — cada llamada puede tardar cientos de ms a varios segundos
 si Asana está lenta o hay retries. Además, varias de estas llamadas están **dentro de loops
 por hospital** (`for hosp in hospitales_ris`, `for hosp in hospitales_activos`), por lo que
@@ -96,8 +98,9 @@ diario/mensual.
 
 ## <a name="p3"></a>P3 — MEDIUM — N+1 queries en la verificación de software por hospital
 
-**Dónde**: `dashboard_app/alerts_engine.py:857-875` (`_verificar_mirth`) y patrones
-análogos en `verificar_estado_software` (líneas 820-1141): loops `for hosp in
+**Dónde**: `dashboard_app/alerts_engine/software/mirth.py` (`verificar_mirth`, movida ahí
+en la reorganización en paquete — ver [09-plan-refactor-alertas.md](09-plan-refactor-alertas.md))
+y patrones análogos en `orquestador.py::verificar_estado_software`: loops `for hosp in
 hospitales_activos` / `for hosp in hospitales_ris` que ejecutan una query SQL
 independiente por hospital dentro del loop, en vez de una sola query para todos los
 hospitales activos con `GROUP BY`/`WHERE hospital_id IN (...)`.

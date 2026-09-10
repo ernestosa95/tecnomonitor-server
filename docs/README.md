@@ -21,6 +21,16 @@ desactualizada y hay que revisarla.
    estado por fase.
 8. [Plan de refactor de dashboard.py](08-plan-refactor-dashboard.md) — cómo se seccionó el
    archivo de 2910 líneas en routers por dominio (✅ completo).
+9. [Plan de refactor del motor de alertas](09-plan-refactor-alertas.md) — cómo se
+   reestructuró `alerts_engine.py` en un paquete por dominio con un orquestador central,
+   para agregar detectores nuevos más fácil (✅ completo).
+10. [Contrato de ingesta del agente](10-contrato-ingesta-agente.md) — qué estructura de
+    datos exacta tiene que mandar el agente en `POST /v1/hospital-status` para que el
+    servidor lo acepte y genere alertas/KPIs correctamente.
+11. [Plan de autenticación del agente por token](11-plan-auth-ingesta-agente.md) — diseño
+    decidido para resolver [S2](04-seguridad.md#s2) de forma escalonada por versión de
+    agente, sin cortar ingesta de los hospitales que todavía no migraron (⏸️ diseño
+    aprobado, sin ejecutar).
 
 ## Estado general — 2026-09-10
 

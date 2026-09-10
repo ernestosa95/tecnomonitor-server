@@ -122,9 +122,13 @@ logs persistentes.
 
 ## <a name="s2"></a>S2 — HIGH — Endpoint de ingesta sin autenticación
 
-**⏸️ PENDIENTE — Fase 2, pausada a pedido.** Requiere coordinar el rollout de una API key
-con los agentes ya desplegados en los hospitales antes de poder implementarlo sin cortar
-ingesta real. Ver [07-plan-de-accion.md](07-plan-de-accion.md) Fase 2, ítem 2.1.
+**⏸️ PENDIENTE — diseño decidido, sin ejecutar.** Token por hospital (SHA-256, generado
+desde el panel), exigido vía `Authorization: Bearer <token>` **solo** para
+`schema_version 4.5` en adelante -- las versiones viejas (`3.0`-`4.3`) siguen sin pedir
+nada, así los ~80 hospitales migran de a uno a medida que se les actualiza el agente, sin
+coordinar una fecha de corte global. Plan completo y detalle de implementación en
+[11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md); el lado del agente ya
+está documentado en [10-contrato-ingesta-agente.md §2bis](10-contrato-ingesta-agente.md#2bis--autenticación-por-token--a-partir-de-schema_version-45-todavía-no-vigente).
 
 **Dónde**: `main.py:82`, `POST /v1/hospital-status`.
 
