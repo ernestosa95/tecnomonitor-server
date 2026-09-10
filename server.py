@@ -4,11 +4,8 @@ import os
 import asyncio 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi import Request, HTTPException
-from contextlib import asynccontextmanager 
-from provincias_endpoint import router as provincias_router
+from contextlib import asynccontextmanager
 import maintenance
-
-#app.include_router(provincias_router)
 
 # --- IMPORTACIÓN DEL SCRIPT DE LIMPIEZA ---
 try:

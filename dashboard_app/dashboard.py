@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+from collections import defaultdict
 import requests   # usado en _cerrar_alertas_por_regla() para el trigger del WebSocket
 import database
 import matplotlib.dates as mdates
@@ -40,6 +41,7 @@ import re
 from fastapi import Response
 from fastapi.middleware.gzip import GZipMiddleware
 import generator_report
+import resumen_hospital
 from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -78,6 +80,54 @@ ESTADOS_COLORS = {
 # ==========================================
 _cache_resumen = {"data": None, "ts": 0}
 CACHE_TTL_SEGUNDOS = 30
+
+_cache_provincias = {"data": None, "ts": 0}
+CACHE_TTL_PROVINCIAS = 60
+
+# Centroides aprox. de provincias (lat, lng) para ubicar el marcador en /prov-analytics.
+CENTROIDES_PROVINCIAS = {
+    "Buenos Aires": [-36.5, -60.2], "CABA": [-34.61, -58.38], "Córdoba": [-32.0, -63.5],
+    "Santa Fe": [-30.7, -60.9], "Tucumán": [-26.9, -65.2], "Chubut": [-43.8, -68.5],
+    "Neuquén": [-38.9, -69.8], "Mendoza": [-34.9, -68.5], "Catamarca": [-27.3, -66.9],
+    "Jujuy": [-23.3, -65.8], "Entre Ríos": [-32.0, -59.2], "Salta": [-24.3, -64.8],
+    "San Juan": [-30.8, -68.9], "Formosa": [-24.9, -59.9], "La Rioja": [-29.7, -67.0],
+    "Tierra del Fuego": [-53.8, -67.9], "Chaco": [-26.4, -60.5], "Corrientes": [-28.7, -57.8],
+    "Río Negro": [-40.2, -67.2], "Santiago del Estero": [-27.8, -63.2], "Misiones": [-26.9, -54.5],
+    "Santa Cruz": [-48.6, -70.0], "San Luis": [-33.7, -66.0], "La Pampa": [-37.2, -65.5],
+}
+
+_CANON_PROVINCIAS = {
+    "caba": "CABA", "ciudad autonoma de buenos aires": "CABA", "capital federal": "CABA",
+    "buenos aires": "Buenos Aires", "cordoba": "Córdoba", "santa fe": "Santa Fe",
+    "tucuman": "Tucumán", "chubut": "Chubut", "neuquen": "Neuquén", "mendoza": "Mendoza",
+    "catamarca": "Catamarca", "jujuy": "Jujuy", "entre rios": "Entre Ríos", "salta": "Salta",
+    "san juan": "San Juan", "formosa": "Formosa", "la rioja": "La Rioja",
+    "tierra del fuego": "Tierra del Fuego", "chaco": "Chaco", "corrientes": "Corrientes",
+    "rio negro": "Río Negro", "santiago del estero": "Santiago del Estero",
+    "misiones": "Misiones", "santa cruz": "Santa Cruz", "san luis": "San Luis",
+    "la pampa": "La Pampa",
+}
+
+def _normalizar_provincia(p):
+    s = (p or "").strip()
+    if s == "":
+        return "Sin provincia"
+    return _CANON_PROVINCIAS.get(s.lower(), s.title())
+
+# Clasificación por proyecto según el ID del hospital: BID = H01..H46 (sólo
+# "H" + dígitos), PROSEPU = P01..P26 (sólo "P" + dígitos). IDs que no matchean
+# ese patrón exacto (PAMI, privados, demo, etc. — ej. HEMDQ, PMHBI, GWNCORDOBA)
+# caen en "Otros" en vez de forzarse a BID/PROSEPU.
+_RE_BID = re.compile(r"^H\d+$", re.IGNORECASE)
+_RE_PROSEPU = re.compile(r"^P\d+$", re.IGNORECASE)
+
+def _clasificar_proyecto(hospital_id):
+    hid = (hospital_id or "").strip().upper()
+    if _RE_BID.match(hid):
+        return "BID"
+    if _RE_PROSEPU.match(hid):
+        return "PROSEPU"
+    return "Otros"
 
 # Ajuste de Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -159,7 +209,8 @@ async def add_security_headers(request: Request, call_next):
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://netdna.bootstrapcdn.com https://unpkg.com; "
-        "img-src 'self' data: https://a.basemaps.cartocdn.com https://b.basemaps.cartocdn.com https://c.basemaps.cartocdn.com https://d.basemaps.cartocdn.com; "
+        "img-src 'self' data: https://a.basemaps.cartocdn.com https://b.basemaps.cartocdn.com https://c.basemaps.cartocdn.com https://d.basemaps.cartocdn.com "
+        "https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; "
         "connect-src 'self' https://cdn.jsdelivr.net; "
         "frame-src 'self' http://localhost:8501;"
     )
@@ -246,6 +297,7 @@ class HospitalDTO(BaseModel):
     is_visible: bool = True
     alerts_enabled: bool = True
     has_ris: bool = False
+    datos_manuales: bool = False
 
 class ReportePDFRequest(BaseModel):
     hospital_id: str
@@ -496,8 +548,116 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
     # Guardar en la caché global (Nota: usamos "ts" como espera script.js)
     _cache_resumen["data"] = resultado_final
     _cache_resumen["ts"] = ahora
-    
+
     return resultado_final
+
+
+@app.get("/api/provincias")
+def obtener_resumen_provincias(db: Session = Depends(get_db),
+                               current_user: dict = Depends(auth.bloquear_cliente())):
+    """
+    Resumen de KPIs agrupado por provincia para /prov-analytics.
+    Hospitales normales: calculados en vivo (resumen_hospital.py).
+    Hospitales marcados con datos_manuales: leídos de HospitalManualKPI
+    (cargados a mano desde el panel de Hospitales, para los que no tienen
+    agente de monitoreo instalado).
+    """
+    global _cache_provincias
+    ahora = time.time()
+
+    if _cache_provincias["data"] is not None and (ahora - _cache_provincias.get("ts", 0)) < CACHE_TTL_PROVINCIAS:
+        return _cache_provincias["data"]
+
+    hospitales_meta = db.query(HospitalMetadata).filter(
+        HospitalMetadata.is_visible == True
+    ).all()
+
+    manuales_por_id = {
+        fila.hospital_id: fila
+        for fila in db.query(database.HospitalManualKPI).all()
+    }
+
+    def _bucket():
+        return {
+            "hospitales": [], "estudios": 0, "admitidas": 0, "asociadas": 0,
+            "definitivas": 0, "ia": 0, "equipos": 0,
+            "tb_alm": 0.0, "tb_disp": 0.0, "ram_sum": 0.0, "ram_n": 0,
+        }
+
+    por_provincia = defaultdict(_bucket)
+    por_proyecto = defaultdict(_bucket)
+
+    for hosp in hospitales_meta:
+        if getattr(hosp, "datos_manuales", False):
+            fila = manuales_por_id.get(hosp.hospital_id)
+            if fila:
+                kpis = {
+                    "estudios": fila.estudios, "admitidas": fila.admitidas,
+                    "asociadas": fila.asociadas, "definitivas": fila.definitivas,
+                    "ia": fila.ia, "equipos": fila.equipos,
+                    "tb_alm": fila.tb_alm, "tb_disp": fila.tb_disp, "ram": fila.ram,
+                    "go_live": fila.go_live or "",
+                }
+                pendiente = False
+            else:
+                kpis = {"estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0,
+                       "ia": 0, "equipos": 0, "tb_alm": None, "tb_disp": None,
+                       "ram": None, "go_live": ""}
+                pendiente = True
+        else:
+            kpis = resumen_hospital.calcular_kpis_hospital(db, hosp.hospital_id)
+            pendiente = False
+
+        hosp_out = {
+            "id": hosp.hospital_id, "nombre": hosp.nombre,
+            "go_live": kpis["go_live"],
+            "estudios": kpis["estudios"], "admitidas": kpis["admitidas"],
+            "asociadas": kpis["asociadas"], "definitivas": kpis["definitivas"],
+            "ia": kpis["ia"], "equipos": kpis["equipos"],
+            "tb_alm": kpis["tb_alm"], "tb_disp": kpis["tb_disp"], "ram": kpis["ram"],
+            "pendiente_carga": pendiente,
+        }
+
+        for grupo, clave in ((por_provincia, _normalizar_provincia(hosp.provincia)),
+                             (por_proyecto, _clasificar_proyecto(hosp.hospital_id))):
+            d = grupo[clave]
+            d["estudios"] += kpis["estudios"]; d["admitidas"] += kpis["admitidas"]
+            d["asociadas"] += kpis["asociadas"]; d["definitivas"] += kpis["definitivas"]
+            d["ia"] += kpis["ia"]; d["equipos"] += kpis["equipos"]
+            if kpis["tb_alm"] is not None:
+                d["tb_alm"] += kpis["tb_alm"]
+            if kpis["tb_disp"] is not None:
+                d["tb_disp"] += kpis["tb_disp"]
+            if kpis["ram"] is not None:
+                d["ram_sum"] += kpis["ram"]; d["ram_n"] += 1
+            d["hospitales"].append(hosp_out)
+
+    def _armar_salida(grupo_dict, campo_clave, con_centroide=False):
+        salida = []
+        for clave, d in grupo_dict.items():
+            item = {
+                campo_clave: clave,
+                "n_hospitales": len(d["hospitales"]),
+                "estudios": d["estudios"], "admitidas": d["admitidas"],
+                "asociadas": d["asociadas"], "definitivas": d["definitivas"],
+                "ia": d["ia"], "equipos": d["equipos"],
+                "tb_alm": round(d["tb_alm"], 2), "tb_disp": round(d["tb_disp"], 2),
+                "ram": round(d["ram_sum"] / d["ram_n"], 1) if d["ram_n"] else None,
+                "hospitales": sorted(d["hospitales"], key=lambda h: -h["estudios"]),
+            }
+            if con_centroide:
+                item["centroide"] = CENTROIDES_PROVINCIAS.get(clave)
+            salida.append(item)
+        salida.sort(key=lambda x: -x["estudios"])
+        return salida
+
+    resultado = {
+        "provincias": _armar_salida(por_provincia, "provincia", con_centroide=True),
+        "proyectos": _armar_salida(por_proyecto, "proyecto"),
+    }
+    _cache_provincias["data"] = resultado
+    _cache_provincias["ts"] = ahora
+    return resultado
 
 
 @app.get("/api/hospital/{hospital_id}")
@@ -813,7 +973,8 @@ def editar_hospital_metadata(hid: str, dto: HospitalDTO,
     h.is_visible = dto.is_visible
     h.alerts_enabled = dto.alerts_enabled
     h.has_ris = dto.has_ris
-    
+    h.datos_manuales = dto.datos_manuales
+
     db.commit()
     return {"status": "ok", "msg": "Actualizado"}
 
@@ -858,6 +1019,66 @@ def eliminar_hospital_metadata(hid: str,
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
     db.delete(h); db.commit()
     return {"status": "ok", "msg": "Eliminado"}
+
+@app.patch("/api/hospitales-metadata/{hid}/toggle-manual")
+def toggle_datos_manuales(hid: str,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
+    if not h: raise HTTPException(status_code=404, detail="No encontrado")
+    h.datos_manuales = not getattr(h, 'datos_manuales', False)
+    db.commit()
+    return {"status": "ok", "datos_manuales": h.datos_manuales}
+
+class ManualKPIDTO(BaseModel):
+    estudios: int = 0
+    admitidas: int = 0
+    asociadas: int = 0
+    definitivas: int = 0
+    ia: int = 0
+    equipos: int = 0
+    tb_alm: Optional[float] = None
+    tb_disp: Optional[float] = None
+    ram: Optional[float] = None
+    go_live: Optional[str] = None
+
+@app.get("/api/hospitales-metadata/{hid}/manual-kpi")
+def get_manual_kpi(hid: str,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    fila = db.query(database.HospitalManualKPI).filter_by(hospital_id=hid).first()
+    if not fila:
+        return {"hospital_id": hid, "existe": False, **ManualKPIDTO().dict()}
+    return {
+        "hospital_id": hid,
+        "existe": True,
+        "estudios": fila.estudios, "admitidas": fila.admitidas,
+        "asociadas": fila.asociadas, "definitivas": fila.definitivas,
+        "ia": fila.ia, "equipos": fila.equipos,
+        "tb_alm": fila.tb_alm, "tb_disp": fila.tb_disp, "ram": fila.ram,
+        "go_live": fila.go_live,
+        "actualizado_en": fila.actualizado_en.isoformat() if fila.actualizado_en else None,
+        "actualizado_por": fila.actualizado_por,
+    }
+
+@app.put("/api/hospitales-metadata/{hid}/manual-kpi")
+def set_manual_kpi(hid: str, dto: ManualKPIDTO,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    if not db.query(HospitalMetadata).filter_by(hospital_id=hid).first():
+        raise HTTPException(status_code=404, detail="Hospital no encontrado")
+
+    fila = db.query(database.HospitalManualKPI).filter_by(hospital_id=hid).first()
+    if not fila:
+        fila = database.HospitalManualKPI(hospital_id=hid)
+        db.add(fila)
+
+    for campo, valor in dto.dict().items():
+        setattr(fila, campo, valor)
+    fila.actualizado_por = current_user["email"]
+
+    db.commit()
+    return {"status": "ok", "msg": "Datos manuales guardados"}
 
 @app.get("/api/mapa-data")
 def obtener_datos_mapa(db: Session = Depends(get_db),

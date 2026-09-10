@@ -3293,6 +3293,35 @@ window.cliCopiarPw = cliCopiarPw;
                 <span style="font-weight:600;color:var(--text)">¿Integra RIS (Radiology Information System)?</span>
             </label>
         </div>
+        <div class="input-group" style="margin-top:10px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.9em">
+                <input type="checkbox" id="hosp-datos-manuales" onchange="toggleBloqueDatosManuales()" style="width:auto;transform:scale(1.2);accent-color:var(--amber)">
+                <span style="font-weight:600;color:var(--text)">¿Datos cargados a mano? (sin agente de monitoreo)</span>
+            </label>
+        </div>
+        <div id="bloque-datos-manuales" style="display:none;margin-top:10px;padding:14px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <p style="color:var(--muted);font-size:.8em;margin:0 0 10px">Snapshot actual de este hospital (se pisa cada vez que lo volvés a relevar).</p>
+            <div class="grid-2-col">
+                <div class="input-group"><label>Estudios</label><input type="number" id="man-estudios" value="0"></div>
+                <div class="input-group"><label>Equipos</label><input type="number" id="man-equipos" value="0"></div>
+            </div>
+            <div class="grid-2-col">
+                <div class="input-group"><label>Ó. admitidas</label><input type="number" id="man-admitidas" value="0"></div>
+                <div class="input-group"><label>Ó. asociadas</label><input type="number" id="man-asociadas" value="0"></div>
+            </div>
+            <div class="grid-2-col">
+                <div class="input-group"><label>Ó. definitivas</label><input type="number" id="man-definitivas" value="0"></div>
+                <div class="input-group"><label>Estudios IA</label><input type="number" id="man-ia" value="0"></div>
+            </div>
+            <div class="grid-2-col">
+                <div class="input-group"><label>TB almacenados</label><input type="number" step="0.01" id="man-tb-alm"></div>
+                <div class="input-group"><label>TB disponibles</label><input type="number" step="0.01" id="man-tb-disp"></div>
+            </div>
+            <div class="grid-2-col">
+                <div class="input-group"><label>RAM prom. (%)</label><input type="number" step="0.1" id="man-ram"></div>
+                <div class="input-group"><label>Go-live</label><input type="text" id="man-go-live" placeholder="MM/DD/AAAA"></div>
+            </div>
+        </div>
         <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
             <button class="btn-action" onclick="cerrarModalHospital()" style="background:var(--muted);width:auto;padding:10px 20px">Cancelar</button>
             <button class="btn-action" onclick="guardarHospital()" style="width:auto;padding:10px 20px">Guardar</button>

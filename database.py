@@ -78,6 +78,9 @@ class HospitalMetadata(Base):
     alerts_enabled = Column(Boolean, default=True)
     has_ris = Column(Boolean, default=False)
     kpi_settings = Column(JSON, default=dict)
+    # Hospital sin agente de monitoreo: sus KPIs se cargan a mano
+    # (ver HospitalManualKPI) en vez de calcularse en vivo desde reportes.
+    datos_manuales = Column(Boolean, default=False)
 
 class ReporteUso(Base):
     __tablename__ = "reportes_uso"
@@ -169,6 +172,32 @@ class ClienteHospitalAccess(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "hospital_id", name="uq_cliente_hospital"),
     )
+
+class HospitalManualKPI(Base):
+    """
+    Snapshot único y editable de KPIs para hospitales sin agente de
+    monitoreo (ej. algunos de Córdoba, relevados a mano). Se pisa cada
+    vez que alguien vuelve a cargar los valores; no es serie temporal.
+    """
+    __tablename__ = "hospital_manual_kpi"
+
+    hospital_id = Column(String, ForeignKey("hospitales_metadata.hospital_id", ondelete="CASCADE"),
+                         primary_key=True)
+
+    estudios = Column(Integer, default=0)
+    admitidas = Column(Integer, default=0)
+    asociadas = Column(Integer, default=0)
+    definitivas = Column(Integer, default=0)
+    ia = Column(Integer, default=0)
+    equipos = Column(Integer, default=0)
+
+    tb_alm = Column(Float, nullable=True)
+    tb_disp = Column(Float, nullable=True)
+    ram = Column(Float, nullable=True)
+    go_live = Column(String, nullable=True)
+
+    actualizado_en = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    actualizado_por = Column(String, nullable=True)  # email del usuario
 
 class LoginAttempt(Base):
     __tablename__ = "login_attempts"

@@ -1540,32 +1540,75 @@ async function toggleVisibilidad(id) {
     } catch (e) { console.error(e); }
 }
 
+function toggleBloqueDatosManuales() {
+    const activo = document.getElementById('hosp-datos-manuales').checked;
+    document.getElementById('bloque-datos-manuales').style.display = activo ? 'block' : 'none';
+}
+
+function limpiarCamposManualKPI() {
+    ['estudios', 'admitidas', 'asociadas', 'definitivas', 'ia', 'equipos'].forEach(campo => {
+        document.getElementById('man-' + campo).value = 0;
+    });
+    document.getElementById('man-tb-alm').value = "";
+    document.getElementById('man-tb-disp').value = "";
+    document.getElementById('man-ram').value = "";
+    document.getElementById('man-go-live').value = "";
+}
+
+async function cargarCamposManualKPI(hospitalId) {
+    try {
+        const res = await authFetch(`/api/hospitales-metadata/${hospitalId}/manual-kpi`);
+        if (!res.ok) return;
+        const d = await res.json();
+        document.getElementById('man-estudios').value = d.estudios ?? 0;
+        document.getElementById('man-admitidas').value = d.admitidas ?? 0;
+        document.getElementById('man-asociadas').value = d.asociadas ?? 0;
+        document.getElementById('man-definitivas').value = d.definitivas ?? 0;
+        document.getElementById('man-ia').value = d.ia ?? 0;
+        document.getElementById('man-equipos').value = d.equipos ?? 0;
+        document.getElementById('man-tb-alm').value = d.tb_alm ?? "";
+        document.getElementById('man-tb-disp').value = d.tb_disp ?? "";
+        document.getElementById('man-ram').value = d.ram ?? "";
+        document.getElementById('man-go-live').value = d.go_live ?? "";
+    } catch (e) { console.error("Error cargando datos manuales:", e); }
+}
+
 function abrirModalHospital() {
     isEditing = false;
     document.getElementById('modal-title').innerText = "Nuevo Hospital";
     document.getElementById('hosp-id').value = "";
-    document.getElementById('hosp-id').disabled = false; 
+    document.getElementById('hosp-id').disabled = false;
     document.getElementById('hosp-nombre').value = "";
     document.getElementById('hosp-provincia').value = "";
     document.getElementById('hosp-asana').value = "";
     document.getElementById('hosp-lat').value = "";
     document.getElementById('hosp-lon').value = "";
     document.getElementById('hosp-has-ris').checked = false;
+    document.getElementById('hosp-datos-manuales').checked = false;
+    limpiarCamposManualKPI();
+    toggleBloqueDatosManuales();
     document.getElementById('modal-hospital').style.display = 'flex';
 }
 
 function editarHospital(obj) {
     isEditing = true;
-    window.currentEditingVis = obj.is_visible; 
+    window.currentEditingVis = obj.is_visible;
     document.getElementById('modal-title').innerText = "Editar Hospital";
     document.getElementById('hosp-id').value = obj.hospital_id;
-    document.getElementById('hosp-id').disabled = true; 
+    document.getElementById('hosp-id').disabled = true;
     document.getElementById('hosp-nombre').value = obj.nombre;
     document.getElementById('hosp-provincia').value = obj.provincia || "";
     document.getElementById('hosp-asana').value = obj.asana_project_id || "";
     document.getElementById('hosp-lat').value = obj.latitud || "";
     document.getElementById('hosp-lon').value = obj.longitud || "";
     document.getElementById('hosp-has-ris').checked = obj.has_ris === true;
+    document.getElementById('hosp-datos-manuales').checked = obj.datos_manuales === true;
+    toggleBloqueDatosManuales();
+    if (obj.datos_manuales === true) {
+        cargarCamposManualKPI(obj.hospital_id);
+    } else {
+        limpiarCamposManualKPI();
+    }
     document.getElementById('modal-hospital').style.display = 'flex';
 }
 
@@ -1577,6 +1620,8 @@ async function guardarHospital() {
     const id = document.getElementById('hosp-id').value.trim();
     if(!id) return alert("El ID es obligatorio");
 
+    const datosManuales = document.getElementById('hosp-datos-manuales').checked;
+
     const payload = {
         hospital_id: id,
         nombre: document.getElementById('hosp-nombre').value,
@@ -1585,9 +1630,10 @@ async function guardarHospital() {
         latitud: document.getElementById('hosp-lat').value,
         longitud: document.getElementById('hosp-lon').value,
         is_visible: true,
-        has_ris: document.getElementById('hosp-has-ris').checked
+        has_ris: document.getElementById('hosp-has-ris').checked,
+        datos_manuales: datosManuales
     };
-    
+
     if (isEditing && window.currentEditingVis !== undefined) {
         payload.is_visible = window.currentEditingVis;
     }
@@ -1601,15 +1647,48 @@ async function guardarHospital() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
-        
+
         if(res.ok) {
+            if (datosManuales) {
+                await guardarCamposManualKPI(id);
+            }
             cerrarModalHospital();
-            listarHospitalesConfig(); 
+            listarHospitalesConfig();
         } else {
             const err = await res.json();
             alert("Error: " + err.detail);
         }
     } catch(e) { alert("Error de conexión"); }
+}
+
+async function guardarCamposManualKPI(hospitalId) {
+    const numOrNull = (id) => {
+        const v = document.getElementById(id).value;
+        return v === "" ? null : parseFloat(v);
+    };
+    const payload = {
+        estudios: parseInt(document.getElementById('man-estudios').value) || 0,
+        admitidas: parseInt(document.getElementById('man-admitidas').value) || 0,
+        asociadas: parseInt(document.getElementById('man-asociadas').value) || 0,
+        definitivas: parseInt(document.getElementById('man-definitivas').value) || 0,
+        ia: parseInt(document.getElementById('man-ia').value) || 0,
+        equipos: parseInt(document.getElementById('man-equipos').value) || 0,
+        tb_alm: numOrNull('man-tb-alm'),
+        tb_disp: numOrNull('man-tb-disp'),
+        ram: numOrNull('man-ram'),
+        go_live: document.getElementById('man-go-live').value || null,
+    };
+    try {
+        const res = await authFetch(`/api/hospitales-metadata/${hospitalId}/manual-kpi`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            alert("Error guardando datos manuales: " + err.detail);
+        }
+    } catch (e) { alert("Error de conexión guardando datos manuales"); }
 }
 
 async function eliminarHospital(id) {
