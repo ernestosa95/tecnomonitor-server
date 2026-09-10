@@ -1,0 +1,34 @@
+# requirements.txt generado por inspección de imports (no por `pip freeze` de
+# producción -- no tuve acceso al entorno real que corre el servidor).
+#
+# Sin versiones fijadas todavía. Antes de confiar en este archivo para
+# reproducir el entorno o auditar CVEs (ver docs/04-seguridad.md#s8):
+#   1. Corré `pip freeze > requirements.txt` en el entorno que YA corre en
+#      producción, y reemplazá este archivo con esa salida completa
+#      (va a incluir además las dependencias transitivas, no solo estas).
+#   2. Si producción y este archivo difieren en qué paquetes aparecen,
+#      priorizá lo que diga `pip freeze` -- este archivo es un punto de
+#      partida, no la fuente de verdad.
+
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+starlette
+python-dotenv
+python-jose[cryptography]
+passlib[bcrypt]
+slowapi
+requests
+asana
+
+# Generación de reportes/PDF
+matplotlib
+numpy
+pandas
+reportlab
+openpyxl
+
+# Usado solo por dashboard_app/calculadora_renovaciones.py (herramienta aparte,
+# se corre con `streamlit run`, no como parte de server.py)
+streamlit

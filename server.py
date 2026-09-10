@@ -71,25 +71,35 @@ except Exception as e:
     informes_ia_disponible = False
 
 # --- BACKGROUND SERVICE ---
+def _ejecutar_ciclo_alertas():
+    """
+    Corre las 3 pasadas del motor de alertas (incluye llamadas HTTP síncronas
+    a Asana). Se ejecuta siempre vía asyncio.to_thread para no bloquear el
+    event loop que atiende requests HTTP y WebSockets.
+    """
+    with database.SessionLocal() as db:
+        # 1. Alertas de Hardware (Tiempo real)
+        alerts_engine.procesar_offline(db)
+
+        # 2. Alertas de Negocio (Programadas)
+        alerts_engine.verificar_kpis_programados(db)
+
+        # 3. Alertas de Integración/Software (Tiempo real)
+        alerts_engine.verificar_estado_software(db)
+
+
 async def ciclo_vigilancia():
     print("🔄 Iniciando Hilo de Vigilancia (Background Service)...")
-    ticks_mantenimiento = 0 
+    ticks_mantenimiento = 0
     ticks_limpieza = 0             # <--- NUEVO: Contador para la limpieza
-    LIMIT_TICKS_DIA = 1440 
+    LIMIT_TICKS_DIA = 1440
     LIMIT_TICKS_DOCE_HORAS = 720   # <--- NUEVO: Límite para ejecutar 2 veces al día (12 horas)
-    
+
     while True:
         try:
-            with database.SessionLocal() as db:
-                # 1. Alertas de Hardware (Tiempo real)
-                alerts_engine.procesar_offline(db)
-                
-                # 2. Alertas de Negocio (Programadas)
-                alerts_engine.verificar_kpis_programados(db)
-
-                # 3. Alertas de Integración/Software (Tiempo real)
-                alerts_engine.verificar_estado_software(db)
-                
+            # Corre en un thread aparte: alerts_engine llama a Asana de forma
+            # síncrona, y eso no puede correr en el event loop principal.
+            await asyncio.to_thread(_ejecutar_ciclo_alertas)
         except Exception as e:
             print(f"⚠️ Error verificando alertas: {e}")
 

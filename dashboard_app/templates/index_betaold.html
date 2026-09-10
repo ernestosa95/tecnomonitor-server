@@ -4331,14 +4331,19 @@ window._nuestroVolverAlDashboard = function() {
         window.location.href = '/';
     }
 
-    // NOTA: acá forzábamos tiles oscuros reescribiendo cualquier URL de
-    // OpenStreetMap a CARTO "dark_all". CARTO ahora exige API key registrada
-    // para uso anónimo (mismo problema que "light_all" en /prov-analytics),
-    // así que esto solo generaba el watermark "API KEY REQUIRED" en el mapa
-    // de Cobertura Geográfica. Se saca el override: el mapa usa OSM estándar
-    // (definido en script.js), que no requiere key. Se pierde el estilo
-    // oscuro; si se quiere recuperar hace falta un proveedor de tiles oscuros
-    // que no pida API key.
+    // Leaflet: forzar tiles oscuros
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof L !== 'undefined') {
+            const origTileLayer = L.tileLayer;
+            L.tileLayer = function(url, options) {
+                if (url.includes('openstreetmap')) {
+                    url = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+                    options = { ...options, attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19 };
+                }
+                return origTileLayer.call(this, url, options);
+            };
+        }
+    });
 
 function cargarSolicitudesConf(){
   usrFetch('/api/admin/access-requests?estado=pendiente')

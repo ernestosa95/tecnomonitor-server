@@ -108,6 +108,13 @@ class SoftwareMonitoring(Base):
     timestamp = Column(DateTime, index=True)     # Fecha clínica real (ts o scan_ts)
     created_at = Column(DateTime, default=datetime.now) # Cuándo llegó al servidor
 
+    # Índice compuesto: cubre el patrón real de acceso (motor de alertas cada
+    # 60s y /api/hospital/{id}/software), que filtra por hospital+app y ordena
+    # por timestamp. Los índices individuales de arriba no alcanzan para eso.
+    __table_args__ = (
+        Index('idx_swmon_hosp_app_ts', 'hospital_id', 'app_name', 'timestamp'),
+    )
+
 class LogDictionary(Base):
     __tablename__ = "log_dictionary"
 
@@ -202,6 +209,18 @@ class HospitalManualKPI(Base):
 class LoginAttempt(Base):
     __tablename__ = "login_attempts"
     ip = Column(String, primary_key=True)
+    intentos = Column(Integer, default=0)
+    bloqueado_hasta = Column(Float, default=0)
+
+class LoginAttemptEmail(Base):
+    """
+    Igual que LoginAttempt pero por cuenta (email/username) en vez de por IP.
+    Sin esto, un atacante con muchas IPs (proxies, botnet) puede probar
+    fuerza bruta contra una cuenta puntual sin activar nunca el bloqueo por
+    IP. Ver docs/04-seguridad.md#s4.
+    """
+    __tablename__ = "login_attempts_email"
+    email = Column(String, primary_key=True)
     intentos = Column(Integer, default=0)
     bloqueado_hasta = Column(Float, default=0)
 

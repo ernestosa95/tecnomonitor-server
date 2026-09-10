@@ -17,6 +17,8 @@
 
 import sys
 import argparse
+import secrets
+import string
 from database import SessionLocal, UserModel
 from auth import get_password_hash
 
@@ -39,7 +41,20 @@ DESCRIPCION_ROLES = {
     "Visor":      "Solo lectura del monitor en tiempo real.",
 }
 
-PASSWORD_TEMPORAL = "Tecno2026."   # Contraseña inicial para todos los usuarios nuevos
+def generar_password_temporal(n: int = 14) -> str:
+    """
+    Genera una contraseña temporal aleatoria (no una constante compartida por
+    todos los usuarios -- ver docs/04-seguridad.md#s1c). Mismo criterio que
+    _generar_password_temporal() en dashboard_app/dashboard.py: garantiza al
+    menos una mayúscula, una minúscula, un número y un símbolo.
+    """
+    especiales = "!@#$%&*?"
+    pools = [string.ascii_uppercase, string.ascii_lowercase, string.digits, especiales]
+    chars = [secrets.choice(p) for p in pools]
+    todos = string.ascii_letters + string.digits + especiales
+    chars += [secrets.choice(todos) for _ in range(n - len(chars))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
 
 # ---------------------------------------------------------------------------
 # Helpers de presentación
@@ -129,13 +144,16 @@ def crear_usuario(db):
             print(f"\n⚠️  El usuario {email_raw} existe pero está INACTIVO.")
             reactivar = input("  ¿Querés reactivarlo con el nuevo rol? [s/N]: ").strip().lower()
             if reactivar == "s":
+                temp = generar_password_temporal()
                 existente.is_active = True
                 existente.role = rol
                 existente.full_name = nombre
-                existente.hashed_password = get_password_hash(PASSWORD_TEMPORAL)
+                existente.hashed_password = get_password_hash(temp)
+                existente.must_change_password = True
                 db.commit()
                 print(f"\n✅ Usuario reactivado: {nombre} ({email_raw}) → Rol: {rol}")
-                print(f"   Contraseña temporal restablecida: {PASSWORD_TEMPORAL}")
+                print(f"   Contraseña temporal restablecida: {temp}")
+                print(f"   Deberá cambiarla en el primer acceso.")
         return
 
     # — Confirmar —
@@ -143,7 +161,7 @@ def crear_usuario(db):
     print(f"    Email  : {email_raw}")
     print(f"    Nombre : {nombre}")
     print(f"    Rol    : {rol}  —  {DESCRIPCION_ROLES[rol]}")
-    print(f"    Clave  : {PASSWORD_TEMPORAL} (deberá cambiarla al primer acceso)")
+    print(f"    Clave  : se genera automáticamente al confirmar (deberá cambiarla al primer acceso)")
     confirmar = input("\n  ¿Confirmar creación? [s/N]: ").strip().lower()
     if confirmar != "s":
         print("  Operación cancelada.")
@@ -151,19 +169,21 @@ def crear_usuario(db):
 
     # — Crear —
     try:
+        temp = generar_password_temporal()
         nuevo = UserModel(
             email=email_raw,
-            hashed_password=get_password_hash(PASSWORD_TEMPORAL),
+            hashed_password=get_password_hash(temp),
             full_name=nombre,
             role=rol,
             is_active=True,
-            asana_id=asana_id
+            asana_id=asana_id,
+            must_change_password=True
         )
         db.add(nuevo)
         db.commit()
         print(f"\n✅ Usuario creado correctamente.")
         print(f"   {nombre} ({email_raw}) → Rol: {rol}")
-        print(f"   Contraseña temporal: {PASSWORD_TEMPORAL}\n")
+        print(f"   Contraseña temporal: {temp}\n")
     except Exception as e:
         db.rollback()
         print(f"\n❌ Error al crear el usuario: {e}")
@@ -226,17 +246,19 @@ def resetear_password(db):
         return
 
     print(f"\n  Usuario: {usuario.full_name} ({usuario.email})")
-    confirmar = input(f"  ¿Resetear contraseña a '{PASSWORD_TEMPORAL}'? [s/N]: ").strip().lower()
+    confirmar = input(f"  ¿Resetear la contraseña a una nueva temporal generada al azar? [s/N]: ").strip().lower()
     if confirmar != "s":
         print("  Operación cancelada.")
         return
 
     try:
-        usuario.hashed_password = get_password_hash(PASSWORD_TEMPORAL)
+        temp = generar_password_temporal()
+        usuario.hashed_password = get_password_hash(temp)
+        usuario.must_change_password = True
         db.commit()
         print(f"\n✅ Contraseña reseteada.")
-        print(f"   Contraseña temporal: {PASSWORD_TEMPORAL}")
-        print(f"   El usuario deberá cambiarla desde el panel.\n")
+        print(f"   Contraseña temporal: {temp}")
+        print(f"   El usuario deberá cambiarla en el primer acceso.\n")
     except Exception as e:
         db.rollback()
         print(f"❌ Error al resetear: {e}")

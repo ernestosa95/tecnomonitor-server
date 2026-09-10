@@ -275,7 +275,8 @@ body{
             });
             const data = await response.json();
             if (data.success) {
-                sessionStorage.setItem('tecnomonitor_token', data.token);
+                // La sesión real vive en la cookie httpOnly (no accesible desde JS,
+                // por diseño). Acá solo persistimos datos de UI, no el token.
                 sessionStorage.setItem('tecnomonitor_user', JSON.stringify(data.user));
                 // Enrutamiento por rol: el Cliente va DIRECTO a su portal.
                 if (data.user.role === 'Cliente') {
