@@ -81,10 +81,6 @@ class HospitalMetadata(Base):
     # Hospital sin agente de monitoreo: sus KPIs se cargan a mano
     # (ver HospitalManualKPI) en vez de calcularse en vivo desde reportes.
     datos_manuales = Column(Boolean, default=False)
-    # Hash SHA-256 del token de ingesta (nunca el token en texto plano).
-    # NULL = hospital todavía no migrado a schema_version 4.5. Ver
-    # docs/11-plan-auth-ingesta-agente.md.
-    ingest_token_hash = Column(String, nullable=True, unique=True, index=True)
 
 class ReporteUso(Base):
     __tablename__ = "reportes_uso"

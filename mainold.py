@@ -1,10 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 from datetime import datetime
-import hashlib
 import json
 import logging
-import traceback
+import traceback 
 from starlette.requests import ClientDisconnect
 from pydantic import BaseModel
 from typing import Dict, Any
@@ -25,36 +24,6 @@ def get_db():
     db = database.SessionLocal()
     try: yield db
     finally: db.close()
-
-# Versiones nativas que NO piden token todavía (no cambian con este gate).
-VERSIONES_SIN_TOKEN = ["3.0", "4.0", "4.1", "4.2", "4.3"]
-# Versiones nativas que SÍ exigen token de ingesta por hospital.
-# Ver docs/11-plan-auth-ingesta-agente.md.
-VERSIONES_CON_TOKEN = ["4.5"]
-
-
-def _validar_token_ingesta(request: Request, raw_body: dict, db: Session) -> None:
-    """
-    Valida el header `Authorization: Bearer <token>` para schema_version que
-    requieren token (VERSIONES_CON_TOKEN). Rechazo genérico a propósito (sin
-    detallar el motivo) para no ayudar a adivinar tokens ajenos por descarte.
-    """
-    auth_header = request.headers.get("authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autorizado")
-
-    token = auth_header[len("Bearer "):].strip()
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-    hospital = db.query(database.HospitalMetadata).filter_by(
-        ingest_token_hash=token_hash
-    ).first()
-    if not hospital:
-        raise HTTPException(status_code=401, detail="No autorizado")
-
-    hospital_id_payload = raw_body.get("envelope", {}).get("hospital_id")
-    if hospital_id_payload != hospital.hospital_id:
-        raise HTTPException(status_code=401, detail="No autorizado")
 
 # Definimos el esquema que espera recibir la API
 class DictionaryPayload(BaseModel):
@@ -153,12 +122,8 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         schema_version = raw_body.get("envelope", {}).get("schema_version")
 
         # 1. DETECCIÓN DE VERSIÓN (Acepta 3.0 y 4.0)
-        if schema_version in VERSIONES_SIN_TOKEN:
+        if schema_version in ["3.0", "4.0", "4.1", "4.2", "4.3"]:
             # Es V3 o V4 Nativo -> Pasa directo sin transformar
-            final_payload = raw_body
-        elif schema_version in VERSIONES_CON_TOKEN:
-            # 4.5+: exige Authorization: Bearer <token> por hospital.
-            _validar_token_ingesta(request, raw_body, db)
             final_payload = raw_body
         else:
             # Es V2 Legacy -> Transformar a V3 (retrocompatible con V4)
@@ -365,11 +330,6 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         
         logger.info(f"✅ Reporte guardado: {env.get('hospital_id')} (Versión: {schema_version} | Legacy: {is_legacy})")
         return {"status": "ok", "id": nuevo_registro.id, "v3_conversion": is_legacy, "version": schema_version}
-
-    # 401 de _validar_token_ingesta: no es un error de formato, no pasa por
-    # el bloque de rechazo genérico de abajo (que devuelve 500).
-    except HTTPException:
-        raise
 
     # =========================================================
     # 🛡️ BLOQUE CORREGIDO: RECHAZO SEGURO SIN DATA LEAKAGE

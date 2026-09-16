@@ -6,6 +6,7 @@ Todo lo que solo usa UN router (constantes, DTOs, helpers de un dominio
 puntual) vive en ese router, no acá -- la idea es que este módulo se quede
 chico. Ver docs/08-plan-refactor-dashboard.md.
 """
+import hashlib
 import os
 import secrets
 import string
@@ -63,3 +64,27 @@ def generar_password_temporal(n: int = 14) -> str:
     chars += [secrets.choice(todos) for _ in range(n - len(chars))]
     secrets.SystemRandom().shuffle(chars)
     return "".join(chars)
+
+
+# Alfabeto sin caracteres ambiguos (sin 0/O/1/l) -- igual criterio que
+# generar_password_temporal(), pero sin especiales: el agente lo manda tal
+# cual en un header HTTP. Ver docs/11-plan-auth-ingesta-agente.md.
+_ALFABETO_TOKEN = "".join(c for c in string.ascii_letters + string.digits if c not in "0O1lI")
+
+
+def generar_ingest_token(n: int = 32) -> str:
+    """
+    Token de ingesta para un hospital (autenticación del endpoint
+    POST /v1/hospital-status a partir de schema_version 4.5). Se devuelve en
+    texto plano una sola vez, al crearlo o regenerarlo -- el servidor solo
+    guarda su hash (ver hash_ingest_token()).
+    """
+    return "".join(secrets.choice(_ALFABETO_TOKEN) for _ in range(n))
+
+
+def hash_ingest_token(token: str) -> str:
+    """SHA-256 del token de ingesta. No usamos bcrypt acá a propósito: el
+    token ya es aleatorio de sobra (no elegido por una persona), y este hash
+    se calcula en cada reporte que entra de cada hospital -- la lentitud de
+    bcrypt sería puro costo de CPU sin beneficio real."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

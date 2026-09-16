@@ -3329,6 +3329,22 @@ window.cliCopiarPw = cliCopiarPw;
     </div>
 </div>
 
+<!-- modal token de ingesta (auth del agente, schema_version 4.5+) -->
+<div id="modal-token-hospital" class="modal-overlay" style="display:none">
+    <div class="modal-content" style="max-width:460px">
+        <h3>Token de ingesta</h3>
+        <div class="cli-pwbox">
+            <div class="ttl">Token generado</div>
+            <div class="warn">Copiá este token y configurálo en el agente del hospital (header <code>Authorization: Bearer &lt;token&gt;</code>, con <code>schema_version 4.5</code>). <b>No se vuelve a mostrar</b> -- si se pierde, solo se puede regenerar.</div>
+            <div class="code"><span id="hosp-token-code">—</span><button onclick="hospCopiarToken()">Copiar</button></div>
+            <div class="who" id="hosp-token-who"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:18px">
+            <button class="btn-action" onclick="document.getElementById('modal-token-hospital').style.display='none'" style="width:auto;padding:10px 20px">Entendido</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal KPI Config -->
 <div id="modalKPIConfig" class="modal-overlay" style="display:none;z-index:5000">
     <div class="modal-content" style="max-width:440px">

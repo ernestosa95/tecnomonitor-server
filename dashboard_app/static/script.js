@@ -1480,6 +1480,7 @@ async function listarHospitalesConfig() {
                     ${hasRis ? `<button class="btn-small" onclick="abrirModalKPIConfig('${h.hospital_id}', '${h.nombre.replace(/'/g, "\\'")}')" title="Configurar Alertas Clínicas (KPIs)" style="margin-right:5px; background-color:#3498db; font-weight:bold;">⚙️</button>` : ''}
                     <button class="btn-small ${btnClassBell}" onclick="toggleAlertas('${h.hospital_id}')" title="Alertas ON/OFF" style="margin-right:5px; background-color:${alertsOn?'#e67e22':'#95a5a6'};">${bellIcon}</button>
                     <button class="btn-small ${btnClassVis}" onclick="toggleVisibilidad('${h.hospital_id}')" title="Mostrar/Ocultar Dashboard">${eyeIcon}</button>
+                    <button class="btn-small" onclick="regenerarTokenIngesta('${h.hospital_id}', '${h.nombre.replace(/'/g, "\\'")}')" title="Generar/regenerar token de ingesta (auth del agente, schema_version 4.5+)" style="margin-right:5px">🔑</button>
                     <button class="btn-small btn-edit" onclick='editarHospital(${JSON.stringify(h).replace(/'/g, "&apos;")})'>✏️</button>
                     <button class="btn-small btn-delete" onclick="eliminarHospital('${h.hospital_id}')">🗑️</button>
                 </td>
@@ -1533,11 +1534,33 @@ async function toggleVisibilidad(id) {
     try {
         const res = await authFetch(`/api/hospitales-metadata/${id}/toggle`, { method: 'PATCH' });
         if (res.ok) {
-            listarHospitalesConfig(); 
+            listarHospitalesConfig();
         } else {
             alert("Error al cambiar visibilidad");
         }
     } catch (e) { console.error(e); }
+}
+
+// --- Token de ingesta (auth del agente, ver docs/11-plan-auth-ingesta-agente.md) ---
+async function regenerarTokenIngesta(id, nombre) {
+    if (!confirm(`¿Generar un token de ingesta nuevo para ${nombre}?\n\nSi ya tenía uno, deja de funcionar de inmediato -- hay que actualizar el agente con el nuevo token.`)) return;
+    try {
+        const res = await authFetch(`/api/hospitales-metadata/${id}/regenerar-token`, { method: 'POST' });
+        if (!res.ok) { alert('Error al generar el token'); return; }
+        const d = await res.json();
+        mostrarTokenIngesta(d.ingest_token, id, nombre);
+    } catch (e) { console.error(e); alert('Error al generar el token'); }
+}
+
+function mostrarTokenIngesta(token, id, nombre) {
+    document.getElementById('hosp-token-code').textContent = token;
+    document.getElementById('hosp-token-who').textContent = `Para: ${nombre} (${id})`;
+    document.getElementById('modal-token-hospital').style.display = 'flex';
+}
+
+function hospCopiarToken() {
+    const t = document.getElementById('hosp-token-code').textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => usrToast('Token copiado'));
 }
 
 function toggleBloqueDatosManuales() {
@@ -1649,11 +1672,15 @@ async function guardarHospital() {
         });
 
         if(res.ok) {
+            const data = await res.json();
             if (datosManuales) {
                 await guardarCamposManualKPI(id);
             }
             cerrarModalHospital();
             listarHospitalesConfig();
+            if (!isEditing && data.ingest_token) {
+                mostrarTokenIngesta(data.ingest_token, id, payload.nombre);
+            }
         } else {
             const err = await res.json();
             alert("Error: " + err.detail);

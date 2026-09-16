@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 import auth
 import database
-from core import get_db
+from core import generar_ingest_token, get_db, hash_ingest_token
 from database import HospitalMetadata
 
 router = APIRouter()
@@ -57,9 +57,13 @@ def crear_hospital_metadata(dto: HospitalDTO,
                             current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     existe = db.query(HospitalMetadata).filter_by(hospital_id=dto.hospital_id).first()
     if existe: raise HTTPException(status_code=400, detail="El ID existe")
-    nuevo = HospitalMetadata(**dto.dict())
+
+    # Todo hospital nuevo nace con su token de ingesta (schema_version 4.5+).
+    # Ver docs/11-plan-auth-ingesta-agente.md.
+    token = generar_ingest_token()
+    nuevo = HospitalMetadata(**dto.dict(), ingest_token_hash=hash_ingest_token(token))
     db.add(nuevo); db.commit()
-    return {"status": "ok", "msg": "Creado"}
+    return {"status": "ok", "msg": "Creado", "ingest_token": token}
 
 @router.put("/api/hospitales-metadata/{hid}")
 def editar_hospital_metadata(hid: str, dto: HospitalDTO,
@@ -114,6 +118,24 @@ def toggle_ris(hid: str,
     h.has_ris = not getattr(h, 'has_ris', False)
     db.commit()
     return {"status": "ok", "has_ris": h.has_ris}
+
+@router.post("/api/hospitales-metadata/{hid}/regenerar-token")
+def regenerar_ingest_token(hid: str,
+                           db: Session = Depends(get_db),
+                           current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    """
+    Genera un token de ingesta nuevo para el hospital y pisa el hash
+    guardado -- el token anterior queda invalidado. Se usa tanto para
+    migrar hospitales existentes a schema_version 4.5 como para rotar un
+    token filtrado. El valor en texto plano solo se devuelve acá, una vez.
+    """
+    h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
+    if not h: raise HTTPException(status_code=404, detail="No encontrado")
+
+    token = generar_ingest_token()
+    h.ingest_token_hash = hash_ingest_token(token)
+    db.commit()
+    return {"status": "ok", "ingest_token": token}
 
 @router.delete("/api/hospitales-metadata/{hid}")
 def eliminar_hospital_metadata(hid: str,

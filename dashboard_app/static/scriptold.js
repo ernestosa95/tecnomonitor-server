@@ -1719,11 +1719,13 @@ function initMapa() {
 
     // Inicializar mapa (Vista Argentina)
     mapInstance = L.map('map-container', { zoomControl: false }).setView([-38.4161, -63.6167], 4);
-    
-    // Capa visual (CartoDB Light para que combine con el dashboard)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
+
+    // CARTO "light_all" ahora exige API key registrada para uso anónimo
+    // (mostraba watermark "API KEY REQUIRED"). Usamos OpenStreetMap, que no
+    // la requiere -- mismo arreglo que /prov-analytics.
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        subdomains: ['a', 'b', 'c'],
         maxZoom: 19
     }).addTo(mapInstance);
 
@@ -3512,10 +3514,10 @@ function initMapaDashboard() {
     mapDashInstance = L.map('map-dashboard-container', { zoomControl: true }).setView([-38.4161, -63.6167], 4);
     window.mapDashInstance = mapDashInstance;
     
-    // Capa visual
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
+    // Capa visual -- ver nota de OpenStreetMap/CARTO arriba, en initMap().
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        subdomains: ['a', 'b', 'c'],
         maxZoom: 19
     }).addTo(mapDashInstance);
 
