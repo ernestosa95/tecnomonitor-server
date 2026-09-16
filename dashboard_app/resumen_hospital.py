@@ -15,14 +15,25 @@ sobre toda la historia — mismo criterio que ya usa /api/resumen-hospitales.
 """
 import json
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 import database
 
 EXCLUDED_AETS = {"CLIENT", "WADO", "PACS"}
 EXCLUDED_MODS = {"DOC"}
 PREFIJO_IA = "ENT"
+# Desglose de estudios de IA para el resumen BID+PROSEPU: mismo criterio que
+# ya usa el motor de alertas para identificar mamografía (mamo.py), aplicado
+# como substring porque `mod` puede venir combinado (ej. "MG/DOC", "MG\\SR").
+# Todo lo demás que sea IA (DX, CR, o cualquier otra modalidad) cae en RX.
+MODALIDADES_MAMO = ("MG", "MAMO")
 CAPACIDAD_TB_TOTAL = 60.0
 GB_POR_TB = 1024.0
+DIAS_ANIO = 365
+# Con menos de esto, la ventana real es demasiado corta para proyectar un
+# anual sin que el multiplicador (365/dias) infle el resultado a algo poco
+# confiable -- ver caso Oñativia (H34): 147 días reales, ~2.5x al anualizar.
+DIAS_MINIMOS_PROYECCION = 90
 
 
 def uso_disco_j_appv_tb(full_json):
@@ -45,6 +56,31 @@ def uso_disco_j_appv_tb(full_json):
     return None
 
 
+def fecha_evento(uso, metrics):
+    """
+    Fecha real del evento clínico, no de inserción en la fila. Los reportes
+    reconstruidos/backfillados (historial cargado en bloque desde otra
+    fuente) se insertan todos con `timestamp` = fecha en que se corrió el
+    backfill, no la fecha que realmente representan -- esa vive en
+    `start_time_extraction` dentro del JSON. Mismo criterio que ya usa
+    /api/hospital/{id}/kpi-history (hospital_detalle.py), para que el
+    "último año"/go_live no traten un backfill viejo como actividad reciente.
+    """
+    fecha_extraccion_str = metrics.get("start_time_extraction")
+    if fecha_extraccion_str:
+        try:
+            return datetime.fromisoformat(fecha_extraccion_str)
+        except (ValueError, TypeError):
+            pass
+    ts = uso.timestamp
+    if isinstance(ts, str):
+        try:
+            return datetime.strptime(ts[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+    return ts
+
+
 def ram_pct(full_json):
     try:
         data = json.loads(full_json) if isinstance(full_json, str) else (full_json or {})
@@ -62,14 +98,23 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
     """
     Devuelve estudios/admitidas/asociadas/definitivas/ia/equipos (acumulado
     histórico, sumando todos los reportes_uso del hospital) + tb_alm/tb_disp/
-    ram (del último reporte de infraestructura) + go_live.
+    ram (del último reporte de infraestructura) + go_live + estudios_pacs_anual.
+
+    estudios_pacs_anual: proyección a 12 meses de lo almacenado en PACS. Si el
+    hospital lleva un año o más en monitoreo, es la suma real de los últimos
+    365 días (sin extrapolar). Si lleva menos, extrapola el acumulado de esos
+    meses reales a un equivalente anual -- pedido explícito para hospitales
+    nuevos, que todavía no completaron un ciclo completo de 12 meses.
     """
     acc = {
         "estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0,
-        "ia": 0, "equipos": 0,
+        "ia": 0, "ia_rx": 0, "ia_mg": 0, "equipos": 0,
     }
     aets = set()
     go_live = None
+    ahora = datetime.now()
+    corte_anual = ahora - timedelta(days=DIAS_ANIO)
+    estudios_pacs_ultimo_anio = 0
 
     usos = db.query(database.ReporteUso).filter(
         database.ReporteUso.hospital_id == hospital_id
@@ -83,6 +128,7 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
         except (json.JSONDecodeError, TypeError):
             continue
 
+        fecha = fecha_evento(uso, metrics)
         hay_actividad = False
 
         for item in metrics.get("ris", []) or []:
@@ -113,11 +159,17 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
             aets.add(aet)
             if aet.startswith(PREFIJO_IA):
                 acc["ia"] += val
+                mod_up = mod.upper()
+                if any(m in mod_up for m in MODALIDADES_MAMO):
+                    acc["ia_mg"] += val
+                else:
+                    acc["ia_rx"] += val
+            if fecha is not None and fecha >= corte_anual:
+                estudios_pacs_ultimo_anio += val
             hay_actividad = True
 
-        if hay_actividad:
-            fecha = uso.timestamp
-            if fecha is not None and (go_live is None or fecha < go_live):
+        if hay_actividad and fecha is not None:
+            if go_live is None or fecha < go_live:
                 go_live = fecha
 
     acc["equipos"] = len(aets)
@@ -132,13 +184,30 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
         ram = ram_pct(ultimo_reporte.full_json_data)
     tb_disp = round(CAPACIDAD_TB_TOTAL - tb_alm, 2) if tb_alm is not None else None
 
+    estudios_pacs_anual = None
+    estudios_pacs_anual_estimado = None
+    estudios_pacs_anual_meses_base = None
+    if go_live is not None:
+        dias_actividad = (ahora - go_live).days
+        if dias_actividad >= DIAS_MINIMOS_PROYECCION:
+            meses_ventana = min(dias_actividad, DIAS_ANIO) / 30.44
+            estudios_pacs_anual = round(estudios_pacs_ultimo_anio / meses_ventana * 12)
+            estudios_pacs_anual_estimado = dias_actividad < DIAS_ANIO
+            if estudios_pacs_anual_estimado:
+                estudios_pacs_anual_meses_base = round(meses_ventana, 1)
+
     return {
         "estudios": acc["estudios"],
         "admitidas": acc["admitidas"],
         "asociadas": acc["asociadas"],
         "definitivas": acc["definitivas"],
         "ia": acc["ia"],
+        "ia_rx": acc["ia_rx"],
+        "ia_mg": acc["ia_mg"],
         "equipos": acc["equipos"],
+        "estudios_pacs_anual": estudios_pacs_anual,
+        "estudios_pacs_anual_estimado": estudios_pacs_anual_estimado,
+        "estudios_pacs_anual_meses_base": estudios_pacs_anual_meses_base,
         "tb_alm": tb_alm,
         "tb_disp": tb_disp,
         "ram": ram,

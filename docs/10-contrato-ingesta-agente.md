@@ -48,12 +48,10 @@ legacy V2 (completamente distinto: `header`/`physical_host`/`environment`/`vms` 
 basura silenciosa, no un error claro. **Para un agente nuevo, usá siempre
 `"schema_version": "4.3"`** (la versión más nueva aceptada tal cual).
 
-## 2bis. ⏳ Autenticación por token — a partir de `schema_version 4.5` (todavía no vigente)
+## 2bis. ✅ Autenticación por token — a partir de `schema_version 4.5` (vigente)
 
-**Diseño decidido, no implementado en el servidor todavía** — ver
-[11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md) para el plan completo.
-Documentado acá ya mismo para que la implementación del agente nuevo lo tenga desde el
-principio.
+**Implementado y desplegable — 2026-09-11.** Ver
+[11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md) para el diseño completo.
 
 Las versiones viejas (`"3.0"` a `"4.3"`) **no cambian**: siguen sin pedir nada, como hoy.
 A partir de `"schema_version": "4.5"`, el reporte **exige** un header adicional:
@@ -72,9 +70,10 @@ Authorization: Bearer <token>
   servidor rechaza el reporte completo (401) y no guarda nada. El mensaje de rechazo es
   intencionalmente genérico (no dice cuál de los tres motivos fue).
 
-Hasta que esto esté implementado, un agente en versión `"4.5"` **no debe enviarse a
-producción** contra este servidor -- seguí usando `"4.3"` como `schema_version` hasta que
-se confirme acá que el cambio ya está desplegado.
+**Antes de mandar un agente en `"4.5"` a producción**, generar el token del hospital desde
+el panel (alta nueva, o `POST /api/hospitales-metadata/{hid}/regenerar-token` para uno ya
+existente) y confirmar con el equipo que el código del servidor con este gate ya está
+desplegado -- hasta entonces, seguí usando `"4.3"`.
 
 ## 3. `envelope` — metadata del reporte
 

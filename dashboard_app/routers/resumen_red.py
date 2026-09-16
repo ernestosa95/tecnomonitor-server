@@ -215,6 +215,13 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
     por_provincia = defaultdict(_bucket)
     por_proyecto = defaultdict(_bucket)
 
+    # Resumen ejecutivo BID+PROSEPU (estudios PACS vs. IA, desglosado Rx/MG),
+    # para el pie de /prov-analytics. A pedido explícito: solo hospitales con
+    # agente real instalado -- los de carga manual no tienen desglose de
+    # modalidad (HospitalManualKPI solo guarda un total de "ia"), así que se
+    # excluyen del todo en vez de mezclar datos reales con datos incompletos.
+    resumen_bid_prosepu = {"estudios": 0, "ia": 0, "ia_rx": 0, "ia_mg": 0}
+
     for hosp in hospitales_meta:
         if getattr(hosp, "datos_manuales", False):
             fila = manuales_por_id.get(hosp.hospital_id)
@@ -223,13 +230,18 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
                     "estudios": fila.estudios, "admitidas": fila.admitidas,
                     "asociadas": fila.asociadas, "definitivas": fila.definitivas,
                     "ia": fila.ia, "equipos": fila.equipos,
+                    # Sin serie temporal real (es una carga manual puntual): no se
+                    # puede calcular ventana de 12 meses ni extrapolar.
+                    "estudios_pacs_anual": None, "estudios_pacs_anual_estimado": None,
                     "tb_alm": fila.tb_alm, "tb_disp": fila.tb_disp, "ram": fila.ram,
                     "go_live": fila.go_live or "",
                 }
                 pendiente = False
             else:
                 kpis = {"estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0,
-                       "ia": 0, "equipos": 0, "tb_alm": None, "tb_disp": None,
+                       "ia": 0, "equipos": 0,
+                       "estudios_pacs_anual": None, "estudios_pacs_anual_estimado": None,
+                       "tb_alm": None, "tb_disp": None,
                        "ram": None, "go_live": ""}
                 pendiente = True
         else:
@@ -242,12 +254,21 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
             "estudios": kpis["estudios"], "admitidas": kpis["admitidas"],
             "asociadas": kpis["asociadas"], "definitivas": kpis["definitivas"],
             "ia": kpis["ia"], "equipos": kpis["equipos"],
+            "estudios_pacs_anual": kpis["estudios_pacs_anual"],
+            "estudios_pacs_anual_estimado": kpis["estudios_pacs_anual_estimado"],
             "tb_alm": kpis["tb_alm"], "tb_disp": kpis["tb_disp"], "ram": kpis["ram"],
             "pendiente_carga": pendiente,
         }
 
+        clave_proyecto = _clasificar_proyecto(hosp.hospital_id)
+        if not getattr(hosp, "datos_manuales", False) and clave_proyecto in ("BID", "PROSEPU"):
+            resumen_bid_prosepu["estudios"] += kpis["estudios"]
+            resumen_bid_prosepu["ia"] += kpis["ia"]
+            resumen_bid_prosepu["ia_rx"] += kpis["ia_rx"]
+            resumen_bid_prosepu["ia_mg"] += kpis["ia_mg"]
+
         for grupo, clave in ((por_provincia, _normalizar_provincia(hosp.provincia)),
-                             (por_proyecto, _clasificar_proyecto(hosp.hospital_id))):
+                             (por_proyecto, clave_proyecto)):
             d = grupo[clave]
             d["estudios"] += kpis["estudios"]; d["admitidas"] += kpis["admitidas"]
             d["asociadas"] += kpis["asociadas"]; d["definitivas"] += kpis["definitivas"]
@@ -282,6 +303,7 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
     resultado = {
         "provincias": _armar_salida(por_provincia, "provincia", con_centroide=True),
         "proyectos": _armar_salida(por_proyecto, "proyecto"),
+        "resumen_bid_prosepu": resumen_bid_prosepu,
     }
     _cache_provincias["data"] = resultado
     _cache_provincias["ts"] = ahora

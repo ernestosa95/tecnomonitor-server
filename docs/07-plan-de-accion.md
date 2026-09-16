@@ -56,22 +56,20 @@ producción, no desde este checkout.
 
 ## Fase 2 — Próximas 2-3 semanas (esfuerzo medio, tocan contrato de API o lógica de negocio)
 
-**⏸️ En pausa (2026-09-10)** — a pedido, se posterga para atender otros temas primero. Antes
-de retomarla falta definir el rollout de 2.1 (si el equipo controla el agente desplegado en
-cada hospital, y con qué estrategia de transición evitar cortar ingesta de agentes viejos).
+**▶️ Retomada (2026-09-11)** — 2.1 ejecutado. Quedan 2.2-2.6.
 
-Requieren más diseño (definir un formato de API key, decidir un umbral de tamaño de
-payload) y coordinación con quien mantiene los agentes desplegados en los hospitales, porque
-algunos cambios los afectan directamente.
+Requieren más diseño (definir un umbral de tamaño de payload) y coordinación con quien
+mantiene los agentes desplegados en los hospitales, porque algunos cambios los afectan
+directamente.
 
-| # | Acción | Archivo(s) | Ref |
-|---|---|---|---|
-| 2.1 | **Diseño ya decidido** — ver [11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md): token por hospital (SHA-256, columna nueva en `hospitales_metadata`), exigido vía `Authorization: Bearer <token>` solo para `schema_version 4.5` en adelante. Las versiones viejas (`3.0`-`4.3`) no cambian, así los ~80 hospitales migran de a uno según se les actualiza el agente, sin fecha de corte global. Rate limiting del endpoint sigue como ítem separado (no bloquea este). | `main.py`, `database.py`, `dashboard_app/core.py`, `routers/hospitales_metadata.py` | [S2](04-seguridad.md#s2) — HIGH, el hallazgo de seguridad más importante después de las credenciales filtradas |
-| 2.2 | Agregar límite de tamaño de body (1-2 MB) a nivel de Nginx/Starlette para las rutas de ingesta. | Nginx config / `main.py` | [S5](04-seguridad.md#s5) |
-| 2.3 | Reescribir `calcular_kpis_hospital` para agregar con `SUM()` en SQL en vez de traer todas las filas de `reportes_uso` a Python, o mantener un contador incremental en `hospitales_metadata`. | `dashboard_app/resumen_hospital.py:74-76` | [P2](05-performance.md#p2) — HIGH |
-| 2.4 | Normalizar `app_name` a minúsculas al escribir en `software_monitoring` (ya se hace para el diccionario de logs) y reemplazar los loops por-hospital en `verificar_estado_software`/`verificar_mirth` por una sola query con `WHERE hospital_id IN (...)`. | `dashboard_app/alerts_engine/orquestador.py`, `software/mirth.py` (reorganizado en paquete, ver [09](09-plan-refactor-alertas.md)) | [P3](05-performance.md#p3) |
-| 2.5 | Reemplazar el re-parseo de `full_json_data` por las columnas ya desnormalizadas (`host_cpu_usage`, `host_ram_usage`, `host_status`) en los endpoints que piden "el último reporte". | `dashboard_app/routers/hospital_detalle.py` (ruta movida ahí en el refactor de organización), `resumen_hospital.py:28-58` | [P5](05-performance.md#p5) |
-| 2.6 | Agregar `.env.example` documentando todas las variables de entorno usadas (sin valores reales). | raíz | operaciones §2 |
+| # | Acción | Archivo(s) | Ref | Estado |
+|---|---|---|---|---|
+| 2.1 | Token por hospital (SHA-256, columna `ingest_token_hash` en `hospitales_metadata`), exigido vía `Authorization: Bearer <token>` solo para `schema_version 4.5` en adelante. Las versiones viejas (`3.0`-`4.3`) no cambian, así los ~80 hospitales migran de a uno según se les actualiza el agente, sin fecha de corte global. Diseño en [11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md). Rate limiting del endpoint sigue como ítem separado (2.2, no bloquea este). | `main.py`, `database.py`, `dashboard_app/core.py`, `routers/hospitales_metadata.py`, `Accesorios/agregar_token_ingesta_hospitales.py` (nuevo) | [S2](04-seguridad.md#s2) — HIGH, el hallazgo de seguridad más importante después de las credenciales filtradas | ✅ código, verificado local con `TestClient` (4 casos: versión vieja sin token, 4.5 sin token, 4.5 con token de otro hospital, 4.5 con token correcto) — **falta correr la migración (`Accesorios/agregar_token_ingesta_hospitales.py`) en producción y generar/distribuir tokens a los hospitales que migren** |
+| 2.2 | Agregar límite de tamaño de body (1-2 MB) a nivel de Nginx/Starlette para las rutas de ingesta. | Nginx config / `main.py` | [S5](04-seguridad.md#s5) | pendiente |
+| 2.3 | Reescribir `calcular_kpis_hospital` para agregar con `SUM()` en SQL en vez de traer todas las filas de `reportes_uso` a Python, o mantener un contador incremental en `hospitales_metadata`. | `dashboard_app/resumen_hospital.py:74-76` | [P2](05-performance.md#p2) — HIGH | pendiente |
+| 2.4 | Normalizar `app_name` a minúsculas al escribir en `software_monitoring` (ya se hace para el diccionario de logs) y reemplazar los loops por-hospital en `verificar_estado_software`/`verificar_mirth` por una sola query con `WHERE hospital_id IN (...)`. | `dashboard_app/alerts_engine/orquestador.py`, `software/mirth.py` (reorganizado en paquete, ver [09](09-plan-refactor-alertas.md)) | [P3](05-performance.md#p3) | pendiente |
+| 2.5 | Reemplazar el re-parseo de `full_json_data` por las columnas ya desnormalizadas (`host_cpu_usage`, `host_ram_usage`, `host_status`) en los endpoints que piden "el último reporte". | `dashboard_app/routers/hospital_detalle.py` (ruta movida ahí en el refactor de organización), `resumen_hospital.py:28-58` | [P5](05-performance.md#p5) | pendiente |
+| 2.6 | Agregar `.env.example` documentando todas las variables de entorno usadas (sin valores reales). | raíz | operaciones §2 | pendiente |
 
 ---
 
@@ -122,8 +120,8 @@ plan todavía.
 Fase 0 (hoy)         →  ✅ rotar token Asana + cambiar contraseña filtrada
 Fase 1 (esta semana) →  ✅ borrar archivos con secretos, to_thread en alertas,
                          índice software_monitoring, limpiezas de auth/API menores
-Fase 2 (2-3 semanas) →  ⏸️ pausada — auth en ingesta, límite de payload, agregados
-                         en SQL, N+1 queries, desnormalización
+Fase 2 (2-3 semanas) →  ▶️ en curso — ✅ auth en ingesta (2.1), pendiente: límite de
+                         payload, agregados en SQL, N+1 queries, desnormalización
 Fase 3 (backlog)     →  pendiente — purga automática, scripts con --dry-run,
                          consolidar Accesorios/, reescribir historial de git (si aplica)
 Fase 4 (si crece)    →  pendiente — evaluar Postgres

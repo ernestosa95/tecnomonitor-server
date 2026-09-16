@@ -1,9 +1,11 @@
 # Plan — autenticación del agente por token, escalonada por versión
 
-**Estado: plan aprobado en diseño, sin ejecutar.** Resuelve
-[S2](04-seguridad.md#s2) de forma escalonada para no cortar ingesta de los ~80
-hospitales que hoy reportan sin autenticación. Cero código todavía — este documento es
-para revisar el "qué" y el "dónde" antes de tocar `main.py`/`database.py`.
+**Estado: ✅ implementado — 2026-09-11.** Resuelve [S2](04-seguridad.md#s2) de forma
+escalonada para no cortar ingesta de los ~80 hospitales que hoy reportan sin autenticación.
+Código en `main.py`/`database.py`/`dashboard_app/core.py`/`routers/hospitales_metadata.py`,
+verificado local con `TestClient` contra los 4 casos del §7.3. **Falta**: correr la
+migración (`Accesorios/agregar_token_ingesta_hospitales.py`) en producción y coordinar con
+quien arma el agente nuevo el rollout real hospital por hospital.
 
 ## 1. Decisión de diseño (confirmada en la conversación)
 
@@ -132,38 +134,38 @@ más seguro a largo plazo, pero toca la misma función y agrega una tercera rama
 como punto a decidir, no lo doy por incluido en el alcance de este plan salvo que lo
 confirmes.
 
-## 6. Qué hay que actualizar en la documentación
+## 6. Qué se actualizó en la documentación (✅ hecho)
 
-- **[10-contrato-ingesta-agente.md](10-contrato-ingesta-agente.md)**: agregar la sección
-  de autenticación (header, formato, qué pasa si falta/es inválido), marcada como válida
-  *a partir de* `schema_version 4.5` -- las versiones viejas siguen documentadas tal cual
-  están. Lo agrego ya mismo, marcado como pendiente de implementar en el servidor, para
-  que quien programe el agente nuevo ya tenga la referencia completa.
-- **[04-seguridad.md#s2](04-seguridad.md#s2)**: actualizar la "acción recomendada" para
-  reflejar el diseño ya decidido (hoy dice algo genérico tipo "agregar un secreto
-  compartido"), sigue en estado PENDIENTE hasta que se ejecute.
-- **[07-plan-de-accion.md](07-plan-de-accion.md)** Fase 2, ítem 2.1: actualizar la
-  descripción con este diseño concreto, sigue pausada hasta que digas que arrancamos.
+- **[10-contrato-ingesta-agente.md §2bis](10-contrato-ingesta-agente.md#2bis--autenticación-por-token--a-partir-de-schema_version-45-vigente)**:
+  sección de autenticación (header, formato, qué pasa si falta/es inválido), marcada
+  *vigente* a partir de `schema_version 4.5` -- las versiones viejas siguen documentadas
+  tal cual están.
+- **[04-seguridad.md#s2](04-seguridad.md#s2)**: estado pasado a ✅ RESUELTO (parcial,
+  escalonado) — sigue habiendo hospitales sin migrar hasta que actualicen el agente.
+- **[07-plan-de-accion.md](07-plan-de-accion.md)** Fase 2, ítem 2.1: marcado ✅, Fase 2
+  pasa de pausada a en curso.
 
-## 7. Orden de ejecución sugerido (cuando se apruebe pasar a código)
+## 7. Orden de ejecución sugerido
 
 Este endpoint recibe tráfico real de ~80 hospitales constantemente -- cualquier error acá
-tiene impacto inmediato en producción. Recomiendo:
+tiene impacto inmediato en producción. Orden seguido:
 
-1. Columna nueva + script de migración (`Accesorios/`) -- sin tocar `main.py` todavía,
-   cero riesgo, se puede desplegar y correr solo.
-2. Helper de generación de token en `core.py` + los dos endpoints del panel (crear con
-   token automático, regenerar) -- se puede probar y desplegar sin que `main.py` sepa
-   nada del token todavía. En este punto ya podés empezar a generar tokens para hospitales
-   puntuales, aunque el servidor todavía no los exija.
-3. El cambio en `main.py` (el gate por versión). Antes de desplegar esto, probar
-   explícitamente los 4 casos con `TestClient`: versión vieja sin token (debe seguir
-   funcionando igual que hoy), versión `4.5` sin token (debe rechazar), versión `4.5` con
-   token de otro hospital (debe rechazar), versión `4.5` con token correcto (debe
-   aceptar) -- mismo nivel de prueba que le dimos al resto de los refactors.
-4. Recién ahí actualizar el contrato de ingesta de "pendiente" a "vigente", y coordinar
-   con quien arme el agente nuevo el header exacto y el flujo de alta del token por
-   hospital.
+1. ✅ Columna nueva + script de migración (`Accesorios/agregar_token_ingesta_hospitales.py`)
+   -- sin tocar `main.py` todavía, cero riesgo. **Falta correrlo en producción.**
+2. ✅ Helper de generación de token en `core.py` (`generar_ingest_token`,
+   `hash_ingest_token`) + los dos endpoints del panel (`crear_hospital_metadata` genera uno
+   automático, `POST /api/hospitales-metadata/{hid}/regenerar-token` para los que ya
+   existen).
+3. ✅ El cambio en `main.py` (el gate por versión, `_validar_token_ingesta`). Probados los
+   4 casos con `TestClient`: versión vieja sin token (sigue funcionando igual que antes),
+   versión `4.5` sin token (rechaza 401), versión `4.5` con token de otro hospital (rechaza
+   401), versión `4.5` con token correcto (acepta 201) -- mismo nivel de prueba que el resto
+   de los refactors.
+4. ✅ Contrato de ingesta actualizado de "pendiente" a "vigente"
+   ([10-contrato-ingesta-agente.md §2bis](10-contrato-ingesta-agente.md#2bis--autenticación-por-token--a-partir-de-schema_version-45-vigente)).
+   **Falta**: coordinar con quien arme el agente nuevo el rollout real hospital por
+   hospital (generar el token, configurarlo en el agente, confirmar el primer reporte en
+   `4.5` antes de dar por migrado a ese hospital).
 
 ## 8. Qué queda explícitamente fuera de este plan
 

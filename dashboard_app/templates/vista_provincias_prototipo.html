@@ -59,6 +59,12 @@ header {
   font-size: 13px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
 .national-kpis {
   display: flex;
   gap: 24px;
@@ -304,6 +310,26 @@ tr:hover td { background: var(--surface2); }
 .leaflet-popup-content-wrapper { border-radius: var(--radius2); box-shadow: none; border: 1px solid var(--border); }
 .leaflet-popup-content { margin: 12px; font-size: 13px; font-family: 'Inter', sans-serif; }
 .leaflet-popup-content b { color: var(--green); font-size: 14px; display: block; margin-bottom: 4px; }
+
+/* ---- TARJETA RESUMEN EJECUTIVO BID+PROSEPU (dentro de #project-cards) ---- */
+.project-card-resumen {
+  cursor: default;
+  border-left: 4px solid var(--green);
+  background: var(--surface);
+}
+
+.project-card-resumen:hover { background: var(--surface); }
+
+.resumen-ia-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--txt);
+}
+
+.resumen-ia-row b { font-weight: 800; }
 </style>
 </head>
 <body>
@@ -312,24 +338,30 @@ tr:hover td { background: var(--surface2); }
 <header>
   <div class="header-title">
     <h1>TecnoMonitor</h1>
-    <p>Resumen unificado de la red hospitalaria monitoreada</p>
+    <p id="header-subtitle">Resumen unificado de la red hospitalaria monitoreada</p>
   </div>
-  <div class="national-kpis">
-    <div class="n-kpi">
-      <div class="label">Provincias / Hospitales</div>
-      <div class="value"><span id="h-prov" style="color:var(--green)">0</span> <span style="font-size:1rem;font-weight:400;color:var(--muted)">/</span> <span id="h-hosp" style="color:var(--blue)">0</span></div>
+  <div class="header-right">
+    <div class="national-kpis">
+      <div class="n-kpi">
+        <div class="label" id="lbl-prov-hosp">Provincias / Hospitales</div>
+        <div class="value"><span id="h-prov" style="color:var(--green)">0</span> <span style="font-size:1rem;font-weight:400;color:var(--muted)">/</span> <span id="h-hosp" style="color:var(--blue)">0</span></div>
+      </div>
+      <div class="n-kpi">
+        <div class="label" id="lbl-estudios">Estudios Totales</div>
+        <div class="value" id="h-est">0</div>
+      </div>
+      <div class="n-kpi">
+        <div class="label" id="lbl-ia">Procesamientos IA</div>
+        <div class="value" id="h-ia" style="color:var(--purple)">0</div>
+      </div>
+      <div class="n-kpi">
+        <div class="label" id="lbl-equipos">Equipos PACS</div>
+        <div class="value" id="h-eq" style="color:var(--amber)">0</div>
+      </div>
     </div>
-    <div class="n-kpi">
-      <div class="label">Estudios Totales</div>
-      <div class="value" id="h-est">0</div>
-    </div>
-    <div class="n-kpi">
-      <div class="label">Procesamientos IA</div>
-      <div class="value" id="h-ia" style="color:var(--purple)">0</div>
-    </div>
-    <div class="n-kpi">
-      <div class="label">Equipos PACS</div>
-      <div class="value" id="h-eq" style="color:var(--amber)">0</div>
+    <div class="toggle-agrupar" id="lang-switch">
+      <button type="button" class="toggle-btn active" id="btn-lang-es" onclick="cambiarIdioma('es')">ES</button>
+      <button type="button" class="toggle-btn" id="btn-lang-it" onclick="cambiarIdioma('it')">IT</button>
     </div>
   </div>
 </header>
@@ -372,27 +404,199 @@ tr:hover td { background: var(--surface2); }
 <script>
 let PROV = [];
 let PROY = [];
+let seleccionActual = null;
+let TOTALES = { hosp: 0, est: 0, ia: 0, eq: 0 };
+let RESUMEN_BID_PROSEPU = null;
+
+// --- Selector de idioma (solo esta interfaz) — español por defecto, italiano alternativo. ---
+let LANG = 'es';
+const I18N = {
+  es: {
+    locale: 'es-AR',
+    subtitle: 'Resumen unificado de la red hospitalaria monitoreada',
+    kpiProvHosp: 'Provincias / Hospitales',
+    kpiEstudios: 'Estudios Totales',
+    kpiIA: 'Procesamientos IA',
+    kpiEquipos: 'Equipos PACS',
+    mapaArgentina: 'Mapa · Argentina',
+    hospPorProyecto: 'Hospitales por Proyecto (BID / PROSEPU)',
+    verTodoElPais: '↺ Ver todo el país',
+    provincia: 'Provincia',
+    proyecto: 'Proyecto',
+    panelNacional: 'Panel Nacional',
+    selProvinciaMapa: 'Seleccioná una provincia en el mapa',
+    selProyecto: 'Seleccioná un proyecto',
+    clickMarcadorProvincia: 'Hacé click en un marcador del mapa<br/>para desglosar los KPIs de la provincia.',
+    clickProyecto: 'Hacé click en un proyecto<br/>para desglosar sus KPIs.',
+    hospitalesEnMonitoreo: 'hospitales en monitoreo',
+    hospitalesDe: 'Hospitales de',
+    errorCargando: 'Error cargando datos',
+    kEstudios: 'Estudios',
+    kAdmitidas: 'Ó. admitidas',
+    kAsociadas: 'Ó. asociadas',
+    kDefinitivas: 'Ó. definitivas',
+    kEstudiosIA: 'Estudios IA',
+    kEquipos: 'Equipos',
+    kTBAlm: 'TB almacenados',
+    kRAM: 'RAM prom.',
+    thHospital: 'Hospital',
+    thCodigo: 'Código',
+    thEstudios: 'Estudios (PACS)',
+    thAdmitidas: 'Estudios (RIS)',
+    thEstudiosAnual: 'PACS / año',
+    tipEstudiosAnual: 'Proyección a 12 meses de lo almacenado en PACS. Si el hospital tiene menos de un año de actividad, se extrapola con los meses reales disponibles.',
+    tipBaseMeses: 'Basado en',
+    tipMesesSufijo: 'meses de historial real.',
+    estAnualAprox: '~',
+    thIA: 'IA',
+    thEquipos: 'Equipos',
+    thTB: 'TB',
+    thRAM: 'RAM',
+    sinDatosCargados: '(sin datos cargados)',
+    hospitalesLbl: 'hospitales',
+    estudiosLbl: 'estudios',
+    footerTitulo: 'Red BID + PROSEPU',
+    footerEstudiosTotales: 'estudios totales (PACS)',
+    footerViaIA: 'vía IA',
+  },
+  it: {
+    locale: 'it-IT',
+    subtitle: 'Riepilogo unificato della rete ospedaliera monitorata',
+    kpiProvHosp: 'Province / Ospedali',
+    kpiEstudios: 'Studi Totali',
+    kpiIA: 'Elaborazioni IA',
+    kpiEquipos: 'Apparecchiature PACS',
+    mapaArgentina: 'Mappa · Argentina',
+    hospPorProyecto: 'Ospedali per Progetto (BID / PROSEPU)',
+    verTodoElPais: '↺ Vedi tutto il paese',
+    provincia: 'Provincia',
+    proyecto: 'Progetto',
+    panelNacional: 'Pannello Nazionale',
+    selProvinciaMapa: 'Seleziona una provincia sulla mappa',
+    selProyecto: 'Seleziona un progetto',
+    clickMarcadorProvincia: 'Clicca su un indicatore sulla mappa<br/>per il dettaglio dei KPI della provincia.',
+    clickProyecto: 'Clicca su un progetto<br/>per il dettaglio dei suoi KPI.',
+    hospitalesEnMonitoreo: 'ospedali monitorati',
+    hospitalesDe: 'Ospedali di',
+    errorCargando: 'Errore nel caricamento dei dati',
+    kEstudios: 'Studi',
+    kAdmitidas: 'Ord. ammesse',
+    kAsociadas: 'Ord. associate',
+    kDefinitivas: 'Ord. definitive',
+    kEstudiosIA: 'Studi IA',
+    kEquipos: 'Apparecchiature',
+    kTBAlm: 'TB archiviati',
+    kRAM: 'RAM media',
+    thHospital: 'Ospedale',
+    thCodigo: 'Codice',
+    thEstudios: 'Studi (PACS)',
+    thAdmitidas: 'Studi (RIS)',
+    thEstudiosAnual: 'PACS / anno',
+    tipEstudiosAnual: 'Proiezione a 12 mesi di quanto archiviato nel PACS. Se l\'ospedale ha meno di un anno di attività, si estrapola con i mesi reali disponibili.',
+    tipBaseMeses: 'Basato su',
+    tipMesesSufijo: 'mesi di storico reale.',
+    estAnualAprox: '~',
+    thIA: 'IA',
+    thEquipos: 'Apparecchi',
+    thTB: 'TB',
+    thRAM: 'RAM',
+    sinDatosCargados: '(dati non caricati)',
+    hospitalesLbl: 'ospedali',
+    estudiosLbl: 'studi',
+    footerTitulo: 'Rete BID + PROSEPU',
+    footerEstudiosTotales: 'studi totali (PACS)',
+    footerViaIA: 'via IA',
+    footerRx: 'Rx',
+    footerMg: 'MG',
+  },
+};
+
+function t(clave) { return I18N[LANG][clave]; }
+
+const TEXTOS_ESTATICOS = {
+  'header-subtitle': 'subtitle',
+  'lbl-prov-hosp': 'kpiProvHosp',
+  'lbl-estudios': 'kpiEstudios',
+  'lbl-ia': 'kpiIA',
+  'lbl-equipos': 'kpiEquipos',
+  'btn-modo-provincia': 'provincia',
+  'btn-modo-proyecto': 'proyecto',
+};
+
+function aplicarTextosEstaticos() {
+  for (const id in TEXTOS_ESTATICOS) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(TEXTOS_ESTATICOS[id]);
+  }
+  document.getElementById('btn-volver-mapa').textContent = t('verTodoElPais');
+  document.getElementById('map-section-label').textContent = modo === 'provincia' ? t('mapaArgentina') : t('hospPorProyecto');
+}
+
+function actualizarKpisNacionales() {
+  document.getElementById('h-hosp').textContent = TOTALES.hosp;
+  document.getElementById('h-est').textContent = TOTALES.est.toLocaleString(t('locale'));
+  document.getElementById('h-ia').textContent = TOTALES.ia.toLocaleString(t('locale'));
+  document.getElementById('h-eq').textContent = TOTALES.eq.toLocaleString(t('locale'));
+}
+
+function popupProvincia(p) {
+  return '<b>' + p.provincia + '</b>' + p.n_hospitales + ' ' + t('hospitalesLbl') + '<br>' + p.estudios.toLocaleString(t('locale')) + ' ' + t('estudiosLbl');
+}
+
+function actualizarPopups() {
+  PROV.forEach(p => {
+    const m = markersPorProvincia[p.provincia];
+    if (m) m.setPopupContent(popupProvincia(p));
+  });
+}
+
+function cardResumenBidProsepu() {
+  if (!RESUMEN_BID_PROSEPU) return '';
+  const r = RESUMEN_BID_PROSEPU;
+  const pct = r.estudios > 0 ? Math.round(r.ia / r.estudios * 100) : 0;
+  return '<div class="project-card project-card-resumen">'
+    + '<div class="project-card-name">' + t('footerTitulo') + '</div>'
+    + '<div class="project-card-sub">' + r.estudios.toLocaleString(t('locale')) + ' ' + t('footerEstudiosTotales') + '</div>'
+    + '<div class="resumen-ia-row">'
+    + '<span><b style="color:var(--purple)">' + r.ia.toLocaleString(t('locale')) + '</b> ' + t('footerViaIA') + ' (' + pct + '%)</span>'
+    + '</div>'
+    + '</div>';
+}
+
+function cambiarIdioma(lang) {
+  if (lang === LANG) return;
+  LANG = lang;
+  document.getElementById('btn-lang-es').classList.toggle('active', lang === 'es');
+  document.getElementById('btn-lang-it').classList.toggle('active', lang === 'it');
+  aplicarTextosEstaticos();
+  actualizarKpisNacionales();
+  actualizarPopups();
+  if (modo === 'proyecto') renderProjectCards();
+  if (seleccionActual) mostrarDetalle(seleccionActual); else resetPanelDetalle();
+}
+
 const CENT = {"Buenos Aires": [-36.5, -60.2], "CABA": [-34.61, -58.38], "Córdoba": [-32.0, -63.5], "Santa Fe": [-30.7, -60.9], "Tucumán": [-26.9, -65.2], "Chubut": [-43.8, -68.5], "Neuquén": [-38.9, -69.8], "Mendoza": [-34.9, -68.5], "Catamarca": [-27.3, -66.9], "Jujuy": [-23.3, -65.8], "Entre Ríos": [-32.0, -59.2], "Salta": [-24.3, -64.8], "San Juan": [-30.8, -68.9], "Formosa": [-24.9, -59.9], "La Rioja": [-29.7, -67.0], "Tierra del Fuego": [-53.8, -67.9], "Chaco": [-26.4, -60.5], "Corrientes": [-28.7, -57.8], "Río Negro": [-40.2, -67.2], "Santiago del Estero": [-27.8, -63.2], "Misiones": [-26.9, -54.5], "Santa Cruz": [-48.6, -70.0], "San Luis": [-33.7, -66.0], "La Pampa": [-37.2, -65.5]};
 
 async function cargarProvincias() {
+  aplicarTextosEstaticos();
   const res = await fetch('/api/provincias', { credentials: 'include' });
   if (res.status === 401) { window.location.href = '/'; return; }
   if (!res.ok) {
-    document.getElementById('d-badge').textContent = 'Error cargando datos (' + res.status + ')';
+    document.getElementById('d-badge').textContent = t('errorCargando') + ' (' + res.status + ')';
     return;
   }
   const data = await res.json();
   PROV = data.provincias || [];
   PROY = data.proyectos || [];
+  RESUMEN_BID_PROSEPU = data.resumen_bid_prosepu || null;
 
   let hosp = 0, est = 0, ia = 0, eq = 0;
   PROV.forEach(p => { hosp += p.n_hospitales; est += p.estudios; ia += p.ia; eq += p.equipos; });
+  TOTALES = { hosp, est, ia, eq };
 
   document.getElementById('h-prov').textContent = PROV.length;
-  document.getElementById('h-hosp').textContent = hosp;
-  document.getElementById('h-est').textContent = est.toLocaleString('es-AR');
-  document.getElementById('h-ia').textContent = ia.toLocaleString('es-AR');
-  document.getElementById('h-eq').textContent = eq.toLocaleString('es-AR');
+  actualizarKpisNacionales();
+  if (modo === 'proyecto') renderProjectCards();
 
   initMap();
 }
@@ -461,7 +665,7 @@ async function initMap() {
     const estiloBase = { radius: r, color: '#0b7285', weight: 1.5, fillColor: '#0b7285', fillOpacity: 0.35 };
     const m = L.circleMarker(c, estiloBase)
       .addTo(map)
-      .bindPopup('<b>' + p.provincia + '</b>' + p.n_hospitales + ' hospitales<br>' + p.estudios.toLocaleString('es-AR') + ' estudios');
+      .bindPopup(popupProvincia(p));
     m._estiloBase = estiloBase;
     markersPorProvincia[p.provincia] = m;
 
@@ -520,50 +724,59 @@ function kbox(label, val, cls) {
   return '<div class="kbox ' + (cls || '') + '"><div class="l">' + label + '</div><div class="v">' + val + '</div></div>';
 }
 
+function tooltipEstudiosAnual(h) {
+  let tip = t('tipEstudiosAnual');
+  if (h.estudios_pacs_anual_estimado && h.estudios_pacs_anual_meses_base != null) {
+    tip += ' ' + t('tipBaseMeses') + ' ' + h.estudios_pacs_anual_meses_base + ' ' + t('tipMesesSufijo');
+  }
+  return tip;
+}
+
 function mostrarDetalle(p) {
+  seleccionActual = p;
   const nombre = p.provincia || p.proyecto;
   document.getElementById('d-name').textContent = nombre;
-  document.getElementById('d-badge').textContent = p.n_hospitales + ' hospitales en monitoreo';
+  document.getElementById('d-badge').textContent = p.n_hospitales + ' ' + t('hospitalesEnMonitoreo');
 
   const k = [
-    kbox('Estudios', p.estudios.toLocaleString('es-AR'), 'green'),
-    kbox('Ó. admitidas', p.admitidas.toLocaleString('es-AR'), 'blue'),
-    kbox('Ó. asociadas', p.asociadas.toLocaleString('es-AR'), 'blue'),
-    kbox('Ó. definitivas', p.definitivas.toLocaleString('es-AR'), 'blue'),
-    kbox('Estudios IA', p.ia.toLocaleString('es-AR'), 'purple'),
-    kbox('Equipos', p.equipos, 'amber'),
-    kbox('TB almacenados', (p.tb_alm != null ? p.tb_alm : '-'), 'amber'),
-    kbox('RAM prom.', (p.ram != null ? p.ram + '%' : '-'), '')
+    kbox(t('kEstudios'), p.estudios.toLocaleString(t('locale')), 'green'),
+    kbox(t('kAdmitidas'), p.admitidas.toLocaleString(t('locale')), 'blue'),
+    kbox(t('kAsociadas'), p.asociadas.toLocaleString(t('locale')), 'blue'),
+    kbox(t('kDefinitivas'), p.definitivas.toLocaleString(t('locale')), 'blue'),
+    kbox(t('kEstudiosIA'), p.ia.toLocaleString(t('locale')), 'purple'),
+    kbox(t('kEquipos'), p.equipos, 'amber'),
+    kbox(t('kTBAlm'), (p.tb_alm != null ? p.tb_alm : '-'), 'amber'),
+    kbox(t('kRAM'), (p.ram != null ? p.ram + '%' : '-'), '')
   ].join('');
-  
+
   let rows = p.hospitales.map(h => '<tr' + (h.pendiente_carga ? ' style="opacity:.55"' : '') + '>'
-    + '<td class="hosp-name">' + h.nombre + (h.pendiente_carga ? ' <span style="font-size:.75em;color:var(--amber);font-weight:600">(sin datos cargados)</span>' : '') + '</td>'
+    + '<td class="hosp-name">' + h.nombre + (h.pendiente_carga ? ' <span style="font-size:.75em;color:var(--amber);font-weight:600">' + t('sinDatosCargados') + '</span>' : '') + '</td>'
     + '<td style="text-align:left;font-family:monospace;font-size:.85em;color:var(--muted)">' + h.id + '</td>'
-    + '<td>' + h.estudios.toLocaleString('es-AR') + '</td>'
-    + '<td>' + h.admitidas.toLocaleString('es-AR') + '</td>'
-    + '<td>' + h.ia.toLocaleString('es-AR') + '</td>'
+    + '<td>' + h.estudios.toLocaleString(t('locale')) + '</td>'
+    + '<td title="' + tooltipEstudiosAnual(h) + '">' + (h.estudios_pacs_anual != null ? (h.estudios_pacs_anual_estimado ? t('estAnualAprox') : '') + h.estudios_pacs_anual.toLocaleString(t('locale')) : '-') + '</td>'
+    + '<td>' + h.admitidas.toLocaleString(t('locale')) + '</td>'
+    + '<td>' + h.ia.toLocaleString(t('locale')) + '</td>'
     + '<td>' + h.equipos + '</td>'
     + '<td>' + (h.tb_alm != null ? h.tb_alm : '-') + '</td>'
     + '<td>' + (h.ram != null ? h.ram + '%' : '-') + '</td>'
     + '</tr>').join('');
-    
+
   document.getElementById('d-body').innerHTML =
     '<div class="kgrid">' + k + '</div>'
-    + '<p class="hlist-title">Hospitales de ' + nombre + '</p>'
-    + '<table><thead><tr><th>Hospital</th><th style="text-align:left">Código</th><th>Estudios</th><th>Admitidas</th><th>IA</th><th>Equipos</th><th>TB</th><th>RAM</th></tr></thead><tbody>'
+    + '<p class="hlist-title">' + t('hospitalesDe') + ' ' + nombre + '</p>'
+    + '<table><thead><tr><th>' + t('thHospital') + '</th><th style="text-align:left">' + t('thCodigo') + '</th><th>' + t('thEstudios') + '</th><th title="' + t('tipEstudiosAnual') + '">' + t('thEstudiosAnual') + '</th><th>' + t('thAdmitidas') + '</th><th>' + t('thIA') + '</th><th>' + t('thEquipos') + '</th><th>' + t('thTB') + '</th><th>' + t('thRAM') + '</th></tr></thead><tbody>'
     + rows + '</tbody></table>';
 }
 
 function resetPanelDetalle() {
-  document.getElementById('d-name').textContent = 'Panel Nacional';
+  seleccionActual = null;
+  document.getElementById('d-name').textContent = t('panelNacional');
   document.getElementById('d-badge').textContent = modo === 'provincia'
-    ? 'Seleccioná una provincia en el mapa'
-    : 'Seleccioná un proyecto';
+    ? t('selProvinciaMapa')
+    : t('selProyecto');
   document.getElementById('d-body').innerHTML =
     '<div class="empty-detail"><div class="big">&#128072;</div><div>'
-    + (modo === 'provincia'
-        ? 'Hacé click en un marcador del mapa<br/>para desglosar los KPIs de la provincia.'
-        : 'Hacé click en un proyecto<br/>para desglosar sus KPIs.')
+    + (modo === 'provincia' ? t('clickMarcadorProvincia') : t('clickProyecto'))
     + '</div></div>';
 }
 
@@ -574,9 +787,9 @@ function renderProjectCards() {
   cont.innerHTML = PROY.map(p => (
     '<div class="project-card" style="border-left:4px solid ' + (PROYECTO_COLOR[p.proyecto] || '#868e96') + '" onclick="mostrarDetalleProyecto(\'' + p.proyecto + '\')">'
     + '<div class="project-card-name">' + p.proyecto + '</div>'
-    + '<div class="project-card-sub">' + p.n_hospitales + ' hospitales · ' + p.estudios.toLocaleString('es-AR') + ' estudios</div>'
+    + '<div class="project-card-sub">' + p.n_hospitales + ' ' + t('hospitalesLbl') + ' · ' + p.estudios.toLocaleString(t('locale')) + ' ' + t('estudiosLbl') + '</div>'
     + '</div>'
-  )).join('');
+  )).join('') + cardResumenBidProsepu();
 }
 
 function mostrarDetalleProyecto(nombre) {
@@ -591,7 +804,7 @@ function cambiarModo(nuevo) {
   modo = nuevo;
   document.getElementById('btn-modo-provincia').classList.toggle('active', nuevo === 'provincia');
   document.getElementById('btn-modo-proyecto').classList.toggle('active', nuevo === 'proyecto');
-  document.getElementById('map-section-label').textContent = nuevo === 'provincia' ? 'Mapa · Argentina' : 'Hospitales por Proyecto (BID / PROSEPU)';
+  document.getElementById('map-section-label').textContent = nuevo === 'provincia' ? t('mapaArgentina') : t('hospPorProyecto');
   document.getElementById('map').style.display = nuevo === 'provincia' ? 'block' : 'none';
   document.getElementById('project-cards').style.display = nuevo === 'proyecto' ? 'flex' : 'none';
 

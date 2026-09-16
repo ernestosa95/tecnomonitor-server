@@ -28,11 +28,23 @@ desactualizada y hay que revisarla.
     datos exacta tiene que mandar el agente en `POST /v1/hospital-status` para que el
     servidor lo acepte y genere alertas/KPIs correctamente.
 11. [Plan de autenticación del agente por token](11-plan-auth-ingesta-agente.md) — diseño
-    decidido para resolver [S2](04-seguridad.md#s2) de forma escalonada por versión de
-    agente, sin cortar ingesta de los hospitales que todavía no migraron (⏸️ diseño
-    aprobado, sin ejecutar).
+    para resolver [S2](04-seguridad.md#s2) de forma escalonada por versión de agente, sin
+    cortar ingesta de los hospitales que todavía no migraron (✅ implementado, falta correr
+    la migración en producción y coordinar el rollout por hospital).
 
-## Estado general — 2026-09-10
+## Estado general — 2026-09-11
+
+- **Fase 2, ítem 2.1 (auth de ingesta por token, escalonada a partir de
+  `schema_version 4.5`): ✅ código implementado y verificado local con `TestClient`.**
+  Token por hospital (SHA-256) en `hospitales_metadata.ingest_token_hash`, exigido vía
+  `Authorization: Bearer <token>` solo para reportes en `schema_version 4.5`; las
+  versiones viejas (`3.0`-`4.3`) no cambian. Detalle en
+  [11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md). **Falta antes de
+  producción**: correr `Accesorios/agregar_token_ingesta_hospitales.py` contra la DB real,
+  y coordinar con quien arma el agente nuevo el rollout hospital por hospital (generar
+  token, configurarlo en el agente, confirmar el primer reporte en 4.5).
+
+## Estado — 2026-09-10
 
 - **Fase 0 y Fase 1 del plan de acción: ✅ completadas y verificadas en producción.** Las
   dos credenciales reales filtradas en el historial de git (token de Asana, contraseña de
