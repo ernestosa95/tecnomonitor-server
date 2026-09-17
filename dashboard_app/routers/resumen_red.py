@@ -14,10 +14,13 @@ Ver docs/08-plan-refactor-dashboard.md.
 import json
 import re
 import time
+import csv
+from io import StringIO
 from collections import defaultdict
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -149,9 +152,21 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
                     kpis = json.loads(uso.kpi_json_data) if isinstance(uso.kpi_json_data, str) else uso.kpi_json_data
                     for item in kpis.get("pacs", []):
                         aet = item.get("aet", "").upper().strip()
+                        mod = item.get("mod", "") or ""
 
-                        if aet and aet not in ['CLIENT', 'WADO', 'PACS']:
-                            if aet.startswith("ENT_"):
+                        # Mismo criterio que calcular_kpis_hospital (resumen_hospital.py) --
+                        # antes este endpoint exigía "ENT_" con guion bajo exacto y se
+                        # perdía AETs reales como ENTP_*/ENTB_*/ENTELAIENTB_* (confirmado
+                        # con datos de producción), subcontando "Procesamientos IA" en el
+                        # home. Reutilizamos las mismas constantes para no volver a divergir.
+                        #
+                        # EXCLUDED_MODS también importa acá: Entelai manda DOS items por
+                        # cada estudio que procesa (uno "MG" -imagen marcada- y uno "DOC"
+                        # -informe generado-). Sin excluir "DOC" se duplicaba el conteo de
+                        # "Procesamientos IA" (confirmado con datos de producción).
+                        if (aet and aet not in resumen_hospital.EXCLUDED_AETS
+                                and mod not in resumen_hospital.EXCLUDED_MODS):
+                            if aet.startswith(resumen_hospital.PREFIJO_IA):
                                 estudios_ia += item.get("almacenados", 0)
                             else:
                                 # Si no, es un estudio de equipo médico estándar
@@ -215,12 +230,19 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
     por_provincia = defaultdict(_bucket)
     por_proyecto = defaultdict(_bucket)
 
-    # Resumen ejecutivo BID+PROSEPU (estudios PACS vs. IA, desglosado Rx/MG),
-    # para el pie de /prov-analytics. A pedido explícito: solo hospitales con
-    # agente real instalado -- los de carga manual no tienen desglose de
-    # modalidad (HospitalManualKPI solo guarda un total de "ia"), así que se
-    # excluyen del todo en vez de mezclar datos reales con datos incompletos.
-    resumen_bid_prosepu = {"estudios": 0, "ia": 0, "ia_rx": 0, "ia_mg": 0}
+    # Resumen ejecutivo BID+PROSEPU (estudios PACS vs. vía IA), para la
+    # tarjeta de /prov-analytics. A pedido explícito: solo hospitales con
+    # agente real instalado -- los de carga manual solo guardan un total de
+    # "ia" (HospitalManualKPI), así que se excluyen del todo en vez de
+    # mezclar datos reales con datos incompletos.
+    #
+    # Nota: se evaluó desglosar por modalidad (Rx/MG), pero se descartó -- el
+    # campo `mod` que manda el agente para los AETs de IA (prefijo ENT_) no
+    # es la modalidad clínica de origen, es el tipo de artefacto de salida
+    # del motor de IA (imagen marcada = "MG", informe generado = "DOC"),
+    # confirmado con datos reales de producción. No hay forma de recuperar
+    # la modalidad real del estudio con lo que se ingesta hoy.
+    resumen_bid_prosepu = {"estudios": 0, "ia": 0}
 
     for hosp in hospitales_meta:
         if getattr(hosp, "datos_manuales", False):
@@ -233,6 +255,7 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
                     # Sin serie temporal real (es una carga manual puntual): no se
                     # puede calcular ventana de 12 meses ni extrapolar.
                     "estudios_pacs_anual": None, "estudios_pacs_anual_estimado": None,
+                    "estudios_pacs_anual_meses_base": None,
                     "tb_alm": fila.tb_alm, "tb_disp": fila.tb_disp, "ram": fila.ram,
                     "go_live": fila.go_live or "",
                 }
@@ -241,6 +264,7 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
                 kpis = {"estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0,
                        "ia": 0, "equipos": 0,
                        "estudios_pacs_anual": None, "estudios_pacs_anual_estimado": None,
+                       "estudios_pacs_anual_meses_base": None,
                        "tb_alm": None, "tb_disp": None,
                        "ram": None, "go_live": ""}
                 pendiente = True
@@ -256,6 +280,7 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
             "ia": kpis["ia"], "equipos": kpis["equipos"],
             "estudios_pacs_anual": kpis["estudios_pacs_anual"],
             "estudios_pacs_anual_estimado": kpis["estudios_pacs_anual_estimado"],
+            "estudios_pacs_anual_meses_base": kpis["estudios_pacs_anual_meses_base"],
             "tb_alm": kpis["tb_alm"], "tb_disp": kpis["tb_disp"], "ram": kpis["ram"],
             "pendiente_carga": pendiente,
         }
@@ -264,8 +289,6 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
         if not getattr(hosp, "datos_manuales", False) and clave_proyecto in ("BID", "PROSEPU"):
             resumen_bid_prosepu["estudios"] += kpis["estudios"]
             resumen_bid_prosepu["ia"] += kpis["ia"]
-            resumen_bid_prosepu["ia_rx"] += kpis["ia_rx"]
-            resumen_bid_prosepu["ia_mg"] += kpis["ia_mg"]
 
         for grupo, clave in ((por_provincia, _normalizar_provincia(hosp.provincia)),
                              (por_proyecto, clave_proyecto)):
@@ -360,3 +383,88 @@ def obtener_datos_mapa(db: Session = Depends(get_db),
 async def get_nodos(current_user: dict = Depends(auth.get_current_user)):
     # Reutiliza tu lógica de conexión a DB existente (ej. Accesorios/actualizar_db.py)
     return obtener_nodos_desde_db()
+
+
+# ==========================================
+# ⚡ EXPORTACIÓN A CSV (Aprovechando Caché)
+# ==========================================
+@router.get("/api/provincias/exportar/csv")
+def exportar_provincias_csv(
+    modo: str = "provincia",
+    clave: str = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(auth.bloquear_cliente())
+):
+    """
+    Exporta la tabla de hospitales a formato CSV.
+    Si modo='provincia', exporta los hospitales de esa provincia.
+    Si modo='proyecto', exporta los hospitales de ese proyecto.
+    Si no se pasa clave, exporta la red completa.
+    """
+    # 1. Obtener la data (aprovecha la caché existente de CACHE_TTL_PROVINCIAS para máxima eficiencia)
+    datos = obtener_resumen_provincias(db, current_user)
+
+    hospitales_a_exportar = []
+
+    # 2. Filtrar según lo que el usuario esté viendo en el frontend
+    if clave:
+        if modo == "provincia":
+            grupo = next((p for p in datos["provincias"] if p["provincia"] == clave), None)
+            if grupo:
+                hospitales_a_exportar = grupo["hospitales"]
+        elif modo == "proyecto":
+            grupo = next((p for p in datos["proyectos"] if p["proyecto"] == clave), None)
+            if grupo:
+                hospitales_a_exportar = grupo["hospitales"]
+    else:
+        # Si requieren un general de todo, iteramos las provincias para obtener todos los hospitales
+        for prov in datos["provincias"]:
+             hospitales_a_exportar.extend(prov["hospitales"])
+
+    # Evitar duplicados si se exporta todo
+    hospitales_unicos = {h["id"]: h for h in hospitales_a_exportar}.values()
+
+    # 3. Preparar el buffer de texto para el CSV
+    output = StringIO()
+    writer = csv.writer(output, delimiter=';') # Usamos punto y coma para no romper cifras con coma decimal
+
+    # Escribir Cabeceras
+    writer.writerow([
+        "Hospital", "Código", "Modo Agrupación", "Grupo",
+        "Estudios (PACS)", "PACS / Año (Proyectado)", "Órdenes Admitidas (RIS)",
+        "Estudios vía IA", "Equipos Conectados", "TB Almacenados", "RAM Promedio (%)", "Go-Live"
+    ])
+
+    # 4. Escribir filas
+    for h in hospitales_unicos:
+        est_anual = h.get("estudios_pacs_anual")
+        est_anual_str = str(est_anual) if est_anual is not None else "-"
+        if h.get("estudios_pacs_anual_estimado"):
+            est_anual_str = "~" + est_anual_str
+
+        writer.writerow([
+            h.get("nombre", ""),
+            h.get("id", ""),
+            modo.capitalize(),
+            clave if clave else "Todos",
+            h.get("estudios", 0),
+            est_anual_str,
+            h.get("admitidas", 0),
+            h.get("ia", 0),
+            h.get("equipos", 0),
+            h.get("tb_alm") if h.get("tb_alm") is not None else "-",
+            h.get("ram") if h.get("ram") is not None else "-",
+            h.get("go_live", "")
+        ])
+
+    output.seek(0)
+
+    # Nombre del archivo dinámico
+    nombre_limpio = str(clave).replace(" ", "_").lower() if clave else "nacional"
+    filename = f"tecnomonitor_{modo}_{nombre_limpio}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

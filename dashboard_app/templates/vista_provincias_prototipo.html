@@ -150,6 +150,11 @@ header {
   color: #fff;
 }
 
+#btn-exportar-csv:hover {
+  background: var(--surface2);
+  color: var(--txt);
+}
+
 /* ---- TARJETAS DE PROYECTO (alternativa al mapa) ---- */
 #project-cards {
   flex: 1;
@@ -313,12 +318,12 @@ tr:hover td { background: var(--surface2); }
 
 /* ---- TARJETA RESUMEN EJECUTIVO BID+PROSEPU (dentro de #project-cards) ---- */
 .project-card-resumen {
-  cursor: default;
+  cursor: pointer; /* Ahora es interactiva */
   border-left: 4px solid var(--green);
   background: var(--surface);
 }
 
-.project-card-resumen:hover { background: var(--surface); }
+.project-card-resumen:hover { background: var(--surface2); }
 
 .resumen-ia-row {
   display: flex;
@@ -341,6 +346,12 @@ tr:hover td { background: var(--surface2); }
     <p id="header-subtitle">Resumen unificado de la red hospitalaria monitoreada</p>
   </div>
   <div class="header-right">
+    
+    <!-- NUEVO BOTÓN DE DESCARGA GENERAL -->
+    <button type="button" class="toggle-btn" onclick="descargarCSVGeneral()" style="border: 1px solid var(--border); border-radius: var(--radius2); margin-right: 24px; font-weight: 800; background: var(--surface);">
+      ⬇ CSV TOTAL
+    </button>
+
     <div class="national-kpis">
       <div class="n-kpi">
         <div class="label" id="lbl-prov-hosp">Provincias / Hospitales</div>
@@ -388,8 +399,13 @@ tr:hover td { background: var(--surface2); }
   <!-- Columna Derecha: Detalle Provincial -->
   <div class="detail-section">
     <div class="dc-head">
-      <h3 id="d-name">Panel Nacional</h3>
-      <div class="badge" id="d-badge">Seleccioná una provincia en el mapa</div>
+      <div>
+        <h3 id="d-name">Panel Nacional</h3>
+        <div class="badge" id="d-badge">Seleccioná una provincia en el mapa</div>
+      </div>
+      <button type="button" class="toggle-btn" id="btn-exportar-csv" onclick="descargarCSV()" style="display:none; border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius2);">
+        ⬇ CSV
+      </button>
     </div>
     <div class="dc-body" id="d-body">
       <div class="empty-detail">
@@ -506,8 +522,6 @@ const I18N = {
     footerTitulo: 'Rete BID + PROSEPU',
     footerEstudiosTotales: 'studi totali (PACS)',
     footerViaIA: 'via IA',
-    footerRx: 'Rx',
-    footerMg: 'MG',
   },
 };
 
@@ -554,7 +568,8 @@ function cardResumenBidProsepu() {
   if (!RESUMEN_BID_PROSEPU) return '';
   const r = RESUMEN_BID_PROSEPU;
   const pct = r.estudios > 0 ? Math.round(r.ia / r.estudios * 100) : 0;
-  return '<div class="project-card project-card-resumen">'
+  // Añadimos el evento onclick para que despliegue el detalle consolidado
+  return '<div class="project-card project-card-resumen" onclick="mostrarDetalleBidProsepu()">'
     + '<div class="project-card-name">' + t('footerTitulo') + '</div>'
     + '<div class="project-card-sub">' + r.estudios.toLocaleString(t('locale')) + ' ' + t('footerEstudiosTotales') + '</div>'
     + '<div class="resumen-ia-row">'
@@ -734,6 +749,8 @@ function tooltipEstudiosAnual(h) {
 
 function mostrarDetalle(p) {
   seleccionActual = p;
+  document.getElementById('btn-exportar-csv').style.display = 'inline-block';
+  
   const nombre = p.provincia || p.proyecto;
   document.getElementById('d-name').textContent = nombre;
   document.getElementById('d-badge').textContent = p.n_hospitales + ' ' + t('hospitalesEnMonitoreo');
@@ -770,6 +787,7 @@ function mostrarDetalle(p) {
 
 function resetPanelDetalle() {
   seleccionActual = null;
+  document.getElementById('btn-exportar-csv').style.display = 'none';
   document.getElementById('d-name').textContent = t('panelNacional');
   document.getElementById('d-badge').textContent = modo === 'provincia'
     ? t('selProvinciaMapa')
@@ -795,6 +813,43 @@ function renderProjectCards() {
 function mostrarDetalleProyecto(nombre) {
   const p = PROY.find(x => x.proyecto === nombre);
   if (p) mostrarDetalle(p);
+}
+
+// Nueva función para consolidar los proyectos BID y PROSEPU al vuelo
+function mostrarDetalleBidProsepu() {
+  const pBID = PROY.find(x => x.proyecto === 'BID') || { hospitales: [] };
+  const pPRO = PROY.find(x => x.proyecto === 'PROSEPU') || { hospitales: [] };
+
+  let hospitalesUnidos = [...pBID.hospitales, ...pPRO.hospitales];
+  hospitalesUnidos.sort((a, b) => b.estudios - a.estudios);
+
+  let totalAdmitidas = 0, totalAsociadas = 0, totalDefinitivas = 0, totalEquipos = 0;
+  let totalRAM = 0, countRAM = 0, totalTB = 0;
+
+  hospitalesUnidos.forEach(h => {
+    totalAdmitidas += h.admitidas || 0;
+    totalAsociadas += h.asociadas || 0;
+    totalDefinitivas += h.definitivas || 0;
+    totalEquipos += h.equipos || 0;
+    if (h.ram != null) { totalRAM += h.ram; countRAM++; }
+    if (h.tb_alm != null) { totalTB += h.tb_alm; }
+  });
+
+  const sintesis = {
+    proyecto: t('footerTitulo'), 
+    n_hospitales: hospitalesUnidos.length,
+    estudios: RESUMEN_BID_PROSEPU.estudios,
+    ia: RESUMEN_BID_PROSEPU.ia,
+    admitidas: totalAdmitidas,
+    asociadas: totalAsociadas,
+    definitivas: totalDefinitivas,
+    equipos: totalEquipos,
+    tb_alm: totalTB > 0 ? parseFloat(totalTB.toFixed(2)) : null,
+    ram: countRAM > 0 ? Math.round(totalRAM / countRAM) : null,
+    hospitales: hospitalesUnidos
+  };
+
+  mostrarDetalle(sintesis);
 }
 
 let modo = 'provincia';
@@ -823,6 +878,27 @@ function cambiarModo(nuevo) {
     renderProjectCards();
   }
   resetPanelDetalle();
+}
+
+function descargarCSV() {
+  if (!seleccionActual) return;
+  
+  let clave = seleccionActual.provincia || seleccionActual.proyecto;
+  if (!clave) return;
+
+  // Manejo especial para la vista unificada de proyectos
+  if (clave === t('footerTitulo')) {
+    descargarCSVGeneral();
+    return;
+  }
+
+  const url = `/api/provincias/exportar/csv?modo=${encodeURIComponent(modo)}&clave=${encodeURIComponent(clave)}`;
+  window.open(url, '_blank');
+}
+
+function descargarCSVGeneral() {
+  const url = `/api/provincias/exportar/csv?modo=${encodeURIComponent(modo)}`;
+  window.open(url, '_blank');
 }
 </script>
 </body>

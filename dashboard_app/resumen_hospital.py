@@ -22,11 +22,6 @@ import database
 EXCLUDED_AETS = {"CLIENT", "WADO", "PACS"}
 EXCLUDED_MODS = {"DOC"}
 PREFIJO_IA = "ENT"
-# Desglose de estudios de IA para el resumen BID+PROSEPU: mismo criterio que
-# ya usa el motor de alertas para identificar mamografía (mamo.py), aplicado
-# como substring porque `mod` puede venir combinado (ej. "MG/DOC", "MG\\SR").
-# Todo lo demás que sea IA (DX, CR, o cualquier otra modalidad) cae en RX.
-MODALIDADES_MAMO = ("MG", "MAMO")
 CAPACIDAD_TB_TOTAL = 60.0
 GB_POR_TB = 1024.0
 DIAS_ANIO = 365
@@ -108,7 +103,7 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
     """
     acc = {
         "estudios": 0, "admitidas": 0, "asociadas": 0, "definitivas": 0,
-        "ia": 0, "ia_rx": 0, "ia_mg": 0, "equipos": 0,
+        "ia": 0, "equipos": 0,
     }
     aets = set()
     go_live = None
@@ -159,11 +154,6 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
             aets.add(aet)
             if aet.startswith(PREFIJO_IA):
                 acc["ia"] += val
-                mod_up = mod.upper()
-                if any(m in mod_up for m in MODALIDADES_MAMO):
-                    acc["ia_mg"] += val
-                else:
-                    acc["ia_rx"] += val
             if fecha is not None and fecha >= corte_anual:
                 estudios_pacs_ultimo_anio += val
             hay_actividad = True
@@ -202,8 +192,6 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
         "asociadas": acc["asociadas"],
         "definitivas": acc["definitivas"],
         "ia": acc["ia"],
-        "ia_rx": acc["ia_rx"],
-        "ia_mg": acc["ia_mg"],
         "equipos": acc["equipos"],
         "estudios_pacs_anual": estudios_pacs_anual,
         "estudios_pacs_anual_estimado": estudios_pacs_anual_estimado,
