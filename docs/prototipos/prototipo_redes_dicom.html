@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo — Redes DICOM (datos de ejemplo)</title>
+<style>
+:root{
+  --primary:#3498db; --dark:#2c3e50; --light:#f4f6f8; --success:#28a745; --warning:#e0a100; --danger:#dc3545;
+  --muted:#7f8c8d; --line:#dfe4ea; --card:#ffffff; --slate:#6b7c93;
+  --net-1:#2a78d6; --net-2:#4a3aa7; --net-3:#e87ba4;
+  --radius:8px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI',Tahoma,sans-serif;background:var(--light);color:var(--dark);font-size:14px}
+.topbar{background:var(--dark);color:#fff;display:flex;align-items:center;gap:18px;padding:0 20px;height:52px}
+.topbar .brand{font-weight:700;letter-spacing:.3px}
+.tabs{display:flex;gap:4px;margin-left:12px;flex-wrap:wrap}
+.tabs button{background:transparent;color:#cfd8e3;border:0;padding:16px 14px;cursor:pointer;font-size:13.5px;border-bottom:3px solid transparent}
+.tabs button.on{color:#fff;border-bottom-color:var(--primary);font-weight:600}
+.tabs button:hover{color:#fff}
+.banner{background:#fff8e1;border-bottom:1px solid #f0d98a;color:#7a5b00;padding:7px 20px;font-size:12.5px}
+main{padding:18px 20px;max-width:1500px;margin:0 auto}
+section.view{display:none}
+section.view.on{display:block}
+h2{margin:0 0 4px;font-size:19px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card h3{margin:0 0 10px;font-size:15px}
+.row{display:flex;gap:14px;align-items:flex-start}
+.grow{flex:1;min-width:0}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+select,input[type=text]{border:1px solid #c9d1da;border-radius:6px;padding:7px 10px;font-size:13.5px;background:#fff;color:var(--dark);font-family:inherit}
+input[type=text]{min-width:210px}
+label.lbl,.lbl{font-size:12px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600}
+.btn{border:1px solid #c9d1da;background:#fff;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px;color:var(--dark);font-family:inherit}
+.btn:hover{background:#f0f3f6}
+.btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.pri:hover{background:#2c86c6}
+.btn.sm{padding:3px 9px;font-size:12px}
+.seg{display:inline-flex;border:1px solid #c9d1da;border-radius:6px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:7px 12px;cursor:pointer;font-size:13px;color:var(--dark);border-right:1px solid #c9d1da;font-family:inherit}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--dark);color:#fff}
+.pill{display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
+.pill.on{background:#28a74520;color:#1e7e34}.pill.off{background:#dc354520;color:#b02a37}
+.pill.ok{background:#28a74520;color:#1e7e34}.pill.warn{background:#ffc10730;color:#8a6500}.pill.crit{background:#dc354520;color:#b02a37}.pill.gray{background:#e9edf1;color:#5b6b7c}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:14px;border:1px solid var(--line);background:#fff;font-size:12.5px;white-space:nowrap}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.glyph{display:inline-block;vertical-align:middle}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:7px 8px;border-bottom:1px solid var(--line);background:#fafbfc;position:sticky;top:0}
+td{padding:7px 8px;border-bottom:1px solid #eef1f4;vertical-align:middle}
+tr.click{cursor:pointer}tr.click:hover td{background:#f6f9fc}
+.mono{font-family:Consolas,Menlo,monospace;font-size:12.5px}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.hint{font-size:12px;color:var(--muted)}
+/* Mapa */
+#mapwrap{position:relative;height:690px;background:#e8f1f8;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+#map{width:100%;height:100%;display:block}
+.legend{position:absolute;left:12px;bottom:12px;background:#ffffffee;border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.85}
+.legend b{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.legend .li{display:flex;align-items:center;gap:8px}
+.popup{position:absolute;background:#fff;border:1px solid #cfd8e3;border-radius:10px;box-shadow:0 6px 22px #0002;padding:12px 14px;min-width:250px;max-width:300px;font-size:13px;z-index:5}
+.popup .x{position:absolute;right:8px;top:6px;cursor:pointer;color:var(--muted)}
+.tip{position:absolute;pointer-events:none;background:#2c3e50;color:#fff;padding:4px 9px;border-radius:5px;font-size:12px;z-index:6;white-space:nowrap}
+.net-card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:9px;cursor:pointer;background:#fff}
+.net-card:hover{background:#f6f9fc}
+.net-card.sel{border-color:var(--primary);box-shadow:0 0 0 2px #3498db33}
+.member{display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #eef1f4;cursor:pointer;font-size:13px}
+.member:hover{background:#f6f9fc}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:#e9edf1}
+.bar i{display:block;height:100%}
+.alert-box{border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:8px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.alert-box.sug{background:#e8f3fd;border:1px solid #b7d8f3}
+.alert-box.warn{background:#fff7e0;border:1px solid #f0d98a}
+.alert-box.err{background:#fdecee;border:1px solid #f1b8bf}
+.lk{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px}
+.arrow{font-family:Consolas,monospace;color:var(--slate)}
+/* modal */
+.modal-bg{background:#2c3e5066;border-radius:var(--radius);padding:24px;display:flex;justify-content:center}
+.modal{background:#fff;border-radius:10px;width:760px;max-width:100%;box-shadow:0 10px 40px #0003}
+.modal .hd{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px;display:flex;justify-content:space-between}
+.modal .bd{padding:16px 18px}
+.modal .ft{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.sec{border:1px solid #cfe0f1;background:#f7fbff;border-radius:8px;padding:12px 14px;margin-top:14px}
+.sec .t{font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip .rm{cursor:pointer;color:var(--muted);margin-left:2px}
+.toast{position:fixed;right:22px;bottom:22px;background:#2c3e50;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;z-index:99}
+.toast.on{opacity:1}
+details.notes{margin-top:18px;font-size:12.5px;color:#4b5b6b}
+details.notes summary{cursor:pointer;font-weight:600}
+
+.zoomctl{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;background:#fff;border:1px solid #c9d1da;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px #0002;z-index:4}
+.zoomctl button{width:34px;height:34px;border:0;background:#fff;font-size:18px;cursor:pointer;color:var(--dark);border-bottom:1px solid #e3e8ee}
+.zoomctl button:last-child{border-bottom:0;font-size:14px}
+.zoomctl button:hover{background:#f0f3f6}
+#map{cursor:grab}#map.drag{cursor:grabbing}
+.dtabs{display:flex;gap:4px;background:#e9edf1;border-radius:8px;padding:4px;margin-bottom:14px;width:max-content;max-width:100%;flex-wrap:wrap}
+.dtabs button{border:0;background:transparent;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13.5px;color:#5b6b7c;font-family:inherit}
+.dtabs button.on{background:#fff;color:var(--dark);font-weight:600;box-shadow:0 1px 4px #0002}
+.softsec{border:1px dashed #cfd8e3;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#8595a6;font-size:12.5px;background:#fbfcfd}
+
+.hosp-card{display:flex;gap:0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;height:690px}
+.hosp-list-panel{width:44%;min-width:400px;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+.hosp-list-toolbar{display:flex;gap:8px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.hosp-list-scroll{flex:1;overflow:auto}
+.hosp-map-panel{flex:1;display:flex;flex-direction:column;min-width:0}
+.hosp-map-toolbar{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.hosp-map-panel #mapwrap{flex:1;height:auto;border:0;border-radius:0}
+#red-resumen{padding:0}
+#red-resumen .strip{padding:9px 14px;border-bottom:1px solid var(--line);background:#f7fbff;font-size:12.5px}
+.tourbtn{position:absolute;right:12px;bottom:12px;background:#2c3e50;color:#fff;border:0;border-radius:20px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;z-index:4}
+details.legend summary{cursor:pointer;font-weight:700;font-size:12px}
+details.legend:not([open]){padding:6px 12px;line-height:1.4}
+.pillgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:10px;max-height:470px;overflow:auto}
+.rpill{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:#fafbfc}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">TecnoMonitor</div>
+  <div class="tabs" id="tabs">
+    <button data-t="mapa" class="on">1 · Hospitales (lista + mapa)</button>
+    <button data-t="detalle">2 · Detalle › Software</button>
+    <button data-t="modal">3 · ABM del hospital</button>
+    <button data-t="redes">4 · Configuración › Redes</button>
+  </div>
+</div>
+<div class="banner">PROTOTIPO con datos de ejemplo — ninguna acción guarda nada. Los nombres de hospitales, coordenadas y enlaces son inventados; las reglas de H44, H45, HUPC, P03 y P12 usan los nombres de nodo reales del extracto del 08–18/09.</div>
+
+<main>
+
+<!-- ===================== 1 · HOSPITALES (lista + mapa, como el dashboard actual) ===================== -->
+<section class="view on" id="v-mapa">
+  <h2>Hospitales</h2>
+  <div class="sub">Misma pantalla que hoy (lista a la izquierda, "Cobertura Geográfica" a la derecha). Lo nuevo: el selector <b>Red</b> en la barra de la lista, la insignia de red bajo el ID y las formas/enlaces en el mapa. Las columnas y botones existentes no cambian.</div>
+  <div class="hosp-card">
+    <div class="hosp-list-panel">
+      <div class="hosp-list-toolbar">
+        <input type="text" id="m-q" placeholder="Buscar ID..." style="flex:1;min-width:120px">
+        <div style="position:relative"><select id="m-red" style="outline:2px solid #3498db55"></select><span class="pill gray" style="position:absolute;right:26px;top:-9px;font-size:10px">nuevo</span></div>
+        <div class="seg" id="l-status"><button data-s="all" class="on">Todos</button><button data-s="online">Online</button><button data-s="offline">Offline</button></div>
+      </div>
+      <div id="red-resumen"></div>
+      <div class="hosp-list-scroll"><table id="l-tbl"></table></div>
+      <div class="hint" id="l-count" style="padding:8px 14px;border-top:1px solid var(--line)"></div>
+    </div>
+    <div class="hosp-map-panel">
+      <div class="hosp-map-toolbar"><b>Cobertura Geográfica</b>
+        <div class="seg" id="m-status"><button data-s="all" class="on">Todos</button><button data-s="online">Online</button><button data-s="offline">Offline</button></div></div>
+      <div id="mapwrap"><svg id="map"></svg>
+        <div class="zoomctl"><button id="z-in" title="Acercar">+</button><button id="z-out" title="Alejar">−</button><button id="z-fit" title="Encuadrar la vista">⌂</button></div>
+        <details class="legend" id="legend"></details>
+        <button class="tourbtn" onclick="toast('Iniciaría el recorrido automático (respeta el filtro de red)')">▶ INICIAR RECORRIDO</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2 · DETALLE › SOFTWARE ===================== -->
+<section class="view" id="v-detalle">
+  <div class="toolbar">
+    <div><label class="lbl">Hospital de ejemplo</label><select id="d-sel"></select></div>
+    <div><label class="lbl">Ver como (rol)</label><select id="d-rol"><option value="Admin">Admin</option><option value="Ingenieria">Ingeniería</option><option value="Cliente">Cliente (con pestaña Software habilitada)</option></select></div><div class="hint" style="align-self:flex-end;padding-bottom:8px;max-width:520px">Cada hospital muestra un caso distinto. La tarjeta "Red DICOM" y la insignia por regla solo las ven Admin e Ingeniería; con "Cliente" la pestaña Software queda como hoy.</div>
+  </div>
+  <div id="d-body"></div>
+</section>
+
+<!-- ===================== 4 · MODAL ===================== -->
+<section class="view" id="v-modal">
+  <div class="sub">Modal de edición del hospital (<code>modal-hospital</code>) con la sección nueva "Red DICOM". Probá: cambiar el rol a Periférico con un "Envía a", o agregar un PACS que ya usa otro hospital de la red.</div>
+  <div class="modal-bg"><div class="modal" id="mdl"></div></div>
+</section>
+
+<!-- ===================== 5 · REDES ===================== -->
+<section class="view" id="v-redes">
+  <h2>Configuración › Redes DICOM</h2>
+  <div class="sub">Alta y edición de redes, y ayuda para asignar destinos que aparecen en las reglas pero todavía no pertenecen a ningún hospital.</div>
+  <div class="row">
+    <div class="grow"><div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><h3 style="margin:0">Redes</h3><button class="btn pri sm" onclick="toast('Abriría el formulario: nombre, descripción y color')">+ Nueva red</button></div><div id="r-list"></div></div></div>
+    <div class="grow" style="flex:1.25"><div class="card"><h3>Destinos sin asignar <span class="pill gray" id="r-cnt"></span></h3>
+      <div class="hint" style="margin-bottom:8px">Destinos que llegan en las reglas de autoenrute y no coinciden con el PACS de ningún hospital. Asignalos con un clic en vez de tipear el AE title.</div>
+      <div id="r-un"></div></div></div>
+  </div>
+</section>
+
+<details class="notes"><summary>Qué está simulado en este prototipo</summary>
+<ul>
+<li>El layout de la pestaña 1 y las tarjetas de reglas de la pestaña 2 reproducen el dashboard y la pestaña Software actuales de <code>index_beta.html</code>; lo nuevo está marcado o resaltado.</li>
+<li>El mapa es un SVG con las provincias del <code>provincias_argentina.geojson</code> del repo (para funcionar sin internet); en la implementación real sería Leaflet con los mismos controles y marcadores.</li>
+<li>La clasificación de reglas (en red / propia / otra red / externa), las sugerencias, las advertencias y el color de cada enlace <b>se calculan de verdad</b> a partir de los datos de ejemplo: si asignás un destino en la pestaña 4, cambian las pestañas 1 y 2.</li>
+<li>Los colores de las tres redes (azul, violeta, magenta) pasaron el validador de paleta categórica (separación para daltonismo y contraste), y la red nunca depende solo del color: hay etiqueta, y el rol se distingue por forma.</li>
+</ul></details>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const GEO = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"n":"CABA"},"geometry":{"type":"Polygon","coordinates":[[[-58.343,-34.63],[-58.501,-34.55],[-58.424,-34.662],[-58.374,-34.657],[-58.343,-34.63]]]}},{"type":"Feature","properties":{"n":"Neuquén"},"geometry":{"type":"Polygon","coordinates":[[[-70.395,-36.194],[-70.397,-36.12],[-70.529,-36.144],[-70.706,-36.273],[-70.679,-36.39],[-70.958,-36.504],[-71.057,-36.619],[-71.132,-36.815],[-71.096,-36.925],[-71.167,-36.997],[-71.115,-37.208],[-71.197,-37.384],[-71.118,-37.469],[-71.206,-37.648],[-71.063,-37.97],[-70.984,-38.431],[-70.843,-38.538],[-70.927,-38.763],[-71.094,-38.755],[-71.434,-38.929],[-71.374,-39.283],[-71.502,-39.638],[-71.699,-39.587],[-71.692,-39.841],[-71.593,-39.911],[-71.7,-40.117],[-71.825,-40.232],[-71.657,-40.364],[-71.825,-40.422],[-71.844,-40.628],[-71.965,-40.728],[-71.869,-40.893],[-71.861,-41.031],[-71.456,-41.042],[-71.24,-41.095],[-71.032,-40.933],[-71.121,-40.758],[-70.855,-40.593],[-70.654,-40.591],[-70.171,-40.483],[-70.063,-40.375],[-70.059,-40.249],[-69.95,-40.179],[-70.005,-40.047],[-69.866,-39.911],[-69.422,-39.768],[-69.113,-39.515],[-69.0,-39.515],[-68.824,-39.375],[-68.802,-39.285],[-68.663,-39.215],[-68.562,-39.077],[-68.208,-38.971],[-68.024,-38.976],[-67.998,-38.996],[-68.163,-38.738],[-68.256,-38.679],[-68.254,-37.572],[-68.355,-37.547],[-68.505,-37.454],[-68.697,-37.442],[-68.766,-37.367],[-69.026,-37.365],[-69.064,-37.224],[-69.268,-37.145],[-69.53,-37.174],[-69.756,-37.069],[-69.779,-36.917],[-69.922,-36.795],[-70.183,-36.491],[-70.225,-36.327],[-70.371,-36.224],[-70.395,-36.194]]]}},{"type":"Feature","properties":{"n":"San Luis"},"geometry":{"type":"Polygon","coordinates":[[[-67.006,-31.855],[-67.137,-31.834],[-67.379,-31.868],[-67.365,-31.976],[-67.37,-32.246],[-67.264,-32.382],[-67.31,-32.425],[-67.225,-32.682],[-67.166,-32.759],[-67.232,-32.885],[-67.179,-33.004],[-67.153,-33.412],[-67.096,-33.504],[-66.873,-33.833],[-66.676,-33.942],[-66.663,-33.986],[-66.812,-34.345],[-66.65,-34.758],[-66.561,-34.833],[-66.478,-35.142],[-66.525,-35.54],[-66.589,-35.794],[-66.622,-35.848],[-66.618,-35.903],[-66.629,-35.929],[-66.619,-35.965],[-66.638,-36.001],[-65.108,-35.999],[-65.109,-33.951],[-65.143,-33.195],[-65.071,-33.138],[-64.963,-32.863],[-64.945,-32.767],[-64.883,-32.573],[-64.919,-32.484],[-64.93,-32.423],[-64.977,-32.321],[-65.212,-32.327],[-65.246,-32.089],[-65.628,-31.899],[-65.979,-31.889],[-66.349,-31.998],[-66.569,-31.95],[-66.605,-31.923],[-66.886,-31.898],[-67.006,-31.855]]]}},{"type":"Feature","properties":{"n":"Santa Fe"},"geometry":{"type":"Polygon","coordinates":[[[-58.884,-28],[-61.046,-27.998],[-61.712,-27.999],[-62.131,-30.48],[-61.842,-30.744],[-62.123,-31.605],[-62.242,-31.7],[-62.224,-31.884],[-62.168,-31.986],[-62.197,-32.115],[-62.038,-32.263],[-61.796,-32.774],[-61.788,-33.006],[-61.923,-33.12],[-62.884,-34.386],[-61.72,-34.386],[-60.934,-33.655],[-60.818,-33.54],[-60.557,-33.647],[-60.457,-33.582],[-60.273,-33.264],[-60.298,-33.242],[-60.392,-33.189],[-60.493,-33.131],[-60.605,-33.0],[-60.62,-32.948],[-60.716,-32.774],[-60.776,-32.507],[-60.724,-32.456],[-60.673,-32.233],[-60.7,-32.15],[-60.656,-32.067],[-60.684,-32.012],[-60.721,-31.985],[-60.722,-31.966],[-60.657,-31.911],[-60.676,-31.812],[-60.639,-31.742],[-60.584,-31.709],[-60.468,-31.698],[-60.144,-31.444],[-60.106,-31.29],[-60.003,-31.239],[-59.963,-31.12],[-59.818,-30.942],[-59.699,-30.769],[-59.678,-30.647],[-59.65,-30.501],[-59.703,-30.443],[-59.694,-30.313],[-59.566,-30.008],[-59.66,-29.843],[-59.617,-29.776],[-59.58,-29.46],[-59.501,-29.244],[-59.408,-29.221],[-59.258,-29.09],[-59.079,-28.668],[-59.108,-28.223],[-59.062,-28.128],[-58.945,-28.134],[-58.881,-28.067],[-58.884,-28]]]}},{"type":"Feature","properties":{"n":"La Rioja"},"geometry":{"type":"Polygon","coordinates":[[[-68.44,-27.874],[-68.539,-27.785],[-68.799,-27.756],[-69.095,-27.797],[-69.173,-27.971],[-69.307,-28.129],[-69.456,-28.184],[-69.606,-28.419],[-69.555,-28.406],[-69.47,-28.415],[-69.316,-28.412],[-69.203,-28.596],[-69.162,-28.761],[-68.909,-28.859],[-68.956,-28.95],[-68.912,-29.129],[-69.001,-29.187],[-68.975,-29.364],[-69.034,-29.533],[-69.016,-29.65],[-68.718,-29.625],[-68.441,-29.651],[-68.199,-29.781],[-68.159,-29.885],[-67.99,-29.988],[-67.591,-30.298],[-67.578,-30.404],[-67.41,-30.628],[-67.283,-30.695],[-67.129,-30.896],[-67.067,-31.083],[-67.101,-31.383],[-66.952,-31.633],[-66.868,-31.633],[-66.804,-31.809],[-66.723,-31.884],[-66.662,-31.921],[-66.605,-31.923],[-66.569,-31.95],[-66.349,-31.998],[-65.979,-31.889],[-65.77,-31.889],[-65.772,-31.044],[-65.525,-30.491],[-65.423,-30.12],[-65.817,-29.179],[-66.1,-28.944],[-66.4,-28.861],[-66.352,-28.721],[-66.496,-28.622],[-66.571,-28.289],[-67.016,-28.254],[-67.155,-28.384],[-67.375,-28.384],[-67.692,-28.312],[-67.813,-28.372],[-67.842,-28.317],[-67.914,-28.114],[-68.022,-28.125],[-68.295,-28.069],[-68.397,-28.004],[-68.44,-27.874]]]}},{"type":"Feature","properties":{"n":"Catamarca"},"geometry":{"type":"Polygon","coordinates":[[[-67.865,-25.238],[-68.505,-25.169],[-68.509,-25.232],[-68.549,-25.262],[-68.524,-25.379],[-68.545,-25.634],[-68.477,-25.702],[-68.381,-26.178],[-68.558,-26.287],[-68.588,-26.492],[-68.262,-26.919],[-68.347,-27.034],[-68.494,-27.137],[-68.671,-27.099],[-68.843,-27.16],[-68.942,-27.526],[-69.039,-27.595],[-69.095,-27.797],[-68.799,-27.756],[-68.539,-27.785],[-68.44,-27.874],[-68.397,-28.004],[-68.295,-28.069],[-68.022,-28.125],[-67.914,-28.114],[-67.842,-28.317],[-67.813,-28.372],[-67.692,-28.312],[-67.375,-28.384],[-67.155,-28.384],[-67.016,-28.254],[-66.571,-28.289],[-66.496,-28.622],[-66.352,-28.721],[-66.4,-28.861],[-66.1,-28.944],[-65.817,-29.179],[-65.423,-30.12],[-65.158,-30.047],[-64.938,-29.848],[-64.964,-29.596],[-64.825,-29.574],[-64.786,-29.405],[-64.838,-29.229],[-64.901,-28.841],[-65.017,-28.738],[-65.127,-28.716],[-65.171,-28.618],[-65.185,-28.601],[-65.097,-28.471],[-65.112,-28.187],[-65.171,-27.947],[-65.366,-27.846],[-65.5,-27.924],[-65.569,-28.013],[-65.613,-27.991],[-65.666,-27.973],[-65.753,-27.77],[-65.795,-27.807],[-65.915,-27.669],[-65.931,-27.645],[-65.976,-27.494],[-65.972,-27.333],[-66.14,-27.262],[-65.917,-27.015],[-65.9,-26.864],[-65.83,-26.744],[-66.164,-26.502],[-66.155,-26.444],[-66.119,-26.377],[-66.094,-26.249],[-66.099,-26.217],[-66.171,-26.134],[-66.216,-26.14],[-66.293,-26.229],[-66.382,-26.417],[-66.54,-26.353],[-66.584,-26.16],[-66.659,-26.107],[-66.757,-26.05],[-66.78,-26.047],[-66.844,-25.977],[-66.848,-25.796],[-66.874,-25.766],[-66.802,-25.699],[-66.649,-25.712],[-66.564,-25.622],[-66.519,-25.44],[-66.558,-25.301],[-66.879,-25.242],[-67.865,-25.238]]]}},{"type":"Feature","properties":{"n":"Tucumán"},"geometry":{"type":"Polygon","coordinates":[[[-65.298,-26.082],[-65.425,-26.109],[-65.689,-26.117],[-65.723,-26.28],[-65.723,-26.313],[-65.712,-26.329],[-65.718,-26.352],[-66.04,-26.251],[-66.1,-26.221],[-66.094,-26.249],[-66.119,-26.377],[-66.155,-26.444],[-66.164,-26.502],[-65.83,-26.744],[-65.9,-26.864],[-65.917,-27.015],[-66.14,-27.262],[-65.972,-27.333],[-65.971,-27.524],[-65.93,-27.646],[-65.915,-27.669],[-65.795,-27.807],[-65.753,-27.77],[-65.666,-27.973],[-65.613,-27.991],[-65.371,-27.846],[-65.171,-27.947],[-65.178,-27.916],[-65.039,-27.879],[-64.986,-27.742],[-65.027,-27.587],[-64.974,-27.351],[-64.854,-27.318],[-64.707,-26.82],[-64.618,-26.803],[-64.587,-26.658],[-64.499,-26.674],[-64.535,-26.41],[-64.482,-26.308],[-64.564,-26.227],[-64.58,-26.218],[-64.732,-26.242],[-64.951,-26.307],[-65.041,-26.23],[-65.275,-26.171],[-65.298,-26.082]]]}},{"type":"Feature","properties":{"n":"Chaco"},"geometry":{"type":"Polygon","coordinates":[[[-58.444,-26.832],[-58.572,-26.688],[-58.744,-26.603],[-58.986,-26.38],[-59.193,-26.33],[-59.358,-26.338],[-59.429,-26.199],[-59.585,-26.122],[-59.754,-25.921],[-60.226,-25.586],[-60.224,-25.485],[-60.354,-25.323],[-60.541,-25.167],[-60.631,-25.178],[-60.953,-24.973],[-61.144,-24.805],[-61.256,-24.622],[-61.454,-24.612],[-61.583,-24.442],[-61.761,-24.328],[-62.183,-24.155],[-62.342,-24.11],[-62.342,-24.392],[-63.422,-25.649],[-61.712,-25.655],[-61.712,-27.999],[-58.884,-28],[-58.881,-28.067],[-58.858,-28.012],[-58.829,-27.962],[-58.81,-27.783],[-58.871,-27.571],[-58.881,-27.498],[-58.781,-27.382],[-58.669,-27.359],[-58.617,-27.319],[-58.652,-27.131],[-58.399,-26.865],[-58.444,-26.832]]]}},{"type":"Feature","properties":{"n":"Formosa"},"geometry":{"type":"Polygon","coordinates":[[[-58.399,-26.865],[-58.246,-26.75],[-58.26,-26.645],[-58.181,-26.457],[-58.119,-26.154],[-57.919,-26.032],[-57.837,-25.916],[-57.743,-25.652],[-57.617,-25.616],[-57.561,-25.453],[-57.703,-25.322],[-57.754,-25.177],[-57.861,-25.082],[-57.999,-25.074],[-58.255,-24.932],[-58.334,-25],[-58.43,-24.893],[-58.574,-24.821],[-58.673,-24.831],[-58.973,-24.662],[-59.128,-24.618],[-59.35,-24.483],[-59.476,-24.331],[-60.039,-24.012],[-60.295,-24.041],[-60.613,-23.904],[-60.847,-23.872],[-60.987,-23.813],[-61.09,-23.614],[-61.352,-23.45],[-61.494,-23.424],[-61.573,-23.304],[-61.735,-23.236],[-61.754,-23.171],[-62.01,-22.976],[-62.342,-22.461],[-62.342,-24.11],[-62.183,-24.155],[-61.761,-24.328],[-61.583,-24.442],[-61.454,-24.612],[-61.256,-24.622],[-61.144,-24.805],[-60.953,-24.973],[-60.631,-25.178],[-60.541,-25.167],[-60.354,-25.323],[-60.224,-25.485],[-60.226,-25.586],[-59.754,-25.921],[-59.585,-26.122],[-59.429,-26.199],[-59.358,-26.338],[-59.193,-26.33],[-58.986,-26.38],[-58.744,-26.603],[-58.572,-26.688],[-58.444,-26.832],[-58.399,-26.865]]]}},{"type":"Feature","properties":{"n":"Santa Cruz"},"geometry":{"type":"Polygon","coordinates":[[[-71.645,-46],[-71.778,-46.199],[-71.643,-46.685],[-71.955,-46.814],[-71.865,-47.231],[-72.128,-47.328],[-72.451,-47.705],[-72.527,-47.938],[-72.426,-47.967],[-72.227,-48.322],[-72.586,-48.487],[-72.532,-48.798],[-72.748,-48.91],[-72.92,-48.936],[-73.144,-49.271],[-73.471,-49.201],[-73.426,-49.392],[-73.54,-49.498],[-73.439,-49.758],[-73.553,-49.924],[-73.483,-50.054],[-73.565,-50.271],[-73.433,-50.483],[-73.173,-50.677],[-73.204,-50.821],[-72.955,-50.741],[-72.73,-50.615],[-72.49,-50.6],[-72.286,-50.66],[-72.346,-50.76],[-72.248,-50.875],[-72.266,-51.035],[-72.409,-51.108],[-72.269,-51.283],[-72.345,-51.521],[-72.287,-51.669],[-71.951,-51.872],[-71.921,-52],[-69.996,-52.001],[-69.486,-52.151],[-69.19,-52.15],[-68.838,-52.278],[-68.353,-52.323],[-68.708,-51.981],[-68.961,-51.624],[-68.946,-51.554],[-69.166,-50.981],[-69.141,-50.727],[-69.079,-50.565],[-68.88,-50.336],[-68.407,-50.186],[-68.344,-50.121],[-68.04,-50.068],[-67.836,-49.945],[-67.732,-49.783],[-67.667,-49.405],[-67.798,-49.328],[-67.668,-49.246],[-67.551,-49.014],[-67.22,-48.838],[-67.13,-48.685],[-66.875,-48.593],[-66.831,-48.523],[-66.448,-48.352],[-66.121,-48.124],[-65.904,-48.08],[-65.847,-47.939],[-65.88,-47.774],[-65.74,-47.51],[-65.718,-47.332],[-65.867,-47.092],[-66.198,-47.087],[-66.792,-46.999],[-67.122,-46.707],[-67.355,-46.619],[-67.567,-46.349],[-67.627,-46.083],[-67.596,-46.0],[-71.645,-46]]]}},{"type":"Feature","properties":{"n":"Chubut"},"geometry":{"type":"Polygon","coordinates":[[[-65.069,-42],[-67.751,-42],[-71.774,-42],[-71.782,-42.148],[-72.188,-42.161],[-72.132,-42.384],[-72.013,-42.495],[-72.118,-42.603],[-72.142,-42.9],[-71.943,-43.092],[-71.76,-43.165],[-71.731,-43.282],[-71.934,-43.449],[-71.849,-43.483],[-71.66,-43.702],[-71.763,-43.841],[-71.649,-43.946],[-71.759,-44.1],[-71.839,-44.35],[-71.767,-44.41],[-71.386,-44.385],[-71.13,-44.472],[-71.102,-44.591],[-71.236,-44.641],[-71.292,-44.814],[-71.474,-44.737],[-71.666,-44.787],[-72.005,-44.784],[-72.037,-44.903],[-71.925,-44.944],[-71.56,-44.977],[-71.487,-45.144],[-71.32,-45.292],[-71.529,-45.393],[-71.469,-45.494],[-71.682,-45.515],[-71.796,-45.665],[-71.653,-45.89],[-71.645,-46],[-67.596,-46.0],[-67.398,-45.788],[-67.345,-45.623],[-67.064,-45.346],[-66.841,-45.23],[-66.662,-45.211],[-66.6,-45.139],[-66.359,-45.04],[-66.119,-44.985],[-65.934,-45.049],[-65.698,-45.046],[-65.536,-44.921],[-65.729,-44.848],[-65.638,-44.666],[-65.301,-44.51],[-65.217,-44.367],[-65.312,-44.204],[-65.22,-44.137],[-65.355,-43.764],[-65.333,-43.657],[-65.053,-43.403],[-64.976,-43.255],[-64.758,-43.151],[-64.459,-43.065],[-64.397,-42.96],[-64.629,-42.919],[-64.877,-42.835],[-65.036,-42.731],[-64.98,-42.649],[-64.629,-42.496],[-64.344,-42.532],[-64.211,-42.625],[-64.254,-42.765],[-64.111,-42.879],[-63.63,-42.765],[-63.583,-42.607],[-63.603,-42.315],[-63.77,-42.074],[-64.075,-42.178],[-64.057,-42.383],[-64.124,-42.43],[-64.61,-42.426],[-64.464,-42.239],[-64.88,-42.181],[-65.069,-42]]]}},{"type":"Feature","properties":{"n":"Mendoza"},"geometry":{"type":"Polygon","coordinates":[[[-70.126,-32.574],[-70.148,-32.728],[-69.989,-32.899],[-70.081,-33.028],[-70.064,-33.205],[-69.769,-33.343],[-69.865,-33.583],[-69.905,-33.771],[-69.856,-33.892],[-69.873,-34.131],[-69.807,-34.248],[-70.031,-34.288],[-70.012,-34.412],[-70.217,-34.611],[-70.248,-34.799],[-70.376,-35.051],[-70.375,-35.17],[-70.584,-35.267],[-70.452,-35.392],[-70.312,-35.813],[-70.421,-35.875],[-70.397,-36.12],[-70.395,-36.194],[-70.371,-36.224],[-70.225,-36.327],[-70.183,-36.491],[-69.922,-36.795],[-69.779,-36.917],[-69.756,-37.069],[-69.53,-37.174],[-69.268,-37.145],[-69.064,-37.224],[-69.026,-37.365],[-68.766,-37.367],[-68.697,-37.442],[-68.505,-37.454],[-68.355,-37.547],[-68.258,-37.575],[-68.25,-36.172],[-68.296,-35.998],[-66.638,-36.001],[-66.62,-35.971],[-66.623,-35.852],[-66.589,-35.794],[-66.525,-35.54],[-66.478,-35.142],[-66.561,-34.833],[-66.65,-34.758],[-66.812,-34.345],[-66.663,-33.986],[-66.676,-33.942],[-66.873,-33.833],[-67.096,-33.504],[-67.153,-33.412],[-67.179,-33.004],[-67.232,-32.885],[-67.166,-32.759],[-67.225,-32.682],[-67.31,-32.425],[-67.473,-32.307],[-67.597,-32.246],[-67.838,-32.215],[-67.873,-32.188],[-68.053,-32.071],[-68.073,-32.099],[-68.461,-32.139],[-68.461,-32.238],[-68.666,-32.337],[-68.918,-32.338],[-68.918,-32.115],[-69.116,-32.02],[-69.245,-32.016],[-69.314,-32.091],[-69.455,-32.075],[-69.596,-32.141],[-69.63,-32.262],[-69.722,-32.314],[-69.689,-32.43],[-69.759,-32.512],[-69.779,-32.542],[-69.827,-32.563],[-70.004,-32.529],[-70.09,-32.622],[-70.126,-32.574]]]}},{"type":"Feature","properties":{"n":"Entre Ríos"},"geometry":{"type":"Polygon","coordinates":[[[-58.497,-30.208],[-58.63,-30.177],[-58.879,-30.247],[-59.064,-30.231],[-59.23,-30.364],[-59.42,-30.316],[-59.558,-30.333],[-59.588,-30.435],[-59.637,-30.358],[-59.672,-30.339],[-59.703,-30.443],[-59.65,-30.501],[-59.678,-30.647],[-59.699,-30.769],[-59.818,-30.942],[-59.963,-31.12],[-60.013,-31.251],[-60.106,-31.29],[-60.144,-31.444],[-60.468,-31.698],[-60.568,-31.705],[-60.628,-31.733],[-60.643,-31.751],[-60.641,-31.792],[-60.676,-31.812],[-60.653,-31.897],[-60.672,-31.93],[-60.72,-31.959],[-60.724,-31.978],[-60.7,-32.15],[-60.673,-32.233],[-60.724,-32.456],[-60.776,-32.507],[-60.716,-32.774],[-60.62,-32.948],[-60.601,-33.006],[-60.513,-33.113],[-60.424,-33.174],[-60.392,-33.189],[-60.298,-33.242],[-60.201,-33.292],[-60.045,-33.447],[-59.895,-33.51],[-59.809,-33.552],[-59.617,-33.694],[-59.468,-33.704],[-59.235,-33.74],[-59.242,-33.807],[-59.056,-33.832],[-58.764,-33.945],[-58.655,-34.035],[-58.463,-34.002],[-58.345,-34.038],[-58.424,-33.916],[-58.445,-33.541],[-58.432,-33.363],[-58.362,-33.121],[-58.099,-33.02],[-58.161,-32.571],[-58.205,-32.462],[-58.1,-32.26],[-58.183,-32.159],[-58.138,-32.002],[-58.207,-31.872],[-58.038,-31.759],[-57.981,-31.581],[-58.082,-31.458],[-57.979,-31.388],[-57.862,-31.044],[-57.797,-30.783],[-57.844,-30.722],[-57.98,-30.629],[-58.037,-30.568],[-58.073,-30.425],[-58.207,-30.288],[-58.452,-30.225],[-58.497,-30.208]]]}},{"type":"Feature","properties":{"n":"San Juan"},"geometry":{"type":"Polygon","coordinates":[[[-69.606,-28.419],[-69.731,-28.684],[-69.693,-28.771],[-69.766,-28.899],[-69.788,-29.133],[-69.876,-29.139],[-69.998,-29.286],[-69.888,-29.905],[-69.965,-30.085],[-69.809,-30.153],[-69.919,-30.35],[-70.195,-30.492],[-70.323,-30.928],[-70.298,-31.02],[-70.401,-31.167],[-70.498,-31.123],[-70.547,-31.315],[-70.567,-31.6],[-70.467,-31.701],[-70.46,-31.844],[-70.28,-31.884],[-70.209,-31.96],[-70.329,-32.049],[-70.323,-32.267],[-70.222,-32.325],[-70.126,-32.574],[-70.09,-32.622],[-70.004,-32.529],[-69.827,-32.563],[-69.779,-32.542],[-69.759,-32.512],[-69.689,-32.43],[-69.722,-32.314],[-69.63,-32.262],[-69.596,-32.141],[-69.455,-32.075],[-69.314,-32.091],[-69.245,-32.016],[-69.116,-32.02],[-68.918,-32.115],[-68.918,-32.338],[-68.666,-32.337],[-68.461,-32.238],[-68.461,-32.139],[-68.073,-32.099],[-68.053,-32.071],[-67.873,-32.188],[-67.838,-32.215],[-67.597,-32.246],[-67.473,-32.307],[-67.264,-32.382],[-67.37,-32.246],[-67.365,-31.976],[-67.379,-31.868],[-67.137,-31.834],[-67.006,-31.855],[-66.886,-31.898],[-66.662,-31.921],[-66.735,-31.875],[-66.802,-31.812],[-66.868,-31.633],[-66.952,-31.633],[-67.101,-31.383],[-67.067,-31.083],[-67.129,-30.896],[-67.283,-30.695],[-67.41,-30.628],[-67.578,-30.404],[-67.591,-30.298],[-67.99,-29.988],[-68.159,-29.885],[-68.199,-29.781],[-68.441,-29.651],[-68.718,-29.625],[-69.016,-29.65],[-69.034,-29.533],[-68.975,-29.364],[-69.001,-29.187],[-68.912,-29.129],[-68.956,-28.95],[-68.909,-28.859],[-69.162,-28.761],[-69.203,-28.596],[-69.316,-28.412],[-69.47,-28.415],[-69.555,-28.406],[-69.606,-28.419]]]}},{"type":"Feature","properties":{"n":"Jujuy"},"geometry":{"type":"Polygon","coordinates":[[[-65.187,-22.085],[-65.748,-22.109],[-65.925,-21.933],[-66.048,-21.919],[-66.076,-21.835],[-66.208,-21.788],[-66.348,-22.128],[-66.739,-22.238],[-66.782,-22.438],[-67.027,-22.541],[-67.014,-22.655],[-67.18,-22.814],[-66.99,-23],[-67.213,-23.695],[-66.993,-23.89],[-66.837,-24.071],[-66.544,-24.208],[-66.362,-24.087],[-66.368,-23.695],[-66.284,-23.575],[-66.183,-23.438],[-66.184,-23.415],[-66.011,-23.509],[-66.022,-23.862],[-65.993,-23.98],[-65.805,-24.033],[-65.721,-24.109],[-65.656,-24.377],[-65.317,-24.502],[-65.194,-24.46],[-65.08,-24.562],[-64.927,-24.6],[-64.843,-24.467],[-64.647,-24.613],[-64.422,-24.402],[-64.318,-24.427],[-64.289,-24.407],[-64.252,-24.364],[-64.252,-24.344],[-64.223,-24.329],[-64.162,-24.221],[-64.157,-23.518],[-64.354,-23.518],[-64.393,-23.61],[-64.496,-23.567],[-64.683,-23.452],[-64.845,-23.497],[-64.868,-23.447],[-64.91,-23.311],[-65.039,-23.227],[-65.045,-23.156],[-65.072,-23.138],[-65.134,-23.002],[-65.218,-22.959],[-65.274,-22.79],[-65.272,-22.648],[-65.351,-22.602],[-65.347,-22.52],[-65.306,-22.467],[-65.263,-22.338],[-65.24,-22.279],[-65.187,-22.085]]]}},{"type":"Feature","properties":{"n":"Santiago del Estero"},"geometry":{"type":"Polygon","coordinates":[[[-61.712,-25.655],[-62.379,-25.652],[-63.422,-25.649],[-63.475,-25.71],[-64.008,-25.674],[-64.025,-25.754],[-64.268,-25.701],[-64.413,-26.041],[-64.417,-26.114],[-64.482,-26.308],[-64.535,-26.41],[-64.499,-26.674],[-64.587,-26.658],[-64.618,-26.803],[-64.707,-26.82],[-64.854,-27.318],[-64.974,-27.351],[-65.027,-27.587],[-64.986,-27.742],[-65.039,-27.879],[-65.178,-27.916],[-65.112,-28.187],[-65.097,-28.471],[-65.185,-28.601],[-65.171,-28.618],[-65.127,-28.716],[-65.017,-28.738],[-64.901,-28.841],[-64.838,-29.229],[-64.786,-29.405],[-64.825,-29.574],[-64.275,-29.499],[-63.981,-29.551],[-63.958,-29.623],[-63.874,-29.631],[-63.842,-29.581],[-63.784,-29.584],[-63.748,-29.653],[-63.465,-29.665],[-63.46,-29.757],[-62.806,-29.834],[-62.791,-29.961],[-62.556,-30.063],[-62.594,-30.26],[-62.52,-30.342],[-62.174,-30.345],[-62.131,-30.48],[-61.712,-27.999],[-61.712,-25.655]]]}},{"type":"Feature","properties":{"n":"Río Negro"},"geometry":{"type":"Polygon","coordinates":[[[-68.153,-37.58],[-68.254,-37.572],[-68.256,-38.679],[-68.163,-38.738],[-67.998,-38.996],[-68.024,-38.976],[-68.208,-38.971],[-68.562,-39.077],[-68.663,-39.215],[-68.802,-39.285],[-68.824,-39.375],[-69.0,-39.515],[-69.113,-39.515],[-69.422,-39.768],[-69.866,-39.911],[-70.005,-40.047],[-69.95,-40.179],[-70.059,-40.249],[-70.063,-40.375],[-70.171,-40.483],[-70.654,-40.591],[-70.855,-40.593],[-71.121,-40.758],[-71.032,-40.933],[-71.24,-41.095],[-71.456,-41.042],[-71.861,-41.031],[-71.839,-41.15],[-71.911,-41.357],[-71.828,-41.481],[-71.886,-41.606],[-71.784,-41.735],[-71.774,-42],[-65.069,-42],[-65.016,-41.832],[-65.0,-41.486],[-65.138,-41.23],[-65.167,-40.974],[-65.129,-40.857],[-65.007,-40.761],[-64.875,-40.829],[-64.541,-40.865],[-64.206,-41.01],[-63.959,-41.073],[-63.789,-41.159],[-63.117,-41.156],[-62.79,-41.024],[-62.958,-40.818],[-63.192,-40.717],[-63.379,-40.71],[-63.383,-39.328],[-63.512,-39.313],[-63.788,-39.109],[-63.898,-39.107],[-64.064,-38.992],[-64.349,-38.883],[-64.807,-38.816],[-65.113,-38.8],[-65.391,-38.831],[-65.523,-38.779],[-65.691,-38.835],[-66.085,-38.725],[-66.442,-38.746],[-66.607,-38.679],[-66.61,-38.558],[-67.153,-38.357],[-67.261,-38.217],[-67.548,-38.256],[-67.656,-38.202],[-67.73,-38.076],[-67.896,-38.017],[-67.721,-37.811],[-67.786,-37.652],[-68.153,-37.58]]]}},{"type":"Feature","properties":{"n":"Corrientes"},"geometry":{"type":"MultiPolygon","coordinates":[[[[-56.029,-27.383],[-56.152,-27.329],[-56.287,-27.411],[-56.356,-27.586],[-56.487,-27.564],[-56.603,-27.431],[-56.678,-27.563],[-56.845,-27.606],[-56.97,-27.498],[-57.225,-27.47],[-57.327,-27.41],[-57.508,-27.444],[-57.697,-27.327],[-58.01,-27.259],[-58.617,-27.319],[-58.669,-27.359],[-58.746,-27.382],[-58.768,-27.376],[-58.794,-27.393],[-58.882,-27.5],[-58.871,-27.571],[-58.81,-27.783],[-58.829,-27.962],[-58.858,-28.012],[-58.86,-28.05],[-58.953,-28.137],[-59.062,-28.128],[-59.108,-28.223],[-59.079,-28.668],[-59.258,-29.09],[-59.408,-29.221],[-59.501,-29.244],[-59.58,-29.46],[-59.617,-29.776],[-59.66,-29.843],[-59.566,-30.008],[-59.694,-30.313],[-59.672,-30.339],[-59.637,-30.358],[-59.588,-30.435],[-59.558,-30.333],[-59.42,-30.316],[-59.23,-30.364],[-59.064,-30.231],[-58.879,-30.247],[-58.63,-30.177],[-58.497,-30.208],[-58.452,-30.225],[-58.207,-30.288],[-58.073,-30.425],[-58.037,-30.568],[-57.98,-30.629],[-57.844,-30.722],[-57.89,-30.511],[-57.643,-30.342],[-57.645,-30.182],[-57.474,-30.12],[-57.337,-29.99],[-57.328,-29.883],[-57.23,-29.779],[-57.12,-29.764],[-56.704,-29.362],[-56.592,-29.124],[-56.419,-29.079],[-56.41,-28.978],[-56.302,-28.901],[-56.294,-28.798],[-56.185,-28.77],[-56.008,-28.605],[-56.009,-28.506],[-55.882,-28.478],[-55.878,-28.361],[-55.782,-28.254],[-55.632,-28.177],[-55.717,-28.061],[-55.824,-27.948],[-55.825,-27.792],[-55.979,-27.54],[-56.029,-27.383]]],[[[-56.915,-27.424],[-56.97,-27.493],[-56.84,-27.596],[-56.764,-27.503],[-56.915,-27.424]]]]}},{"type":"Feature","properties":{"n":"Misiones"},"geometry":{"type":"Polygon","coordinates":[[[-55.717,-28.061],[-55.555,-28.163],[-55.376,-28.035],[-55.384,-27.983],[-55.197,-27.857],[-55.025,-27.833],[-54.903,-27.721],[-54.813,-27.533],[-54.684,-27.575],[-54.446,-27.474],[-54.282,-27.447],[-54.19,-27.276],[-54.084,-27.3],[-54.008,-27.199],[-53.837,-27.17],[-53.696,-26.887],[-53.743,-26.681],[-53.71,-26.388],[-53.641,-26.214],[-53.828,-25.964],[-53.862,-25.659],[-54.103,-25.494],[-54.382,-25.596],[-54.555,-25.588],[-54.655,-25.67],[-54.587,-25.831],[-54.68,-26.004],[-54.618,-26.214],[-54.706,-26.449],[-54.8,-26.536],[-54.812,-26.668],[-54.942,-26.682],[-54.956,-26.781],[-55.142,-26.866],[-55.142,-26.953],[-55.376,-26.966],[-55.456,-27.106],[-55.561,-27.101],[-55.59,-27.332],[-55.787,-27.44],[-55.896,-27.343],[-56.029,-27.383],[-55.979,-27.54],[-55.825,-27.792],[-55.824,-27.948],[-55.717,-28.061]]]}},{"type":"Feature","properties":{"n":"Salta"},"geometry":{"type":"Polygon","coordinates":[[[-62.342,-24.392],[-62.342,-22.457],[-62.637,-22.305],[-62.814,-22.105],[-62.811,-21.999],[-63.931,-21.999],[-64.062,-22.238],[-64.115,-22.406],[-64.242,-22.558],[-64.272,-22.712],[-64.434,-22.631],[-64.412,-22.538],[-64.566,-22.372],[-64.539,-22.282],[-64.993,-22.082],[-65.187,-22.085],[-65.24,-22.279],[-65.263,-22.338],[-65.306,-22.467],[-65.35,-22.54],[-65.349,-22.605],[-65.272,-22.648],[-65.274,-22.79],[-65.218,-22.959],[-65.134,-23.002],[-65.072,-23.138],[-65.045,-23.156],[-65.039,-23.227],[-64.91,-23.311],[-64.868,-23.447],[-64.845,-23.497],[-64.683,-23.452],[-64.496,-23.567],[-64.393,-23.61],[-64.354,-23.518],[-64.157,-23.518],[-64.162,-24.221],[-64.223,-24.329],[-64.274,-24.393],[-64.316,-24.426],[-64.422,-24.402],[-64.647,-24.613],[-64.843,-24.467],[-64.927,-24.6],[-65.08,-24.562],[-65.194,-24.46],[-65.317,-24.502],[-65.656,-24.377],[-65.721,-24.109],[-65.805,-24.033],[-65.993,-23.98],[-66.022,-23.862],[-66.011,-23.509],[-66.184,-23.415],[-66.183,-23.438],[-66.284,-23.575],[-66.368,-23.695],[-66.362,-24.087],[-66.544,-24.208],[-66.837,-24.071],[-66.993,-23.89],[-67.213,-23.695],[-67.323,-24.034],[-68.26,-24.402],[-68.388,-24.484],[-68.569,-24.794],[-68.433,-24.906],[-68.344,-25.111],[-68.507,-25.168],[-67.865,-25.238],[-66.879,-25.242],[-66.558,-25.301],[-66.519,-25.44],[-66.564,-25.622],[-66.649,-25.712],[-66.802,-25.699],[-66.874,-25.766],[-66.848,-25.796],[-66.847,-25.97],[-66.779,-26.048],[-66.757,-26.05],[-66.659,-26.107],[-66.584,-26.16],[-66.54,-26.353],[-66.382,-26.417],[-66.293,-26.229],[-66.233,-26.152],[-66.194,-26.131],[-66.156,-26.145],[-66.1,-26.221],[-66.071,-26.239],[-65.719,-26.353],[-65.712,-26.329],[-65.723,-26.313],[-65.723,-26.28],[-65.689,-26.117],[-65.425,-26.109],[-65.298,-26.082],[-65.275,-26.171],[-65.041,-26.23],[-64.951,-26.307],[-64.732,-26.242],[-64.58,-26.218],[-64.564,-26.227],[-64.417,-26.114],[-64.413,-26.041],[-64.268,-25.701],[-64.025,-25.754],[-64.008,-25.674],[-63.475,-25.71],[-62.342,-24.392]]]}},{"type":"Feature","properties":{"n":"Córdoba"},"geometry":{"type":"Polygon","coordinates":[[[-63.874,-29.631],[-63.958,-29.623],[-63.981,-29.551],[-64.275,-29.499],[-64.964,-29.596],[-64.938,-29.848],[-65.158,-30.047],[-65.423,-30.12],[-65.525,-30.491],[-65.772,-31.044],[-65.77,-31.889],[-65.628,-31.899],[-65.246,-32.089],[-65.212,-32.327],[-64.977,-32.321],[-64.93,-32.423],[-64.919,-32.484],[-64.883,-32.573],[-64.945,-32.767],[-64.963,-32.863],[-65.071,-33.138],[-65.143,-33.195],[-65.109,-33.951],[-65.107,-35.015],[-63.386,-35.002],[-63.385,-34.386],[-62.884,-34.386],[-61.923,-33.12],[-61.788,-33.006],[-61.796,-32.774],[-62.038,-32.263],[-62.197,-32.115],[-62.168,-31.986],[-62.224,-31.884],[-62.242,-31.7],[-62.123,-31.605],[-61.842,-30.744],[-62.131,-30.48],[-62.174,-30.345],[-62.52,-30.342],[-62.594,-30.26],[-62.556,-30.063],[-62.791,-29.961],[-62.806,-29.834],[-63.46,-29.757],[-63.465,-29.665],[-63.748,-29.653],[-63.784,-29.584],[-63.842,-29.581],[-63.874,-29.631]]]}},{"type":"Feature","properties":{"n":"Buenos Aires"},"geometry":{"type":"Polygon","coordinates":[[[-60.201,-33.292],[-60.273,-33.264],[-60.457,-33.582],[-60.557,-33.647],[-60.818,-33.54],[-60.934,-33.655],[-61.72,-34.386],[-63.385,-34.386],[-63.379,-40.71],[-63.192,-40.717],[-62.958,-40.818],[-62.79,-41.024],[-62.71,-41.038],[-62.312,-40.871],[-62.182,-40.577],[-62.419,-40.464],[-62.487,-40.331],[-62.339,-40.187],[-62.32,-39.868],[-62.115,-39.849],[-62.119,-39.663],[-62.009,-39.367],[-62.286,-39.233],[-62.354,-39.101],[-62.299,-39.025],[-62.372,-38.844],[-62.295,-38.785],[-62.126,-38.842],[-62.073,-38.925],[-61.81,-38.993],[-61.143,-39.0],[-60.853,-38.98],[-59.111,-38.7],[-58.33,-38.483],[-57.853,-38.296],[-57.545,-38.101],[-57.492,-37.828],[-57.126,-37.493],[-56.99,-37.288],[-56.666,-36.881],[-56.7,-36.412],[-56.74,-36.314],[-57.013,-36.328],[-57.279,-36.138],[-57.383,-35.967],[-57.365,-35.745],[-57.128,-35.446],[-57.223,-35.273],[-57.508,-35.025],[-57.874,-34.826],[-58.179,-34.745],[-58.343,-34.63],[-58.374,-34.657],[-58.424,-34.662],[-58.501,-34.55],[-58.437,-34.301],[-58.354,-34.217],[-58.345,-34.038],[-58.463,-34.002],[-58.655,-34.035],[-58.764,-33.945],[-59.056,-33.832],[-59.242,-33.807],[-59.235,-33.74],[-59.468,-33.704],[-59.617,-33.694],[-59.809,-33.552],[-59.895,-33.51],[-60.045,-33.447],[-60.201,-33.292]]]}},{"type":"Feature","properties":{"n":"La Pampa"},"geometry":{"type":"Polygon","coordinates":[[[-63.383,-39.328],[-63.386,-35.002],[-65.107,-35.015],[-65.108,-35.999],[-68.296,-35.998],[-68.25,-36.172],[-68.254,-37.572],[-68.153,-37.58],[-67.786,-37.652],[-67.721,-37.811],[-67.896,-38.017],[-67.73,-38.076],[-67.656,-38.202],[-67.548,-38.256],[-67.261,-38.217],[-67.153,-38.357],[-66.61,-38.558],[-66.607,-38.679],[-66.442,-38.746],[-66.085,-38.725],[-65.691,-38.835],[-65.523,-38.779],[-65.391,-38.831],[-65.113,-38.8],[-64.807,-38.816],[-64.349,-38.883],[-64.064,-38.992],[-63.898,-39.107],[-63.788,-39.109],[-63.512,-39.313],[-63.383,-39.328]]]}},{"type":"Feature","properties":{"n":"Tierra del Fuego"},"geometry":{"type":"MultiPolygon","coordinates":[[[[-73.548,-70.736],[-74,-70.551],[-74,-70.873],[-73.548,-70.736]]],[[[-72.734,-77.578],[-74,-77.486],[-74,-78.099],[-73.355,-77.957],[-72.795,-77.714],[-72.734,-77.578]]],[[[-71.953,-69.665],[-72.274,-69.595],[-72.402,-69.46],[-72.693,-69.411],[-72.968,-69.485],[-72.769,-69.662],[-72.523,-69.694],[-71.953,-69.665]]],[[[-71.362,-70.347],[-71.475,-70.266],[-71.822,-70.295],[-71.609,-70.457],[-71.362,-70.347]]],[[[-68.124,-71.59],[-68.249,-71.45],[-68.217,-71.178],[-68.334,-70.791],[-68.596,-70.559],[-68.732,-70.347],[-69.076,-70.151],[-69.333,-69.821],[-69.324,-69.63],[-69.487,-69.567],[-69.749,-69.278],[-70.028,-69.198],[-70.107,-68.886],[-70.442,-68.781],[-71.028,-68.868],[-71.596,-68.856],[-72.011,-68.958],[-72.213,-69.078],[-72.106,-69.254],[-71.673,-69.39],[-71.738,-69.658],[-71.935,-69.935],[-71.677,-70.078],[-70.978,-70.236],[-70.742,-70.121],[-70.506,-70.223],[-69.89,-70.302],[-70.977,-70.451],[-71.272,-70.679],[-70.82,-70.827],[-70.37,-70.823],[-69.934,-70.949],[-71.174,-70.999],[-71.632,-71.152],[-72.387,-71.049],[-72.766,-71.066],[-73.127,-71.144],[-72.727,-71.267],[-72.224,-71.313],[-72.247,-71.377],[-72.948,-71.355],[-73.357,-71.304],[-74,-71.42],[-74,-72.163],[-73.505,-72.006],[-73.76,-71.899],[-73.479,-71.831],[-73.178,-71.925],[-72.711,-71.863],[-72.671,-71.722],[-72.182,-71.661],[-71.82,-71.822],[-71.379,-71.835],[-70.742,-71.962],[-70.952,-72.025],[-71.486,-72.064],[-72.044,-72.155],[-71.648,-72.252],[-71.126,-72.275],[-70.421,-72.13],[-70.214,-72.289],[-70.927,-72.397],[-71.855,-72.357],[-72.702,-72.272],[-73.162,-72.449],[-72.855,-72.577],[-72.371,-72.671],[-71.419,-72.63],[-70.696,-72.669],[-69.782,-72.616],[-69.209,-72.535],[-68.753,-72.223],[-68.465,-72.246],[-68.394,-71.977],[-68.21,-71.867],[-68.124,-71.59]]],[[[-67.657,-66.689],[-67.857,-66.622],[-68.276,-66.76],[-68.463,-66.87],[-68.892,-67.317],[-69.198,-67.542],[-68.902,-67.767],[-68.552,-67.743],[-68.128,-67.572],[-67.942,-67.402],[-67.983,-67.303],[-67.811,-67.072],[-68.021,-66.941],[-67.95,-66.826],[-67.657,-66.689]]],[[[-67.182,-78.494],[-67.988,-78.475],[-69.488,-78.701],[-71.18,-79.048],[-71.466,-79.163],[-71.818,-79.44],[-71.484,-79.633],[-70.793,-79.702],[-69.762,-79.524],[-69.829,-79.444],[-68.719,-79.019],[-67.633,-78.737],[-67.182,-78.494]]],[[[-67.128,-67.616],[-67.446,-67.584],[-67.754,-67.66],[-67.7,-67.767],[-67.441,-67.788],[-67.128,-67.616]]],[[[-65.634,-65.535],[-65.965,-65.55],[-66.199,-65.832],[-65.852,-65.827],[-65.908,-65.711],[-65.661,-65.675],[-65.634,-65.535]]],[[[-65.123,-54.654],[-65.235,-54.619],[-65.803,-54.652],[-66.465,-54.479],[-66.734,-54.26],[-67.33,-54.041],[-67.535,-53.927],[-67.546,-53.84],[-67.911,-53.653],[-68.083,-53.39],[-68.548,-53.248],[-68.538,-53.144],[-68.288,-52.951],[-68.607,-52.659],[-68.609,-54.42],[-68.596,-54.873],[-68.249,-54.795],[-67.704,-54.886],[-67.506,-54.853],[-66.764,-54.961],[-66.522,-55.057],[-66.334,-54.996],[-65.971,-54.968],[-65.739,-54.91],[-65.637,-54.97],[-65.232,-54.829],[-65.123,-54.654]]],[[[-63.796,-54.726],[-64.279,-54.729],[-64.725,-54.812],[-64.606,-54.911],[-64.235,-54.782],[-64.172,-54.823],[-63.846,-54.789],[-63.796,-54.726]]],[[[-62.878,-64.581],[-63.323,-64.448],[-63.172,-64.276],[-63.439,-64.25],[-63.671,-64.317],[-63.708,-64.444],[-63.941,-64.458],[-64.191,-64.644],[-64.065,-64.759],[-63.784,-64.788],[-63.319,-64.74],[-63.185,-64.651],[-62.878,-64.581]]],[[[-62.029,-64.151],[-62.465,-64.008],[-62.616,-64.14],[-62.464,-64.233],[-62.687,-64.405],[-62.603,-64.53],[-62.23,-64.393],[-62.029,-64.151]]],[[[-61.793,-69.516],[-61.831,-69.373],[-62.113,-69.219],[-62.58,-69.189],[-62.484,-69.335],[-62.203,-69.507],[-61.793,-69.516]]],[[[-60.857,-51.788],[-61.029,-51.779],[-61.134,-51.86],[-60.897,-51.952],[-60.857,-51.788]]],[[[-60.431,-70.569],[-60.951,-70.54],[-60.798,-70.722],[-60.431,-70.569]]],[[[-59.805,-62.611],[-59.995,-62.632],[-60.137,-62.466],[-60.33,-62.565],[-60.312,-62.764],[-59.805,-62.611]]],[[[-59.734,-80.221],[-59.964,-80.096],[-59.884,-79.837],[-60.526,-79.742],[-61.221,-79.876],[-61.422,-80.149],[-61.322,-80.299],[-62.098,-80.405],[-63.437,-80.468],[-65.733,-80.398],[-66.631,-80.238],[-66.751,-80.397],[-65.919,-80.564],[-64.53,-80.73],[-63.616,-80.593],[-63.129,-80.605],[-62.973,-80.771],[-62.308,-80.886],[-60.827,-80.959],[-60.044,-80.77],[-59.734,-80.221]]],[[[-59.19,-51.399],[-59.358,-51.359],[-59.468,-51.465],[-59.733,-51.461],[-59.96,-51.395],[-60.106,-51.505],[-60.455,-51.438],[-60.495,-51.54],[-60.368,-51.672],[-60.182,-51.746],[-60.45,-51.876],[-60.57,-51.984],[-60.846,-51.954],[-60.86,-52.042],[-60.616,-52.259],[-60.267,-52.091],[-60.239,-52.017],[-59.859,-51.964],[-59.544,-51.647],[-59.44,-51.634],[-59.19,-51.399]]],[[[-58.465,-51.31],[-58.672,-51.333],[-58.905,-51.276],[-59.179,-51.584],[-59.215,-51.717],[-59.61,-51.918],[-59.55,-52.068],[-59.691,-52.137],[-59.594,-52.248],[-59.339,-52.288],[-59.105,-52.242],[-58.857,-52.053],[-58.736,-52.05],[-58.561,-51.907],[-58.303,-51.885],[-58.036,-51.759],[-57.882,-51.747],[-57.764,-51.54],[-57.851,-51.413],[-58.282,-51.391],[-58.465,-51.31]]],[[[-57.577,-62.022],[-58.051,-61.93],[-58.358,-61.931],[-58.885,-62.117],[-58.615,-62.262],[-58.23,-62.188],[-58.045,-62.078],[-57.577,-62.022]]],[[[-57.065,-64.159],[-57.136,-64.085],[-57.883,-63.976],[-57.769,-63.9],[-57.967,-63.806],[-58.288,-63.921],[-58.457,-64.091],[-58.219,-64.104],[-58.159,-64.272],[-58.311,-64.326],[-57.917,-64.439],[-57.533,-64.354],[-57.065,-64.159]]],[[[-56.906,-64.329],[-57.267,-64.439],[-57.011,-64.485],[-56.906,-64.329]]],[[[-56.765,-63.547],[-57.006,-63.474],[-57.049,-63.26],[-57.218,-63.221],[-57.876,-63.313],[-58.157,-63.473],[-58.397,-63.456],[-58.79,-63.515],[-58.915,-63.658],[-59.352,-63.732],[-59.384,-63.868],[-59.556,-63.897],[-59.827,-63.835],[-59.959,-63.957],[-60.225,-63.911],[-60.739,-64.06],[-60.939,-64.302],[-61.553,-64.433],[-61.617,-64.535],[-61.95,-64.602],[-61.932,-64.676],[-62.338,-64.757],[-62.82,-64.805],[-63.215,-64.989],[-63.175,-65.143],[-63.652,-65.086],[-63.822,-65.027],[-64.094,-65.176],[-64.1,-65.409],[-63.994,-65.519],[-64.478,-65.63],[-64.368,-65.806],[-64.701,-65.832],[-64.448,-65.96],[-64.71,-66.014],[-64.938,-65.923],[-65.299,-65.966],[-65.291,-66.149],[-65.636,-66.113],[-65.702,-66.261],[-65.732,-66.703],[-66.13,-66.587],[-66.572,-66.67],[-66.432,-66.85],[-66.602,-66.991],[-66.442,-67.175],[-66.886,-67.171],[-66.962,-66.927],[-67.247,-67.029],[-67.51,-67.049],[-67.593,-67.154],[-67.543,-67.346],[-67.649,-67.452],[-67.364,-67.535],[-66.965,-67.474],[-66.726,-67.536],[-67.099,-67.774],[-66.838,-67.913],[-67.293,-67.96],[-66.781,-68.316],[-67.036,-68.609],[-67.003,-68.789],[-67.49,-68.831],[-67.247,-68.95],[-66.885,-68.967],[-66.896,-69.222],[-67.227,-69.296],[-67.462,-69.457],[-68.171,-69.319],[-68.308,-69.404],[-68.822,-69.397],[-68.502,-69.638],[-68.332,-69.695],[-68.489,-70.049],[-67.958,-70.304],[-67.702,-70.608],[-67.799,-70.665],[-67.543,-70.959],[-67.464,-71.169],[-67.642,-71.381],[-67.53,-71.617],[-67.135,-71.744],[-66.778,-71.957],[-66.751,-72.133],[-66.964,-72.34],[-67.207,-72.448],[-67.212,-72.594],[-67.781,-72.848],[-68.663,-73.093],[-69.3,-73.173],[-70.228,-73.23],[-70.388,-73.286],[-71.066,-73.262],[-71.457,-73.36],[-72.304,-73.387],[-72.429,-73.451],[-72.988,-73.451],[-74,-73.643],[-74,-76.691],[-72.863,-76.675],[-71.618,-76.766],[-70.172,-76.668],[-70.002,-76.526],[-70.13,-76.412],[-69.474,-76.338],[-68.558,-76.299],[-67.451,-76.13],[-66.266,-76.013],[-65.017,-75.793],[-64.262,-75.682],[-63.589,-75.528],[-63.078,-75.362],[-64.443,-75.321],[-64.168,-75.214],[-63.035,-75.142],[-63.312,-75.01],[-63.781,-75.042],[-64.039,-74.977],[-63.053,-74.902],[-63.295,-74.717],[-63.07,-74.658],[-62.595,-74.793],[-62.563,-74.975],[-62.073,-74.939],[-61.79,-74.771],[-62.11,-74.463],[-61.34,-74.549],[-61.003,-74.504],[-60.75,-74.365],[-60.783,-74.242],[-61.385,-74.337],[-61.034,-74.086],[-61.832,-73.919],[-61.415,-73.87],[-60.983,-73.96],[-60.73,-73.696],[-60.895,-73.552],[-61.778,-73.447],[-61.728,-73.309],[-62.033,-73.159],[-61.277,-73.202],[-61.055,-73.351],[-60.366,-73.328],[-59.977,-73.241],[-60.241,-73.028],[-60.535,-72.981],[-60.526,-72.658],[-61.022,-72.694],[-61.248,-72.616],[-61.036,-72.473],[-60.64,-72.431],[-60.657,-72.037],[-61.395,-72.065],[-62.414,-71.965],[-61.618,-71.856],[-61.029,-71.852],[-60.766,-71.756],[-61.158,-71.532],[-61.588,-71.691],[-61.737,-71.61],[-61.464,-71.455],[-61.133,-71.416],[-60.981,-71.151],[-61.358,-71.03],[-61.243,-70.897],[-61.485,-70.835],[-61.784,-70.926],[-62.006,-70.795],[-61.643,-70.687],[-61.398,-70.513],[-61.965,-70.51],[-62.436,-70.4],[-62.405,-70.227],[-61.958,-70.272],[-62.0,-70.076],[-62.316,-69.991],[-62.515,-69.869],[-62.392,-69.534],[-62.771,-69.346],[-63.084,-69.305],[-63.303,-69.091],[-63.891,-69.006],[-63.476,-68.901],[-63.405,-68.769],[-63.857,-68.698],[-63.664,-68.543],[-63.967,-68.484],[-64.26,-68.594],[-64.0,-68.747],[-64.101,-68.833],[-65.16,-68.626],[-65.352,-68.559],[-64.977,-68.403],[-65.389,-68.379],[-65.418,-68.309],[-64.794,-68.169],[-64.983,-68.093],[-65.761,-68.163],[-65.613,-68.044],[-65.697,-67.877],[-65.6,-67.758],[-65.322,-67.666],[-65.596,-67.555],[-65.304,-67.399],[-64.76,-67.269],[-64.693,-67.15],[-64.979,-67.033],[-64.685,-66.988],[-64.748,-66.841],[-64.101,-66.937],[-63.735,-66.899],[-63.925,-66.701],[-63.795,-66.599],[-63.91,-66.506],[-63.768,-66.281],[-63.552,-66.205],[-63.199,-66.273],[-62.896,-66.478],[-62.787,-66.661],[-62.468,-66.701],[-62.574,-66.394],[-62.758,-66.322],[-62.229,-66.175],[-61.877,-66.339],[-61.74,-66.232],[-61.502,-66.226],[-61.046,-66.089],[-60.546,-66.014],[-60.576,-65.94],[-61.237,-65.916],[-61.317,-66.09],[-61.62,-66.015],[-61.918,-66.132],[-62.378,-65.933],[-62.417,-65.856],[-62.042,-65.665],[-61.936,-65.498],[-62.22,-65.454],[-62.009,-65.26],[-61.602,-65.24],[-61.702,-65.083],[-61.531,-64.983],[-61.325,-65.044],[-61.002,-64.954],[-60.696,-64.793],[-60.691,-64.727],[-60.36,-64.654],[-60.326,-64.552],[-59.975,-64.44],[-59.801,-64.559],[-59.543,-64.543],[-59.65,-64.404],[-59.058,-64.452],[-58.908,-64.355],[-58.647,-63.951],[-58.374,-63.849],[-58.276,-63.729],[-57.873,-63.673],[-57.724,-63.558],[-57.322,-63.484],[-57.175,-63.605],[-56.765,-63.547]]],[[[-56.031,-63.026],[-56.375,-62.985],[-56.627,-63.043],[-56.309,-63.189],[-56.031,-63.026]]],[[[-55.729,-63.445],[-56.001,-63.392],[-56.199,-63.439],[-56.155,-63.54],[-55.937,-63.582],[-55.729,-63.445]]],[[[-55.061,-63.33],[-55.049,-63.231],[-55.534,-63.177],[-55.585,-63.123],[-56.133,-63.155],[-56.352,-63.222],[-56.559,-63.365],[-56.369,-63.443],[-55.84,-63.324],[-55.305,-63.37],[-55.061,-63.33]]],[[[-54.683,-61.124],[-54.985,-61.115],[-55.366,-61.054],[-55.474,-61.128],[-55.217,-61.281],[-55.04,-61.162],[-54.683,-61.124]]],[[[-45.153,-60.682],[-45.429,-60.556],[-45.693,-60.514],[-45.738,-60.645],[-45.153,-60.682]]],[[[-42.994,-79.44],[-43.336,-79.237],[-43.193,-79.169],[-43.748,-78.797],[-45.138,-78.814],[-45.364,-78.682],[-44.988,-78.628],[-43.97,-78.604],[-43.725,-78.388],[-43.764,-78.276],[-44.282,-78.094],[-44.941,-77.943],[-46.176,-77.794],[-47.206,-77.77],[-47.619,-77.796],[-49.003,-78.026],[-49.668,-78.283],[-50.235,-78.672],[-50.147,-78.801],[-50.475,-79.132],[-50.229,-79.444],[-50.565,-79.629],[-52.183,-80.137],[-53.487,-80.221],[-54.195,-80.609],[-54.277,-80.845],[-52.628,-80.895],[-50.992,-80.86],[-49.722,-80.766],[-49.373,-80.629],[-47.99,-80.652],[-46.854,-80.597],[-45.484,-80.476],[-43.998,-80.266],[-43.446,-80.106],[-43.055,-79.88],[-42.994,-79.44]]],[[[-35.791,-54.766],[-36.295,-54.269],[-36.624,-54.236],[-36.667,-54.114],[-37.434,-54.003],[-37.748,-54.058],[-37.63,-54.191],[-37.418,-54.251],[-37.221,-54.239],[-37.047,-54.347],[-36.854,-54.355],[-36.818,-54.458],[-36.465,-54.532],[-36.266,-54.797],[-35.977,-54.814],[-35.791,-54.766]]],[[[-25.04,-75.857],[-25.93,-75.925],[-26.709,-76.15],[-27.254,-76.161],[-27.676,-76.254],[-28.86,-76.351],[-30.407,-76.7],[-30.491,-76.809],[-31.721,-76.981],[-31.878,-77.137],[-32.625,-77.127],[-33.225,-77.277],[-33.718,-77.31],[-34.379,-77.477],[-34.781,-77.678],[-34.662,-77.793],[-35.353,-77.854],[-35.653,-78.095],[-36.24,-78.381],[-36.534,-78.63],[-36.27,-78.845],[-34.969,-78.979],[-34.151,-79.11],[-33.723,-79.222],[-32.643,-79.257],[-30.265,-79.043],[-29.749,-79.351],[-30.747,-79.578],[-31.993,-79.632],[-31.757,-79.737],[-31.981,-79.848],[-30.766,-79.95],[-30.163,-80.046],[-28.756,-79.962],[-27.365,-79.968],[-26.202,-80.015],[-26.319,-80.119],[-27.998,-80.088],[-29.795,-80.163],[-30.152,-80.294],[-31.234,-80.293],[-31.125,-80.403],[-31.953,-80.425],[-33.411,-80.609],[-34.497,-80.662],[-35.778,-80.8],[-37.384,-81.072],[-37.76,-80.983],[-38.777,-80.897],[-39.577,-80.993],[-40.293,-81.163],[-41.109,-81.22],[-41.786,-81.415],[-41.92,-81.611],[-43.169,-81.897],[-43.127,-82.116],[-44.058,-82.4],[-45.001,-82.415],[-46.191,-82.548],[-46.674,-82.417],[-45.985,-82.134],[-46.279,-81.973],[-47.185,-82.038],[-47.545,-81.93],[-48.908,-81.897],[-49.512,-81.956],[-53.215,-82.124],[-54.721,-82.293],[-55.9,-82.472],[-56.061,-82.568],[-57.745,-82.92],[-58.914,-83.402],[-59.594,-83.468],[-61.451,-83.385],[-60.964,-83.003],[-61.963,-82.969],[-62.817,-82.524],[-61.135,-82.35],[-60.491,-82.212],[-62.346,-82.256],[-65.106,-82.406],[-65.221,-82.272],[-66.115,-82.19],[-65.276,-81.912],[-64.007,-81.906],[-63.525,-81.776],[-62.094,-81.651],[-62.302,-81.564],[-63.095,-81.54],[-65.244,-81.529],[-66.5,-81.347],[-68.389,-81.116],[-69.991,-80.978],[-70.4,-80.833],[-70.384,-80.702],[-70.792,-80.616],[-71.571,-80.723],[-72.557,-80.793],[-72.808,-80.965],[-74,-80.829],[-74,-90],[-25,-90],[-25,-75.852],[-25.04,-75.857]]]]}}]};
+
+/* ======================= DATOS DE EJEMPLO ======================= */
+const REDES=[
+ {id:'sip',nombre:'SIPROSA (ejemplo)',color:'#2a78d6'},
+ {id:'cor',nombre:'Córdoba (ejemplo)',color:'#4a3aa7'},
+ {id:'nea',nombre:'NEA (ejemplo)',color:'#e87ba4'}];
+const ROLES={central:{label:'Central',plural:'Centrales'},cache:{label:'Caché',plural:'Cachés'},periferico:{label:'Periférico',plural:'Periféricos'}};
+const H=[
+ // SIPROSA
+ {id:'HCEN',nombre:'Hospital Central Tucumán (ej.)',prov:'Tucumán',lat:-26.83,lng:-65.22,st:'Online',red:'sip',rol:'central',pacs:[{ae:'SIPROSAPAD',host:'PENTALOGIC PACS'},{ae:'SIPROSAHCST',host:'PENTALOGIC PACS'}]},
+ {id:'H45',nombre:'Hospital Ángel C. Padilla',prov:'Tucumán',lat:-26.55,lng:-64.95,st:'Online',red:'sip',rol:'cache',pacs:[]},
+ {id:'H44',nombre:'Hospital H44 (ej.)',prov:'Tucumán',lat:-27.43,lng:-65.60,st:'Online',red:'sip',rol:'cache',pacs:[]},
+ {id:'HMON',nombre:'Hospital de Monteros (ej.)',prov:'Tucumán',lat:-27.17,lng:-65.50,st:'Online',red:'sip',rol:'periferico',pacs:[]},
+ {id:'HBEL',nombre:'Hospital de Bella Vista (ej.)',prov:'Tucumán',lat:-27.03,lng:-65.30,st:'Online',red:'sip',rol:'periferico',pacs:[]},
+ {id:'HTAF',nombre:'Hospital de Tafí del Valle (ej.)',prov:'Tucumán',lat:-26.85,lng:-65.71,st:'Offline',red:'sip',rol:'periferico',pacs:[]},
+ {id:'HSIM',nombre:'Hospital de Simoca (ej.)',prov:'Tucumán',lat:null,lng:null,st:'Online',red:'sip',rol:'periferico',pacs:[]},
+ // Córdoba
+ {id:'CORD',nombre:'Hospital Córdoba Central (ej.)',prov:'Córdoba',lat:-31.42,lng:-64.19,st:'Online',red:'cor',rol:'central',pacs:[{ae:'CORD-PACS',host:''},{ae:'CORD-PACS-BK',host:'ARHCORDPCS2V'}]},
+ {id:'HUPC',nombre:'HUPC',prov:'Córdoba',lat:-33.12,lng:-64.35,st:'Online',red:'cor',rol:'cache',pacs:[]},
+ {id:'VMAR',nombre:'Hospital de Villa María (ej.)',prov:'Córdoba',lat:-32.41,lng:-63.24,st:'Online',red:'cor',rol:'cache',pacs:[]},
+ {id:'CEJE',nombre:'Hospital de Cruz del Eje (ej.)',prov:'Córdoba',lat:-30.72,lng:-64.80,st:'Online',red:'cor',rol:'periferico',pacs:[]},
+ // NEA
+ {id:'NEA1',nombre:'Hospital Resistencia (ej.)',prov:'Chaco',lat:-27.46,lng:-58.99,st:'Online',red:'nea',rol:'central',pacs:[{ae:'NEA1-PACS',host:'PACS CHACO'}]},
+ {id:'NEA2',nombre:'Hospital Posadas (ej.)',prov:'Misiones',lat:-27.37,lng:-55.90,st:'Online',red:'nea',rol:'central',pacs:[{ae:'NEA2-PACS',host:'PACS MISIONES'}]},
+ {id:'FORM',nombre:'Hospital de Formosa (ej.)',prov:'Formosa',lat:-26.18,lng:-58.17,st:'Online',red:'nea',rol:'cache',pacs:[]},
+ {id:'GOYA',nombre:'Hospital de Goya (ej.)',prov:'Corrientes',lat:-29.14,lng:-59.26,st:'Online',red:'nea',rol:'periferico',pacs:[]},
+ {id:'OBER',nombre:'Hospital de Oberá (ej.)',prov:'Misiones',lat:-27.49,lng:-55.12,st:'Online',red:'nea',rol:'periferico',pacs:[]},
+ // Aislados
+ {id:'P12',nombre:'Hospital P12 (ej.)',prov:'Buenos Aires',lat:-34.61,lng:-58.38,st:'Online',red:null,rol:null,pacs:[{ae:'SynapseDicomSCP',host:'PACS LOCAL Synapse'}]},
+ {id:'P03',nombre:'Hospital P03 (ej.)',prov:'Mendoza',lat:-32.89,lng:-68.84,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'H19',nombre:'Hospital H19 (ej.)',prov:'Salta',lat:-24.78,lng:-65.41,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'H33',nombre:'Hospital H33 (ej.)',prov:'Jujuy',lat:-24.19,lng:-65.30,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'H35',nombre:'Hospital H35 (ej.)',prov:'Neuquén',lat:-38.95,lng:-68.06,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'H06',nombre:'Hospital H06 (ej.)',prov:'Río Negro',lat:-41.13,lng:-71.31,st:'Offline',red:null,rol:null,pacs:[]},
+ {id:'H01',nombre:'Hospital H01 (ej.)',prov:'Chubut',lat:-45.86,lng:-67.48,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'H07',nombre:'Hospital H07 (ej.)',prov:'Santa Fe',lat:-31.63,lng:-60.70,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'P05',nombre:'Hospital P05 (ej.)',prov:'Buenos Aires',lat:-38.72,lng:-62.27,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'P15',nombre:'Hospital P15 (ej.)',prov:'Buenos Aires',lat:-38.00,lng:-57.55,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'P20',nombre:'Hospital P20 (ej.)',prov:'San Luis',lat:-33.30,lng:-66.34,st:'Online',red:null,rol:null,pacs:[]},
+ {id:'H42',nombre:'Hospital H42 (ej.)',prov:'Santa Cruz',lat:-51.62,lng:-69.22,st:'Online',red:null,rol:null,pacs:[]},
+];
+const byId=id=>H.find(h=>h.id===id);
+// Enlaces declarados a mano: {o: origen, d: destino, tipo: 'envia'|'consulta'}
+let LINKS=[
+ {o:'H45',d:'HCEN',tipo:'envia'},{o:'H44',d:'HCEN',tipo:'envia'},
+ {o:'HMON',d:'HCEN',tipo:'consulta'},{o:'HBEL',d:'HCEN',tipo:'consulta'},{o:'HSIM',d:'HCEN',tipo:'consulta'},{o:'HTAF',d:'H45',tipo:'consulta'},
+ {o:'HUPC',d:'CORD',tipo:'envia'},{o:'VMAR',d:'CORD',tipo:'envia'},{o:'CEJE',d:'VMAR',tipo:'consulta'},
+ {o:'NEA1',d:'NEA2',tipo:'envia'},{o:'NEA2',d:'NEA1',tipo:'envia'},{o:'FORM',d:'NEA1',tipo:'envia'},
+ {o:'GOYA',d:'NEA1',tipo:'consulta'},{o:'OBER',d:'NEA2',tipo:'consulta'},
+];
+// Reglas de autoenrute por hospital (estado: OK|WARNING|CRITICAL). H44/H45/HUPC/P03/P12: nombres de nodo reales.
+const R=(id,nick,host,ae,dh,pend,estado,nota)=>({id,nick,host,ae,dh,pend,estado,nota:nota||''});
+const RULES={
+ H45:[
+  R(37,'DigiRad','CALYPSO','SIPROSAPAD','PENTALOGIC PACS',6,'OK'),R(38,'ECO01','ECO VINNO','SIPROSAPAD','PENTALOGIC PACS',14,'OK'),
+  R(39,'TM_CT_CMW_V3.00','TOMO TOSHIBA','SIPROSAPAD','PENTALOGIC PACS',1164,'OK','en su piso habitual (1164)'),
+  R(40,'KPServer','KPACS INFORMATICA','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),R(41,'Achieva','RESONADOR','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),
+  R(42,'CT140938','TOMO SIEMENS','SIPROSAPAD','PENTALOGIC PACS',2512,'OK','en su piso habitual (2490)'),
+  R(43,'FD20','ANGIOGRAFO','SIPROSAPAD','PENTALOGIC PACS',49,'OK'),R(44,'CRCLASSIC','RX GUARDIA','SIPROSAPAD','PENTALOGIC PACS',10,'OK'),
+  R(45,'DRX1','RX CENTRAL','SIPROSAPAD','PENTALOGIC PACS',33,'OK'),R(46,'APLIO','ECOGRAFO VINNO','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),
+  R(47,'RAFFAELLO','GIOTTO','SIPROSAPAD','PENTALOGIC PACS',1,'OK'),R(48,'FCR-CSL','CR CONSOLA','SIPROSAPAD','PENTALOGIC PACS',46,'OK'),
+  R(49,'VXVUE','RX RODANTE TECNO','SIPROSAPAD','PENTALOGIC PACS',3,'OK'),R(50,'DRTECH','Rodante DR','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),
+  R(51,'CHISON1','ECO CHISON1','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),R(52,'APLIO300_2471','ECOGRAFO APLIO','SIPROSAPAD','PENTALOGIC PACS',30,'OK'),
+  R(53,'CT140938','TOMO SIEMENS','SIPROSAPAD','PENTALOGIC PACS',2093,'OK','en su piso habitual (2071)'),R(54,'arco','ARCO EN C','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),
+  R(55,'ImageSuite','RX Rehue','SIPROSAPAD','PENTALOGIC PACS',12,'OK'),R(57,'VMPACS','PACS PROV visual','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),
+  R(58,'ACHIEVA_DS','Resonador Philips','SIPROSAPAD','PENTALOGIC PACS',210,'OK'),R(59,'RSXVimport3D','Xtravision3D','SIPROSAPAD','PENTALOGIC PACS',0,'OK'),
+ ],
+ H44:[
+  R(16,'ImageSuite','RX Directo','hcszswfmFIR','PACS PROV',0,'OK'),R(17,'CRFEBRIL','RX Indirecto','hcszswfmFIR','PACS PROV',12,'OK'),
+  R(18,'DigiRad','RX-FIJO-TECNO','hcszswfmFIR','PACS PROV',0,'OK'),R(19,'RAFFAELLO','MAMO-TECNO','hcszswfmFIR','PACS PROV',8,'OK'),
+  R(20,'VXVUE','RX-RODANTE-TECNO','hcszswfmFIR','PACS PROV',6,'OK'),R(21,'FCR-CSL-SCU','CR-TECNO','hcszswfmFIR','PACS PROV',0,'OK'),
+  R(24,'DRTECH','RX DRTECH','hcszswfmFIR','PACS PROV',0,'OK'),R(26,'CTMX16','TOMO PHILIPS NEW','hcszswfmFIR','PACS PROV',0,'OK'),
+  R(28,'DigiRad','RX-FIJO-TECNO','SIPROSAHCST','PENTALOGIC PACS',19,'OK'),R(29,'FCR-CSL-SCU','CR-TECNO','SIPROSAHCST','PENTALOGIC PACS',10,'OK'),
+  R(30,'RAFFAELLO','MAMO-TECNO','SIPROSAHCST','PENTALOGIC PACS',34,'OK'),R(31,'VXVUE','RX-RODANTE-TECNO','SIPROSAHCST','PENTALOGIC PACS',4,'OK'),
+  R(32,'ImageSuite','RX Directo','SIPROSAHCST','PENTALOGIC PACS',0,'OK'),R(33,'CRFEBRIL','RX Indirecto','SIPROSAHCST','PENTALOGIC PACS',2,'OK'),
+  R(34,'DRTECH','RX DRTECH','SIPROSAHCST','PENTALOGIC PACS',12,'OK'),
+  R(35,'CTMX16','TOMO PHILIPS NEW','SIPROSAHCST','PENTALOGIC PACS',3144,'WARNING','creciendo hace 45 min'),
+ ],
+ HUPC:[R(126,'TODOS','','CORD-PACS-BK','ARHCORDPCS2V',1407664,'CRITICAL','creciendo hace más de 180 min sin descender')],
+ P12:[R(2,'RAFFAELLO','MAMO TECNO','SynapseDicomSCP','PACS LOCAL Synapse',96,'OK'),R(4,'DRF4343','SERIOGRAFO TECNO','SynapseDicomSCP','PACS LOCAL Synapse',15900,'CRITICAL','sin drenar hace más de 180 min'),R(6,'MYLAB','Eco General','SynapseDicomSCP','PACS LOCAL Synapse',0,'OK')],
+ P03:[R(1,'TODOS','','ENTP_P03','entelai192',17800,'CRITICAL','sin drenar hace más de 180 min')],
+ FORM:[R(1,'TC-FORM','TOMO','NEA2-PACS','PACS MISIONES',0,'OK'),R(2,'RX-FORM','RX DIRECTO','NEA2-PACS','PACS MISIONES',4,'OK'),R(3,'ECO-FORM','ECO','NEA2-PACS','PACS MISIONES',0,'OK')],
+ NEA1:[R(1,'TODOS','','NEA2-PACS','PACS MISIONES',12,'OK'),R(2,'TC-NEA1','TOMO','NEA2-PACS','PACS MISIONES',0,'OK')],
+ NEA2:[R(1,'TODOS','','NEA1-PACS','PACS CHACO',3,'OK'),R(2,'RM-NEA2','RESONADOR','NEA1-PACS','PACS CHACO',0,'OK')],
+};
+// Destinos ya marcados como externos por el usuario
+let EXTERNOS=[];
+
+/* ======================= LÓGICA (real, sobre los datos de ejemplo) ======================= */
+const norm=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+function duenoDe(ae,host){
+  const a=norm(ae),h=norm(host);
+  return H.find(x=>x.pacs.some(p=>(a&&norm(p.ae)===a)||(!p.ae&&h&&norm(p.host)===h)))||null;
+}
+function clasificar(h){
+  return (RULES[h.id]||[]).map(r=>{
+    const dueno=duenoDe(r.ae,r.dh);
+    let cls,dest=null;
+    if(dueno&&dueno.id===h.id){cls='propia';dest=dueno;}
+    else if(dueno&&h.red&&dueno.red===h.red){cls='en_red';dest=dueno;}
+    else if(dueno){cls='otra_red';dest=dueno;}
+    else cls=EXTERNOS.includes(norm(r.ae))?'externa_marcada':'externa';
+    return {...r,cls,dest};
+  });
+}
+const PEOR={OK:0,WARNING:1,CRITICAL:2};
+function saludEnlace(o,d){
+  const rs=clasificar(byId(o)).filter(r=>r.cls==='en_red'&&r.dest.id===d);
+  if(!rs.length)return {nivel:'none',n:0,rs};
+  let w='OK';rs.forEach(r=>{if(PEOR[r.estado]>PEOR[w])w=r.estado;});
+  return {nivel:w,n:rs.length,rs};
+}
+const COL={OK:'#28a745',WARNING:'#e0a100',CRITICAL:'#dc3545',none:'#9aa5b1',consulta:'#6b7c93'};
+function redDe(h){return REDES.find(r=>r.id===h.red)||null}
+function sugerencias(h){
+  if(!h.red)return {sug:[],adv:[]};
+  const cls=clasificar(h).filter(r=>r.cls==='en_red');
+  const destinos=[...new Set(cls.map(r=>r.dest.id))];
+  const sug=destinos.filter(d=>!LINKS.some(l=>l.o===h.id&&l.d===d&&l.tipo==='envia'))
+    .map(d=>({d,n:cls.filter(r=>r.dest.id===d).length}));
+  const adv=LINKS.filter(l=>l.o===h.id&&l.tipo==='envia'&&!destinos.includes(l.d)).map(l=>l.d);
+  return {sug,adv};
+}
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(()=>e.classList.remove('on'),2600);}
+
+/* ======================= COMPONENTES ======================= */
+function glyph(rol,color,size=14,fill='#2ecc71'){
+  const s=size,c=s/2;
+  let shape='';
+  if(rol==='central')shape=`<rect x="1.5" y="1.5" width="${s-3}" height="${s-3}" rx="1.5" fill="${fill}" stroke="${color}" stroke-width="2.4"/>`;
+  else if(rol==='cache')shape=`<polygon points="${c},1.2 ${s-1.2},${c} ${c},${s-1.2} 1.2,${c}" fill="${fill}" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>`;
+  else if(rol==='periferico')shape=`<circle cx="${c}" cy="${c}" r="${c-2.2}" fill="${fill}" stroke="${color}" stroke-width="2.2"/>`;
+  else shape=`<circle cx="${c}" cy="${c}" r="${c-1.5}" fill="${fill}" stroke="#fff" stroke-width="1.5"/>`;
+  return `<svg class="glyph" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">${shape}</svg>`;
+}
+function redChip(h){
+  const r=redDe(h);
+  if(!r)return `<span class="muted small">— aislado —</span>`;
+  return `<span class="chip">${glyph(h.rol,r.color,14,'#ffffff')}<span class="dot" style="background:${r.color}"></span>${r.nombre.replace(' (ejemplo)','')} · ${ROLES[h.rol].label}</span>`;
+}
+const stPill=s=>`<span class="pill ${s==='Online'?'on':'off'}">● ${s}</span>`;
+const lvPill=l=>({OK:'<span class="pill ok">OK</span>',WARNING:'<span class="pill warn">WARNING</span>',CRITICAL:'<span class="pill crit">CRITICAL</span>'}[l]);
+
+/* ======================= TABS ======================= */
+function showTab(t){
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  document.querySelectorAll('section.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+t));
+  if(t==='mapa')renderMapa();
+  if(t==='detalle')renderDetalle();
+  if(t==='modal')renderModal();
+  if(t==='redes')renderRedes();
+}
+document.getElementById('tabs').addEventListener('click',e=>{if(e.target.dataset.t)showTab(e.target.dataset.t)});
+function verDetalle(id){document.getElementById('d-sel').value=id;showTab('detalle');}
+
+/* ======================= 1 · MAPA ======================= */
+const MS={red:'all',status:'all',q:'',sel:null,bbox:null,target:null,anim:null};
+const FULL={latMin:-56,latMax:-21,lngMin:-74.5,lngMax:-53};
+function bboxRed(redId){
+  const ms=H.filter(h=>(redId==='all'||redId==='none'?false:h.red===redId)&&h.lat!=null);
+  if(!ms.length)return {...FULL};
+  let a=Math.min(...ms.map(h=>h.lat)),b=Math.max(...ms.map(h=>h.lat)),c=Math.min(...ms.map(h=>h.lng)),d=Math.max(...ms.map(h=>h.lng));
+  const pl=Math.max((b-a)*0.28,1.6),pg=Math.max((d-c)*0.28,1.6);
+  return {latMin:a-pl,latMax:b+pl,lngMin:c-pg,lngMax:d+pg};
+}
+function setBBox(t,animate=true){
+  MS.target=t;
+  if(!MS.bbox||!animate){MS.bbox={...t};drawMap();return;}
+  const from={...MS.bbox},t0=performance.now();
+  cancelAnimationFrame(MS.anim);
+  const step=now=>{
+    let k=Math.min(1,(now-t0)/650);k=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+    MS.bbox={};for(const p in t)MS.bbox[p]=from[p]+(t[p]-from[p])*k;
+    drawMap();if(k<1)MS.anim=requestAnimationFrame(step);
+  };MS.anim=requestAnimationFrame(step);
+}
+function proj(lat,lng){
+  const svg=document.getElementById('map'),W=svg.clientWidth,Hh=svg.clientHeight,b=MS.bbox;
+  const cLat=(b.latMin+b.latMax)/2,cLng=(b.lngMin+b.lngMax)/2,k=Math.cos(cLat*Math.PI/180);
+  const s=Math.min(W/((b.lngMax-b.lngMin)*k),Hh/(b.latMax-b.latMin));
+  return [W/2+(lng-cLng)*k*s,Hh/2-(lat-cLat)*s];
+}
+function escala(){
+  const svg=document.getElementById('map'),W=svg.clientWidth,Hh=svg.clientHeight,b=MS.bbox;
+  const cLat=(b.latMin+b.latMax)/2,cLng=(b.lngMin+b.lngMax)/2,k=Math.cos(cLat*Math.PI/180);
+  return {W,Hh,cLat,cLng,k,s:Math.min(W/((b.lngMax-b.lngMin)*k),Hh/(b.latMax-b.latMin)),dLat:b.latMax-b.latMin,dLng:b.lngMax-b.lngMin};
+}
+function setCentro(cLat,cLng,dLat,dLng){MS.bbox={latMin:cLat-dLat/2,latMax:cLat+dLat/2,lngMin:cLng-dLng/2,lngMax:cLng+dLng/2};drawMap();closePopup();}
+function zoomEn(f,px,py){
+  cancelAnimationFrame(MS.anim);const e=escala();
+  if(px==null){px=e.W/2;py=e.Hh/2;}
+  const g={lng:e.cLng+(px-e.W/2)/(e.k*e.s),lat:e.cLat-(py-e.Hh/2)/e.s};
+  const dLat=Math.min(Math.max(e.dLat/f,0.25),70),dLng=Math.min(Math.max(e.dLng/f,0.25),70),s2=e.s*(e.dLat/dLat);
+  setCentro(g.lat+(py-e.Hh/2)/s2,g.lng-(px-e.W/2)/(e.k*s2),dLat,dLng);
+}
+function marcadorVisible(h){
+  if(h.lat==null)return false;
+  if(MS.status==='online'&&h.st!=='Online')return false;
+  if(MS.status==='offline'&&h.st!=='Offline')return false;
+  return true;
+}
+function atenuado(h){
+  if(MS.red==='none'&&h.red)return true;
+  if(MS.red!=='all'&&MS.red!=='none'&&h.red!==MS.red)return true;
+  if(MS.q){const q=norm(MS.q),r=redDe(h);
+    if(!(norm(h.id).includes(q)||norm(h.nombre).includes(q)||(r&&norm(r.nombre).includes(q))))return true;}
+  return false;
+}
+function linksVisibles(){
+  let L=[];
+  if(MS.red!=='all'&&MS.red!=='none')L=LINKS.filter(l=>byId(l.o).red===MS.red);
+  if(MS.sel){const s=LINKS.filter(l=>l.o===MS.sel||l.d===MS.sel);s.forEach(l=>{if(!L.includes(l))L.push(l)});}
+  return L;
+}
+function drawMap(){
+  const svg=document.getElementById('map');if(!svg||!MS.bbox)return;
+  let out=`<defs>`;
+  for(const [k,c] of Object.entries(COL))out+=`<marker id="ar-${k}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`;
+  out+=`</defs>`;
+  // provincias
+  GEO.features.forEach(f=>{
+    const polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
+    let d='';polys.forEach(p=>p.forEach(ring=>{ring.forEach((pt,i)=>{const [x,y]=proj(pt[1],pt[0]);d+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1)});d+='Z'}));
+    out+=`<path d="${d}" fill="#f6f8fa" stroke="#c5cdd6" stroke-width="0.8"/>`;
+  });
+  // enlaces (agrupando pares en ambos sentidos)
+  const vis=linksVisibles(),done=new Set();
+  vis.forEach(l=>{
+    const key=[l.o,l.d].sort().join('|')+l.tipo;if(done.has(key))return;
+    const inv=vis.find(x=>x!==l&&x.o===l.d&&x.d===l.o&&x.tipo===l.tipo);done.add(key);
+    const a=byId(l.o),b=byId(l.d);if(a.lat==null||b.lat==null)return;
+    let [x1,y1]=proj(a.lat,a.lng),[x2,y2]=proj(b.lat,b.lng);
+    const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len,pad=13;
+    x1+=ux*(inv?pad:8);y1+=uy*(inv?pad:8);x2-=ux*pad;y2-=uy*pad;
+    let col,dash='',key2;
+    if(l.tipo==='consulta'){col=COL.consulta;dash='stroke-dasharray="5 4"';key2='consulta';}
+    else{const s=saludEnlace(l.o,l.d);key2=s.nivel;col=COL[s.nivel];}
+    const attrs=`marker-end="url(#ar-${key2})"${inv?` marker-start="url(#ar-${key2})"`:''}`;
+    out+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="2.2" ${dash} ${attrs} opacity=".92"/>`;
+  });
+  // marcadores
+  const enfoque=(MS.red!=='all'&&MS.red!=='none')||MS.sel;
+  H.filter(marcadorVisible).forEach(h=>{
+    const [x,y]=proj(h.lat,h.lng),dim=atenuado(h)&&!(MS.sel&&LINKS.some(l=>(l.o===MS.sel&&l.d===h.id)||(l.d===MS.sel&&l.o===h.id)||h.id===MS.sel));
+    const fill=h.st==='Online'?'#2ecc71':'#e74c3c',r=redDe(h),ring=r?r.color:'#fff';
+    let shape;
+    if(h.rol==='central')shape=`<rect x="${x-9}" y="${y-9}" width="18" height="18" rx="2.5" fill="${fill}" stroke="${ring}" stroke-width="3.2"/>`;
+    else if(h.rol==='cache')shape=`<polygon points="${x},${y-10.5} ${x+10.5},${y} ${x},${y+10.5} ${x-10.5},${y}" fill="${fill}" stroke="${ring}" stroke-width="3" stroke-linejoin="round"/>`;
+    else if(h.rol==='periferico')shape=`<circle cx="${x}" cy="${y}" r="5.6" fill="${fill}" stroke="${ring}" stroke-width="2.8"/>`;
+    else shape=`<circle cx="${x}" cy="${y}" r="8" fill="${fill}" stroke="#fff" stroke-width="2"/>`;
+    const lab=(enfoque&&h.red&&!dim)?`<text x="${x}" y="${y-16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2c3e50" stroke="#fff" stroke-width="3" paint-order="stroke">${h.id}</text>`:'';
+    out+=`<g data-id="${h.id}" style="cursor:pointer" opacity="${dim?.22:1}">${shape}<circle cx="${x}" cy="${y}" r="15" fill="transparent"/>${lab}</g>`;
+  });
+  svg.innerHTML=out;
+}
+function renderLegend(){
+  document.getElementById('legend').innerHTML=`<summary>Leyenda</summary>
+  <b>Hospital</b>
+  <div class="li">${glyph('central','#2a78d6',16)} Central</div>
+  <div class="li">${glyph('cache','#2a78d6',16)} Caché</div>
+  <div class="li">${glyph('periferico','#2a78d6',16)} Periférico</div>
+  <div class="li">${glyph(null,'#fff',16)} Aislado (sin red)</div>
+  <div class="li muted small">Relleno: <span class="dot" style="background:#2ecc71"></span> online <span class="dot" style="background:#e74c3c"></span> offline · Borde: color de la red</div>
+  <b>Enlaces</b>
+  <div class="li"><svg width="34" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="${COL.OK}" stroke-width="2.4"/><path d="M28,0 L34,4 L28,8z" fill="${COL.OK}"/></svg> Envía · reglas OK</div>
+  <div class="li"><svg width="34" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="${COL.WARNING}" stroke-width="2.4"/><path d="M28,0 L34,4 L28,8z" fill="${COL.WARNING}"/></svg> Envía · WARNING <svg width="34" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="${COL.CRITICAL}" stroke-width="2.4"/><path d="M28,0 L34,4 L28,8z" fill="${COL.CRITICAL}"/></svg> CRITICAL</div>
+  <div class="li"><svg width="34" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="${COL.none}" stroke-width="2.4"/><path d="M28,0 L34,4 L28,8z" fill="${COL.none}"/></svg> Declarado, sin reglas observadas</div>
+  <div class="li"><svg width="34" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="${COL.consulta}" stroke-width="2.4" stroke-dasharray="5 4"/><path d="M28,0 L34,4 L28,8z" fill="${COL.consulta}"/></svg> Consulta (visualiza)</div>`;
+}
+function renderResumenRed(){
+  const e=document.getElementById('red-resumen');
+  if(MS.red==='all'){e.innerHTML='';return;}
+  if(MS.red==='none'){e.innerHTML=`<div class="strip">Hospitales <b>sin red</b> (nodos aislados): ${H.filter(x=>!x.red).length}</div>`;return;}
+  const r=REDES.find(x=>x.id===MS.red),ms=H.filter(x=>x.red===r.id);
+  const envia=LINKS.filter(l=>byId(l.o).red===r.id&&l.tipo==='envia'),cons=LINKS.filter(l=>byId(l.o).red===r.id&&l.tipo==='consulta');
+  const cnt={OK:0,WARNING:0,CRITICAL:0,none:0};envia.forEach(l=>cnt[saludEnlace(l.o,l.d).nivel]++);
+  const sin=ms.filter(x=>x.lat==null);
+  e.innerHTML=`<div class="strip"><b><span class="dot" style="background:${r.color}"></span> ${r.nombre}</b> · ${ms.length} hospitales · ${envia.length} envíos · ${cons.length} consultas<br>
+   <span class="small">Salud de los envíos: <span class="pill ok">${cnt.OK} OK</span> <span class="pill warn">${cnt.WARNING} WARN</span> <span class="pill crit">${cnt.CRITICAL} CRIT</span> <span class="pill gray">${cnt.none} sin reglas</span></span>
+   ${sin.length?`<br><span class="small">⚠️ Sin coordenadas (no salen en el mapa): ${sin.map(x=>`<a href="#" onclick="verDetalle('${x.id}');return false">${x.id}</a>`).join(', ')}</span>`:''}</div>`;
+}
+const LS={q:'',status:'all'};
+function renderListaH(){
+  const q=norm(LS.q);
+  const rows=H.filter(h=>(MS.red==='all'||(MS.red==='none'?!h.red:h.red===MS.red))&&(LS.status==='all'||(LS.status==='online'?h.st==='Online':h.st==='Offline'))&&(!q||norm(h.id).includes(q)));
+  document.getElementById('l-count').textContent=`${rows.length} de ${H.length} hospitales`;
+  document.getElementById('l-tbl').innerHTML=`<thead><tr><th style="width:26%">ID</th><th style="width:16%">Estado</th><th style="width:30%">Elementos</th><th>Último reporte</th></tr></thead><tbody>`+
+   rows.map((h,i)=>{const r=redDe(h);
+     return `<tr class="click" onclick="verDetalle('${h.id}')"><td><b>${h.id}</b>${r?`<div style="margin-top:2px"><span class="chip small" style="padding:1px 8px">${glyph(h.rol,r.color,12,'#fff')} ${r.nombre.replace(' (ejemplo)','')} · ${ROLES[h.rol].label}</span></div>`:''}</td>
+     <td>${stPill(h.st)}</td><td class="small muted">Infra · Software · KPIs</td><td class="small">${h.st==='Online'?'hace '+(2+i%6)+' min':'hace 3 h'}</td></tr>`;}).join('')+`</tbody>`;
+}
+function elegirRed(id){
+  MS.red=id;MS.sel=null;closePopup();
+  document.getElementById('m-red').value=id;
+  setBBox(bboxRed(id));renderResumenRed();renderListaH();
+}
+function selMapa(id){
+  const h=byId(id);MS.sel=id;drawMap();
+  if(h.lat!=null)openPopup(h);
+}
+function closePopup(){const e=document.getElementById('popup');if(e)e.remove();}
+function openPopup(h){
+  closePopup();
+  const [x,y]=proj(h.lat,h.lng),w=document.getElementById('mapwrap'),r=redDe(h);
+  const sal=LINKS.filter(l=>l.o===h.id),ent=LINKS.filter(l=>l.d===h.id);
+  const nom=id=>`<b>${id}</b>`;
+  let body=`<div style="font-weight:700;font-size:15px">${h.nombre}</div><div class="muted small">${h.id} · ${h.prov}</div><div style="margin:6px 0">${stPill(h.st)}</div>`;
+  body+=r?`<div style="margin:6px 0">${redChip(h)}</div>`:`<div class="muted small" style="margin:6px 0">Sin red — nodo aislado</div>`;
+  if(sal.length)body+=`<div class="small"><span class="muted">Sale a:</span> ${sal.map(l=>`${l.tipo==='consulta'?'<i>consulta</i> → ':''}${nom(l.d)}`).join(', ')}</div>`;
+  if(ent.length)body+=`<div class="small"><span class="muted">Recibe de:</span> ${ent.map(l=>`${nom(l.o)}${l.tipo==='consulta'?' <i>(consulta)</i>':''}`).join(', ')}</div>`;
+  body+=`<button class="btn pri" style="width:100%;margin-top:10px" onclick="verDetalle('${h.id}')">Ver detalles</button>`;
+  const d=document.createElement('div');d.className='popup';d.id='popup';d.innerHTML=`<span class="x" onclick="MS.sel=null;closePopup();drawMap()">✕</span>`+body;
+  d.style.left=Math.min(x+34,w.clientWidth-310)+'px';d.style.top=Math.max(8,Math.min(y-60,w.clientHeight-270))+'px';const tp=document.querySelector('.tip');if(tp)tp.style.display='none';
+  w.appendChild(d);
+}
+function renderMapa(){
+  const sel=document.getElementById('m-red');
+  if(!sel.options.length){
+    sel.innerHTML=`<option value="all">Red: todas</option><option value="none">Sin red (aislados)</option>`+REDES.map(r=>`<option value="${r.id}">${r.nombre}</option>`).join('');
+    sel.onchange=()=>elegirRed(sel.value);
+    document.querySelectorAll('#m-status button').forEach(b=>b.onclick=()=>{
+      MS.status=b.dataset.s;document.querySelectorAll('#m-status button').forEach(x=>x.classList.toggle('on',x===b));drawMap();});
+    document.querySelectorAll('#l-status button').forEach(b=>b.onclick=()=>{
+      LS.status=b.dataset.s;document.querySelectorAll('#l-status button').forEach(x=>x.classList.toggle('on',x===b));renderListaH();});
+    document.getElementById('m-q').oninput=e=>{LS.q=e.target.value;renderListaH();};
+    document.getElementById('map').addEventListener('click',e=>{
+      if(MS.dragged)return;const g=e.target.closest('g[data-id]');if(g)selMapa(g.dataset.id);else{MS.sel=null;closePopup();drawMap();}});
+    const tip=document.createElement('div');tip.className='tip';tip.style.display='none';document.getElementById('mapwrap').appendChild(tip);
+    document.getElementById('map').addEventListener('mousemove',e=>{
+      const g=e.target.closest('g[data-id]');if(!g||document.getElementById('popup')){tip.style.display='none';return;}
+      const h=byId(g.dataset.id),r=redDe(h),rc=document.getElementById('mapwrap').getBoundingClientRect();
+      tip.textContent=`${h.id} · ${h.nombre}${r?' · '+ROLES[h.rol].label:''}`;tip.style.display='block';tip.style.left=(e.clientX-rc.left+14)+'px';tip.style.top=(e.clientY-rc.top-30)+'px';});
+    document.getElementById('map').addEventListener('mouseleave',()=>tip.style.display='none');
+    document.getElementById('z-in').onclick=()=>zoomEn(1.6);
+    document.getElementById('z-out').onclick=()=>zoomEn(1/1.6);
+    document.getElementById('z-fit').onclick=()=>{closePopup();setBBox(bboxRed(MS.red));};
+    const svgEl=document.getElementById('map');
+    svgEl.addEventListener('wheel',ev=>{ev.preventDefault();const rc=svgEl.getBoundingClientRect();zoomEn(ev.deltaY<0?1.25:0.8,ev.clientX-rc.left,ev.clientY-rc.top);},{passive:false});
+    let dr=null;
+    svgEl.addEventListener('mousedown',ev=>{dr={x:ev.clientX,y:ev.clientY,moved:false};});
+    window.addEventListener('mousemove',ev=>{if(!dr)return;const dx=ev.clientX-dr.x,dy=ev.clientY-dr.y;
+      if(!dr.moved&&Math.hypot(dx,dy)<4)return;dr.moved=true;MS.dragged=true;svgEl.classList.add('drag');
+      cancelAnimationFrame(MS.anim);const e=escala();setCentro(e.cLat+dy/e.s,e.cLng-dx/(e.k*e.s),e.dLat,e.dLng);dr.x=ev.clientX;dr.y=ev.clientY;});
+    window.addEventListener('mouseup',()=>{if(dr&&dr.moved)setTimeout(()=>MS.dragged=false,0);dr=null;svgEl.classList.remove('drag');});
+    window.addEventListener('resize',drawMap);
+  }
+  renderLegend();MS.bbox=null;setBBox(bboxRed(MS.red),false);renderResumenRed();renderListaH();
+}
+
+/* ======================= 3 · DETALLE ======================= */
+const CLSINFO={
+  en_red:{txt:'En la red',pill:'ok'},propia:{txt:'PACS propio',pill:'gray'},otra_red:{txt:'Fuera de la red',pill:'warn'},
+  externa:{txt:'Sin asignar',pill:'gray'},externa_marcada:{txt:'Externo',pill:'gray'}};
+let DTAB='software',ROLVISTA='Admin';
+function setDTab(x){DTAB=x;renderDetalle();}
+function renderDetalle(){
+  const sel=document.getElementById('d-sel');
+  if(!sel.options.length){
+    const orden=['H45','H44','HUPC','FORM','VMAR','HCEN','NEA1','HTAF','P12','P03'];
+    sel.innerHTML=orden.map(id=>{const h=byId(id);return `<option value="${id}">${id} — ${h.nombre}${h.red?' ['+ROLES[h.rol].label+']':' [aislado]'}</option>`}).join('');
+    sel.onchange=renderDetalle;
+    const rv=document.getElementById('d-rol');rv.onchange=()=>{ROLVISTA=rv.value;renderDetalle();};
+  }
+  const h=byId(sel.value),r=redDe(h),cls=clasificar(h),puedeRed=(ROLVISTA==='Admin'||ROLVISTA==='Ingenieria');
+  let b=`<div class="card" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">${h.nombre}</h2><div class="muted small">${h.id} · ${h.prov} &nbsp; ${stPill(h.st)}</div></div>${puedeRed?`<button class="btn" onclick="MD.loaded=true;cargarMd('${h.id}');showTab('modal')">✎ Editar hospital</button>`:''}</div></div>`;
+  b+=`<div class="dtabs">${[['infra','Infraestructura'],['software','Software'],['kpis','KPIs Uso'],['integ','Integraciones']].map(([k,l])=>`<button class="${DTAB===k?'on':''}" onclick="setDTab('${k}')">${l}</button>`).join('')}</div>`;
+  if(DTAB!=='software'){
+    b+=`<div class="card muted">Pestaña "${{infra:'Infraestructura',kpis:'KPIs Uso',integ:'Integraciones'}[DTAB]}": sin cambios en esta iteración.</div>`;
+    document.getElementById('d-body').innerHTML=b;return;
+  }
+  b+=`<div class="softsec">Certificados de Seguridad (SSL) · Integraciones Mirth · Logs Elasticsearch — secciones existentes de la pestaña Software, sin cambios.</div>`;
+  // ---- Tarjeta Red DICOM (solo Admin / Ingeniería) ----
+  if(puedeRed){
+    b+=`<div class="card" style="margin-bottom:14px;${r?`border-left:5px solid ${r.color}`:''}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">Red DICOM</h3><span>${redChip(h)}</span></div>`;
+    if(!r){
+      b+=`<div class="muted">Este hospital no pertenece a ninguna red DICOM: es un nodo aislado y se monitorea como hasta ahora.</div>
+          <div style="margin-top:8px"><button class="btn sm" onclick="MD.loaded=true;cargarMd('${h.id}');showTab('modal')">Asignar a una red…</button></div>`;
+    }else{
+      const sal=LINKS.filter(l=>l.o===h.id),ent=LINKS.filter(l=>l.d===h.id);
+      b+=`<div class="grid3" style="margin-bottom:10px">
+        <div><div class="lbl">Envía a / consulta a</div>${sal.map(l=>`<div class="lk"><span class="arrow">${l.tipo==='consulta'?'⇢':'→'}</span><b>${l.d}</b><span class="muted small">${l.tipo==='consulta'?'consulta':'autoenrute'}</span></div>`).join('')||'<span class="muted small">—</span>'}</div>
+        <div><div class="lbl">Recibe de / consultado por</div>${ent.map(l=>`<div class="lk"><span class="arrow">←</span><b>${l.o}</b><span class="muted small">${l.tipo==='consulta'?'consulta':'autoenrute'}</span></div>`).join('')||'<span class="muted small">—</span>'}</div>
+        <div><div class="lbl">PACS de este hospital (cómo lo ven otros)</div><div class="chips">${h.pacs.map(p=>`<span class="chip mono">${p.ae||'—'}${p.host?` <span class="muted">· ${p.host}</span>`:''}</span>`).join('')||'<span class="muted small">no registrado</span>'}</div></div></div>`;
+      const sg=sugerencias(h);
+      sg.sug.forEach(s=>b+=`<div class="alert-box sug"><span>💡 <b>${s.n} regla(s) van a ${s.d}</b> pero no hay un enlace de envío declarado hacia él.</span><button class="btn sm pri" onclick="adoptarEnlace('${h.id}','${s.d}')">Adoptar enlace</button></div>`);
+      sg.adv.forEach(d=>b+=`<div class="alert-box warn"><span>⚠️ Hay un enlace de envío declarado hacia <b>${d}</b> pero <b>ninguna regla</b> de este hospital llega a su PACS.</span><button class="btn sm" onclick="toast('Editaría el enlace en el ABM del hospital')">Revisar</button></div>`);
+    }
+    b+=`</div>`;
+  }
+  // ---- Autoenrute DICOM (sección existente; con columna nueva solo para Admin / Ingeniería) ----
+  if(RULES[h.id]){
+    const c={};cls.forEach(x=>c[x.cls]=(c[x.cls]||0)+1);
+    const total=cls.length,enred=c.en_red||0;
+    const seg=[['en_red','#28a745'],['propia','#9aa5b1'],['otra_red','#e0a100'],['externa','#c9d1da'],['externa_marcada','#c9d1da']];
+    const conRed=puedeRed&&r;
+    b+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px"><h3 style="margin:0">Autoenrute DICOM</h3>`+
+     (conRed?`<div><b style="font-size:16px">${enred} de ${total}</b> <span class="muted">reglas van a la red ${r.nombre.replace(' (ejemplo)','')}</span></div>`:`<div class="muted small">${total} reglas</div>`)+`</div>`;
+    if(conRed)b+=`<div class="bar">${seg.map(([k,col])=>c[k]?`<i style="width:${100*c[k]/total}%;background:${col}"></i>`:'').join('')}</div>
+      <div class="small muted" style="margin:6px 0 10px">${Object.entries(c).map(([k,n])=>`${n} ${CLSINFO[k].txt.toLowerCase()}`).join(' · ')}</div>`;
+    const colE={OK:'#28a745',WARNING:'#e0a100',CRITICAL:'#dc3545'};
+    b+=`<div class="pillgrid">`+cls.map(x=>{
+      const info=CLSINFO[x.cls];
+      let badge='';
+      if(puedeRed){
+        badge=`<span class="pill ${info.pill}" title="Clasificación por destino (nuevo)">${info.txt}</span>`;
+        if(x.cls==='en_red')badge+=` <span class="small">→ <b>${x.dest.id}</b></span>`;
+        if(x.cls==='otra_red')badge+=` <span class="small">→ <b>${x.dest.id}</b> ${x.dest.red?'(otra red)':'(no es miembro)'}</span>`;
+        if(x.cls==='externa')badge+=` <button class="btn sm" onclick="irAsignar()">Asignar…</button>`;
+      }
+      return `<div class="rpill" data-regla="${x.id}">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+          <span class="dot" style="background:${colE[x.estado]};flex-shrink:0;box-shadow:0 0 5px ${colE[x.estado]}80"></span>
+          <span class="mono" style="font-weight:800;color:#1e7e34">#${x.id}</span>
+          <div style="font-size:12.5px;min-width:0"><b>${x.nick}</b> <span class="muted mono small">${x.host}</span> <span class="muted">→</span> <b>${x.ae}</b> <span class="muted mono small">${x.dh}</span>
+            ${x.nota?`<div class="muted small">${x.nota}</div>`:''}${badge?`<div style="margin-top:4px">${badge}</div>`:''}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div class="mono" style="font-weight:700">${x.pend.toLocaleString('es-AR')}</div>${lvPill(x.estado)}</div></div>`;}).join('')+`</div></div>`;
+  }else{
+    b+=`<div class="card"><h3>Autoenrute DICOM</h3><div class="muted">Este hospital no tiene reglas de autoenrute${h.rol==='periferico'?': los periféricos se conectan por <b>consulta</b> a un nodo de la red, no envían imágenes.':' reportadas.'}</div></div>`;
+  }
+  document.getElementById('d-body').innerHTML=b;
+}
+function adoptarEnlace(o,d){LINKS.push({o,d,tipo:'envia'});toast(`Enlace ${o} → ${d} creado`);renderDetalle();}
+function irAsignar(){showTab('redes');}
+
+/* ======================= 4 · MODAL ======================= */
+const MD={id:'FORM',red:'nea',rol:'cache',pacs:[],links:[]};
+function cargarMd(id){
+  const h=byId(id);MD.id=id;MD.red=h.red||'';MD.rol=h.rol||'';MD.pacs=h.pacs.map(p=>({...p}));
+  MD.links=LINKS.filter(l=>l.o===id).map(l=>({...l}));
+}
+function renderModal(){
+  if(!MD.loaded){cargarMd('FORM');MD.loaded=true;}
+  const h=byId(MD.id),miembros=H.filter(x=>x.red===MD.red&&x.id!==MD.id);
+  const ent=LINKS.filter(l=>l.d===MD.id);
+  const perm={periferico:['consulta'],cache:['envia','consulta'],central:['envia','consulta']};
+  const advs=[];
+  MD.links.forEach(l=>{if(MD.rol&&!perm[MD.rol].includes(l.tipo))advs.push(`Un <b>${ROLES[MD.rol].label.toLowerCase()}</b> normalmente no ${l.tipo==='envia'?'envía por autoenrute':'consulta'} hacia <b>${l.d}</b> (advertencia, no bloquea).`)});
+  const errs=[];
+  MD.pacs.forEach(p=>{const otro=H.find(x=>x.id!==MD.id&&x.red&&x.red===MD.red&&x.pacs.some(q=>norm(q.ae)===norm(p.ae)&&p.ae));if(otro)errs.push(`El AE title <b class="mono">${p.ae}</b> ya lo usa <b>${otro.id}</b> en esta red: un identificador no puede repetirse dentro de una red.`)});
+  document.getElementById('mdl').innerHTML=`
+  <div class="hd"><span>Editar hospital</span><span class="muted" style="cursor:pointer" onclick="toast('Cerraría el modal')">✕</span></div>
+  <div class="bd">
+    <div class="grid2"><div><label class="lbl">ID</label><input type="text" value="${h.id}" disabled style="width:100%"></div>
+      <div><label class="lbl">Hospital</label><select id="mdl-hosp" style="width:100%">${H.map(x=>`<option value="${x.id}" ${x.id===MD.id?'selected':''}>${x.id} — ${x.nombre}</option>`).join('')}</select></div></div>
+    <div class="grid3" style="margin-top:10px"><div><label class="lbl">Nombre completo</label><input type="text" value="${h.nombre}" style="width:100%"></div>
+      <div><label class="lbl">Provincia</label><input type="text" value="${h.prov}" style="width:100%"></div>
+      <div><label class="lbl">Latitud / Longitud</label><input type="text" value="${h.lat==null?'':h.lat+', '+h.lng}" placeholder="sin cargar" style="width:100%"></div></div>
+    <div class="hint" style="margin-top:6px">… (resto de los campos actuales del modal: Asana, visible, alertas, RIS, datos manuales)</div>
+    <div class="sec"><div class="t">🌐 Red DICOM <span class="pill gray">nuevo</span></div>
+      <div class="grid2"><div><label class="lbl">Red</label><select id="mdl-red" style="width:100%"><option value="">— Ninguna (nodo aislado) —</option>${REDES.map(r=>`<option value="${r.id}" ${r.id===MD.red?'selected':''}>${r.nombre}</option>`).join('')}</select></div>
+        <div><label class="lbl">Rol en la red</label><select id="mdl-rol" style="width:100%" ${MD.red?'':'disabled'}><option value="">—</option>${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${k===MD.rol?'selected':''}>${v.label}</option>`).join('')}</select></div></div>
+      ${MD.red?`
+      <div style="margin-top:12px"><label class="lbl">PACS de este hospital <span class="muted" style="font-weight:400">— AE titles y/o hostnames con los que otros hospitales lo ven (puede ser más de uno)</span></label>
+        <div class="chips">${MD.pacs.map((p,i)=>`<span class="chip mono">${p.ae||'—'}${p.host?` <span class="muted">· ${p.host}</span>`:''}<span class="rm" onclick="MD.pacs.splice(${i},1);renderModal()">✕</span></span>`).join('')||'<span class="muted small">ninguno</span>'}</div>
+        <div style="display:flex;gap:8px"><input type="text" id="mdl-ae" placeholder="AE title (ej. SIPROSAPAD)"><input type="text" id="mdl-host" placeholder="Hostname (opcional)"><button class="btn" onclick="addPacs()">+ Agregar</button></div></div>
+      ${errs.map(e=>`<div class="alert-box err" style="margin-top:8px"><span>⛔ ${e}</span></div>`).join('')}
+      <div style="margin-top:14px"><label class="lbl">Envía a / consulta a <span class="muted" style="font-weight:400">— solo miembros de esta red</span></label>
+        ${MD.links.map((l,i)=>`<div style="display:flex;gap:8px;margin-bottom:6px"><select onchange="MD.links[${i}].tipo=this.value;renderModal()"><option value="envia" ${l.tipo==='envia'?'selected':''}>Envía por autoenrute a</option><option value="consulta" ${l.tipo==='consulta'?'selected':''}>Consulta a</option></select>
+          <select onchange="MD.links[${i}].d=this.value;renderModal()">${miembros.map(m=>`<option value="${m.id}" ${m.id===l.d?'selected':''}>${m.id} — ${ROLES[m.rol].label}</option>`).join('')}</select>
+          <label class="small muted" style="display:flex;align-items:center;gap:4px"><input type="checkbox"> en ambos sentidos</label>
+          <button class="btn sm" onclick="MD.links.splice(${i},1);renderModal()">✕</button></div>`).join('')}
+        <button class="btn sm" onclick="MD.links.push({o:MD.id,d:(H.find(x=>x.red===MD.red&&x.id!==MD.id)||{}).id,tipo:'${MD.rol==='periferico'?'consulta':'envia'}'});renderModal()">+ Agregar enlace</button></div>
+      ${advs.map(e=>`<div class="alert-box warn" style="margin-top:8px"><span>⚠️ ${e}</span></div>`).join('')}
+      <div style="margin-top:14px"><label class="lbl">Recibe de / consultado por <span class="muted" style="font-weight:400">— solo lectura, se deduce de los demás hospitales</span></label>
+        <div class="chips">${ent.map(l=>`<span class="chip"><b>${l.o}</b> <span class="muted small">${l.tipo==='consulta'?'consulta':'autoenrute'}</span></span>`).join('')||'<span class="muted small">nadie todavía</span>'}</div></div>
+      <div class="hint" style="margin-top:8px">Si cambiás de red o quitás al hospital de ella, sus enlaces se borran (la UI avisa antes).</div>`
+      :`<div class="muted small" style="margin-top:10px">Sin red: el hospital sigue monitoreándose como nodo aislado.</div>`}
+    </div>
+  </div>
+  <div class="ft"><button class="btn" onclick="toast('Cancelaría')">Cancelar</button><button class="btn pri" onclick="toast('Guardaría con PUT /api/hospitales/${MD.id}/red (sin tocar HospitalDTO)')">Guardar</button></div>`;
+  document.getElementById('mdl-hosp').onchange=e=>{cargarMd(e.target.value);renderModal();};
+  document.getElementById('mdl-red').onchange=e=>{MD.red=e.target.value;if(!MD.red){MD.rol='';MD.links=[];}else if(!MD.rol)MD.rol='cache';if(MD.red!==(byId(MD.id).red||''))MD.links=[];renderModal();};
+  const rs=document.getElementById('mdl-rol');if(rs)rs.onchange=e=>{MD.rol=e.target.value;renderModal();};
+}
+function addPacs(){const ae=document.getElementById('mdl-ae').value.trim(),host=document.getElementById('mdl-host').value.trim();
+  if(!ae&&!host)return;MD.pacs.push({ae,host});renderModal();}
+
+/* ======================= 5 · REDES ======================= */
+function destinosSinAsignar(){
+  const mapa={};
+  Object.entries(RULES).forEach(([hid,rs])=>rs.forEach(r=>{
+    if(duenoDe(r.ae,r.dh)||EXTERNOS.includes(norm(r.ae)))return;
+    const k=r.ae;(mapa[k]=mapa[k]||{ae:r.ae,host:r.dh,hosp:{},n:0}).n++;mapa[k].hosp[hid]=(mapa[k].hosp[hid]||0)+1;}));
+  return Object.values(mapa);
+}
+function renderRedes(){
+  document.getElementById('r-list').innerHTML=REDES.map(r=>{
+    const ms=H.filter(h=>h.red===r.id);
+    return `<div class="net-card" style="cursor:default"><div style="display:flex;justify-content:space-between;align-items:center"><b><span class="dot" style="background:${r.color}"></span> ${r.nombre}</b><span><button class="btn sm" onclick="toast('Editaría nombre, color y descripción')">Editar</button> <button class="btn sm" onclick="showTab('mapa');elegirRed('${r.id}')">Ver en el mapa</button></span></div>
+      <div class="small muted" style="margin:4px 0 6px">${ms.length} miembros</div>
+      <div class="chips">${ms.map(h=>`<span class="chip small">${glyph(h.rol,r.color,12,'#fff')} ${h.id}</span>`).join('')}</div></div>`;}).join('');
+  const un=destinosSinAsignar();
+  document.getElementById('r-cnt').textContent=un.length;
+  document.getElementById('r-un').innerHTML=un.length?`<table><thead><tr><th>Destino (AE title · hostname)</th><th>Reglas</th><th>Asignar a…</th></tr></thead><tbody>`+un.map((u,i)=>`
+   <tr><td><span class="mono">${u.ae}</span><div class="muted small">${u.host}</div></td>
+   <td class="small">${u.n} · ${Object.entries(u.hosp).map(([h,n])=>`<b>${h}</b> (${n})`).join(', ')}</td>
+   <td><select id="un-${i}" style="max-width:190px"><option value="">Elegir hospital…</option>${H.map(h=>`<option value="${h.id}">${h.id} — ${h.nombre.slice(0,24)}</option>`).join('')}<option value="__ext">Marcar como externo</option></select>
+   <button class="btn sm pri" onclick="asignarDestino(${i})">Asignar</button></td></tr>`).join('')+`</tbody></table>`:`<div class="muted">No quedan destinos sin asignar 🎉</div>`;
+}
+function asignarDestino(i){
+  const u=destinosSinAsignar()[i],v=document.getElementById('un-'+i).value;if(!v)return;
+  if(v==='__ext'){EXTERNOS.push(norm(u.ae));toast(`${u.ae} marcado como externo`);}
+  else{byId(v).pacs.push({ae:u.ae,host:u.host});toast(`${u.ae} asignado a ${v}: las reglas se reclasifican`);}
+  renderRedes();
+}
+
+showTab('mapa');
+</script>
+</body>
+</html>

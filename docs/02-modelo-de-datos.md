@@ -24,20 +24,24 @@ pool de conexiones más allá de lo que da `sqlite3`. Ver implicancias de escala
 | `login_attempts_email` | Igual que `login_attempts` pero **por cuenta** (PK = `email`). Agregada en la Fase 1 para cerrar el escenario de fuerza bruta distribuida — ver [04-seguridad.md#s4](04-seguridad.md#s4). | |
 | `access_requests` | Solicitudes de alta (interno o cliente) pendientes de aprobación por un Admin. | |
 | `historial_reportes` | Bitácora de reportes PDF generados (tipo, rango de fechas, estado, link de Asana). | |
+| `mirth_channel_topology` | Snapshot técnico (**upsert, no serie**) de la definición de cada canal de Mirth: conector de origen, conectores de destino, y el `channel_id` destino cuando un conector es "Channel Writer" (routing interno). Alimenta el mapa de integraciones. | `UniqueConstraint(hospital_id, instancia, channel_id)`. `last_seen` distingue "canal activo" de "dejó de reportarse"; sin borrado automático, ver [13-contrato-topologia-mirth.md](13-contrato-topologia-mirth.md). |
+| `mirth_nodos` | Nodos curados a mano (orígenes/destinos del mapa: "HIS Hospital", "RIS SUITESTENSA") con nombre técnico, nombre humano y endpoint. Configuración de negocio, no dato de monitoreo — Mirth no tiene este concepto. | `UniqueConstraint(hospital_id, tipo, clave)`. `tipo` discrimina origen/destino en la misma tabla (un sistema puede ser ambos). |
+| `mirth_canales_meta` | Curación por canal: criticidad (define el umbral de cola que le aplica, ver [09-plan-refactor-alertas.md](09-plan-refactor-alertas.md)), nombre humano, asignación a `mirth_nodos`. | `UniqueConstraint(hospital_id, instancia, channel_id)`. SQLite no enforcea FKs (`database.py:24-29`) — borrar un nodo referenciado tiene que nulear `nodo_origen_id`/`nodo_destino_id` a mano, lo hace el router de administración. |
+| `dicom_regla_baseline` | Piso habitual de cada regla de autoenrute DICOM (percentil 10 de sus últimos 7 días), con tolerancia y bandera `activa` (actividad demostrada). Lo escribe `alerts_engine/software/dicom_baseline.py` cada 6 h por hospital; lo lee el detector y el panel. Ver [12-ultima-milla-alertas-asana.md §3quater](12-ultima-milla-alertas-asana.md). | `UniqueConstraint(hospital_id, component_id)`. `piso_subido_en` limita la velocidad de subida del piso. Tabla nueva: la crea `create_all()` sola, sin script de migración. |
 
 ## Formato de payload de ingesta (`schemas.py`)
 
-- **V3 (`AgentReportV3`)**: modelo Pydantic fuertemente tipado — `envelope`,
-  `physical_layer` (host, telemetría, sensores de temperatura/fans/power, salud de red),
-  `virtual_layer` (lista de VMs con su propia telemetría y storage). Permite campos extra
-  (`Config.extra = "allow"`) para no romper con agentes desactualizados.
-- **V4 (`AgentReportV4`)**: modelo "maestro" actual, pero `envelope`, `physical_layer` y
-  `virtual_layer` están tipados como `Dict[str, Any]` / `List[Dict[str, Any]]` — es decir,
-  **sin validación estructural real**, a diferencia de V3. Solo `application_metrics`
-  mantiene tipado estricto (`RISMetric`, `PACSMetric`, `UserMetric`). Ver el impacto de
-  esto en seguridad/performance (payloads sin cota de tamaño ni forma).
+- **V4 (`AgentReportV4`)**: único modelo raíz que valida el endpoint de ingesta hoy
+  (`main.py`) — `envelope`, `physical_layer` y `virtual_layer` están tipados como
+  `Dict[str, Any]` / `List[Dict[str, Any]]`, es decir, **sin validación estructural real**.
+  Solo `application_metrics` mantiene tipado estricto (`RISMetric`, `PACSMetric`,
+  `UserMetric`). Ver el impacto de esto en seguridad/performance (payloads sin cota de
+  tamaño ni forma). *(`schemas.py` tuvo hasta `2026-09` un segundo modelo, `AgentReportV3`,
+  con `physical_layer`/`virtual_layer` fuertemente tipados — nunca se instanciaba desde
+  ningún lado del path real de ingesta, así que se borró para no sugerir que el servidor
+  exige esa forma.)*
 - **Compatibilidad V2**: `transformer.transformar_v2_a_v3` traduce el formato viejo
-  (`header`, `physical_host`, `environment.thermal/power`) al envelope V3 actual,
+  (`header`, `physical_host`, `environment.thermal/power`) al envelope V3/V4 actual,
   "blindado" contra `None`s con `or {}` en cada nivel.
 
 ## Relación con el módulo externo `informes_ia`

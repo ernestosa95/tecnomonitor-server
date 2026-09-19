@@ -5,7 +5,7 @@ servidor para que el reporte se acepte, se guarde, y genere las alertas/KPIs esp
 Basado en la lectura exacta de `schemas.py` (validación Pydantic), `main.py` (qué hace con
 cada campo al recibirlo) y `dashboard_app/alerts_engine/` (qué campos lee cada detector
 para decidir un nivel de alerta) — no es una interpretación, es lo que el código
-efectivamente exige y consume hoy, `2026-09-10`.
+efectivamente exige y consume hoy, `2026-09-10` (respuestas de error revisadas `2026-09-17`).
 
 ## 1. El endpoint
 
@@ -15,19 +15,35 @@ Content-Type: application/json
 Status esperado: 201
 ```
 
-Sin autenticación por ahora (ver [04-seguridad.md#s2](04-seguridad.md#s2) — está en el
-plan pero pausado). Sin límite de tamaño de body explícito (ver
+Sin autenticación para `schema_version` viejo (`3.0` a `4.3`); a partir de `"4.5"` exige
+token por hospital — ver [§2bis](#2bis--autenticación-por-token--a-partir-de-schema_version-45-vigente)
+más abajo, ya vigente, no pausado. Sin límite de tamaño de body explícito (ver
 [04-seguridad.md#s5](04-seguridad.md#s5)) — igual, no hay motivo para mandar payloads
 grandes; un reporte típico son unos pocos KB.
 
 **Respuestas:**
 - `201` + `{"status": "ok", "id": <int>, "v3_conversion": false, "version": "4.3"}` — aceptado.
-- `500` + `{"detail": "Error interno de procesamiento de formato"}` — el payload no pasó la
-  validación o algo se rompió procesándolo. El servidor **no** te dice qué campo falló (es
-  a propósito, para no filtrar detalles internos — ver
-  [04-seguridad.md](04-seguridad.md)), así que conviene loguear del lado del agente el
+- `400` + `{"detail": "..."}` — el body no se pudo ni leer como JSON (vacío, corrupto,
+  conexión cortada a mitad del envío). No llegó a intentarse la validación del contrato.
+- `401` + `{"detail": "No autorizado"}` — solo para `schema_version` que exige token (ver
+  §2bis): falta el header, el token no existe, o no corresponde al `hospital_id` declarado.
+  No se guarda nada.
+- `500` + `{"detail": "Error interno de procesamiento de formato"}` — el JSON se pudo leer
+  pero el payload no pasó la validación del contrato, o algo se rompió procesándolo. El
+  servidor **no** te dice qué campo falló (es a propósito, para no filtrar detalles internos
+  — ver [04-seguridad.md](04-seguridad.md)), así que conviene loguear del lado del agente el
   payload completo antes de mandarlo, para poder comparar contra este documento si un envío
   rebota.
+
+> Corregido `2026-09-17`: hasta esa fecha, un body ilegible (JSON corrupto o conexión
+> cortada a mitad del envío) devolvía `201` en vez de un código de error — el endpoint
+> declara `status_code=201` como default de FastAPI para cualquier `return` que no sea una
+> excepción, y esos tres casos hacían `return {...}` en vez de levantar `HTTPException`. Como
+> el agente solo mira `raise_for_status()` (nunca el body de la respuesta, ver
+> [CONTRATO_AGENTE.md §1](../../tecnomonitor-agent/docs/CONTRATO_AGENTE.md) del repo del
+> agente), tomaba esos envíos corruptos como éxito y avanzaba el checkpoint de SQL/Elastic de
+> un dato que nunca se guardó — pérdida silenciosa y permanente de ese bloque. Ver `main.py`,
+> función `recibir_reporte`.
 
 ## 2. ⚠️ La trampa más importante: `schema_version`
 
@@ -289,7 +305,8 @@ Dos formatos aceptados. Para un agente nuevo, usá el formato con instancias (di
 ```json
 "mirth": {
   "Default": [
-    { "channel": "HL7_ADMISSION", "status": "Started", "queued": 0, "last_error": "", "received": 1500, "sent": 1500 }
+    { "channel": "HL7_ADMISSION", "channel_id": "7f3c1a2e-...", "status": "Started", "queued": 0,
+      "last_error": "", "received": 1500, "sent": 1500, "errored": 0 }
   ]
 }
 ```
@@ -300,10 +317,22 @@ solo por compatibilidad hacia atrás.)
 
 | Campo | Consumido por |
 |---|---|
-| `channel` | Identifica el canal en la alerta (`MIRTH_<channel>`). |
+| `channel` | Identifica el canal en la alerta (`MIRTH_<channel>`), junto con la instancia (`component_id = "[instancia] channel"`). |
+| `channel_id` | Opcional, agregado `2026-09` (agente >= 4.5.1). GUID interno de Mirth, estable aunque se renombre el canal — se guarda en `extra_data.channel_id`. Join preferido con `mirth_channel_topology` para el mapa de integraciones; `component_id` sigue siendo el identificador legacy para agentes que no lo mandan. |
 | `status` | Si es `STOPPED`/`ERROR`/`PAUSED` **dos ticks seguidos** (~2 minutos, filtra micro-cortes), CRITICAL. |
-| `queued` | Si supera el umbral configurado (default 100), CRITICAL, aunque el status esté OK. |
+| `queued` | Si supera el umbral `crit` de la criticidad curada del canal (default `media` → 200; ver [13-contrato-topologia-mirth.md](13-contrato-topologia-mirth.md)), CRITICAL, aunque el status esté OK. El umbral único global `mirth_queued_threshold` quedó deprecado. |
+| `errored` | Opcional, agregado `2026-09`. Contador de mensajes en error, como número propio (antes solo viajaba mezclado en el texto de `last_error`). Se guarda en `extra_data.errored`, no dispara alerta todavía. |
 | `last_error`, `received`, `sent` | Se guardan para mostrar en el panel, no disparan alerta. |
+
+**`mirth_topology`** (opcional, agregado `2026-09`, agente >= 4.5.1): clave hermana de
+`mirth`, con la definición técnica de cada canal (conector de origen, conectores de destino,
+y el `channel_id` destino cuando un conector es "Channel Writer" — routing interno entre
+canales). No participa del detector de alertas; se ingiere en una tabla separada
+(`mirth_channel_topology`, upsert por `channel_id`, no serie temporal) para alimentar el mapa
+de integraciones. Ver [13-contrato-topologia-mirth.md](13-contrato-topologia-mirth.md) para
+el contrato completo y [02-modelo-de-datos.md](02-modelo-de-datos.md) para el modelo. Un
+agente que no manda esta clave sigue funcionando exactamente igual que antes — `mirth[]` no
+depende de `mirth_topology` para nada.
 
 ### 7.2 `suitestensa_logs` — eventos de log (Elasticsearch/Suitestensa)
 

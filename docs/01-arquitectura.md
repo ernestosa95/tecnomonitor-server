@@ -120,7 +120,32 @@ actualice en vivo por WebSocket.
 ## 6. Frontend
 
 Server-side rendering con Jinja2 (`dashboard_app/templates/`) + JS vanilla
-(`dashboard_app/static/script.js`, ~3400 líneas) + Chart.js para gráficos. Hay una carpeta
-`static/` con un `manifest.json` y `sw.js` (service worker), sugiriendo soporte PWA
-parcial. Convive una segunda vista beta (`index_beta.html`) y varias páginas de
+(`dashboard_app/static/script.js`, ~5100 líneas, compartido por las dos plantillas de abajo)
++ Chart.js para gráficos. Hay una carpeta `static/` con un `manifest.json` y `sw.js`
+(service worker), sugiriendo soporte PWA parcial. También conviven varias páginas de
 marketing/ventas (`solucion1..4.html`, `demo-pacs.html`, `herramientas.html`).
+
+⚠️ **`index_beta.html` (`/beta`) es la plantilla que efectivamente usa el equipo interno
+hoy — no es una "vista beta" secundaria pese al nombre.** `login.html` redirige ahí a todo
+usuario interno tras un login exitoso (`window.location.href = '/beta'`, comentado
+explícitamente `// internos, como hasta ahora`). `index.html` (`/monitor`) es una versión
+anterior que quedó de una etapa previa del proyecto — sigue montada y accesible (hay un
+botón "Usar versión clásica" en el login que lleva ahí, y `manifest.json` todavía apunta
+`start_url` a `/monitor`), pero **no es la que se mantiene activamente ni la que ve el
+equipo por default**. Al tocar el frontend, el trabajo real va en `index_beta.html` +
+`script.js` — cualquier cambio espejado en `index.html` es best-effort para no romper esa
+ruta vieja, no el objetivo principal. Esto se confundió al menos una vez durante el
+desarrollo del mapa de integraciones (ver
+[13-contrato-topologia-mirth.md](13-contrato-topologia-mirth.md)); si se vuelve a tocar el
+frontend, confirmar primero en `login.html` a qué ruta redirige antes de asumir cuál
+plantilla es la vigente.
+
+**Refresco en vivo (`static/refresco-vivo.js`, solo `index_beta.html`):** cada 30s consulta
+`/api/hospital/{id}` y compara `db_timestamp`. En el home aplica el refresco solo. En el
+detalle de un hospital **no redibuja automáticamente** (hacerlo reconstruía las tarjetas
+superiores y colapsaba las plegables que el usuario tenía abiertas): guarda el dato nuevo y
+muestra un botón "Datos nuevos" junto a la tarjeta del hospital; recién al click aplica
+cabecera + pestaña activa. La primera lectura tras abrir un hospital es la línea base (no
+cuenta como dato nuevo). Único caso donde sí aplica directo: al volver a la pestaña del
+navegador tras estar oculta o al reconectar el WebSocket, porque ahí la vista puede llevar
+minutos congelada.

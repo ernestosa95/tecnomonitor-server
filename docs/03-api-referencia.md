@@ -67,6 +67,21 @@ el detalle del RBAC).
 | GET `/api/hospitales-publico` | pública |
 | GET/POST/PUT/DELETE `/api/exclusiones[/preview][/{excl_id}]` | `Admin`, `Ingenieria` |
 
+### Mapa de integraciones Mirth (`routers/mirth_topologia.py`, ver docs/13-contrato-topologia-mirth.md)
+
+| Método | Ruta | Descripción | Auth |
+|---|---|---|---|
+| GET/POST/PUT `/api/hospital/{hid}/mirth/nodos[/{nodo_id}]` | ABM de nodos curados (sistemas origen/destino del mapa). | `Admin`, `Ingenieria` |
+| PATCH `/api/hospital/{hid}/mirth/nodos/{nodo_id}/toggle` | Activa/desactiva un nodo. | `Admin`, `Ingenieria` |
+| DELETE `/api/hospital/{hid}/mirth/nodos/{nodo_id}` | Borra un nodo; nulea `nodo_origen_id`/`nodo_destino_id` en `mirth_canales_meta` antes de borrar (SQLite no enforcea FKs). | `Admin` |
+| POST `/api/hospital/{hid}/mirth/nodos/adoptar` | Crea un nodo a partir de una `sugerencia` (endpoint técnico auto-detectado) y lo asigna a los `channel_ids` indicados. | `Admin`, `Ingenieria` |
+| GET `/api/hospital/{hid}/mirth/canales` | Inventario unificado de canales: topología técnica + curación + último estado, por hospital. | `Admin`, `Ingenieria` |
+| GET `/api/hospital/{hid}/mirth/sin-clasificar` | Subconjunto de `/canales` sin fila en `mirth_canales_meta`. | `Admin`, `Ingenieria` |
+| PUT `/api/hospital/{hid}/mirth/canales/{channel_id}` | Upsert de la curación de un canal (criticidad, nombre humano, nodos asignados, oculto). | `Admin`, `Ingenieria` |
+| DELETE `/api/hospital/{hid}/mirth/canales/{channel_id}` | Borra solo la curación (no la topología técnica reportada). | `Admin` |
+| GET `/api/mirth/pendientes` | Conteo de canales sin clasificar por hospital (badge global). | `Admin`, `Ingenieria` |
+| GET `/api/hospital/{hid}/mirth/mapa` (`routers/mirth_mapa.py`) | Arma `origenes`/`destinos`/`canales`/`tl` (línea de tiempo bucketizada) para el mapa de integraciones — junta curación + topología técnica + histórico de `software_monitoring`. Query params: `minutos` (default 180), `paso` en minutos (default 5), `incluir_auto` (default 1, agrega nodos sintéticos por endpoint técnico cuando no hay curación). | pestaña `software` |
+
 ## Reportes / informes
 
 | Método | Ruta | Descripción | Auth |
@@ -82,6 +97,7 @@ el detalle del RBAC).
 |---|---|---|---|
 | GET | `/herramientas`, `/ris-analytics`, `/prov-analytics`, `/hl7-analytics`, `/pacs-capacity`, `/salta-project`, `/renovacion`, `/demo-pacs`, `/tecno-solution` | Páginas HTML de ventas/herramientas internas. | mayormente públicas |
 | POST | `/submit-lead` | Formulario de contacto de un evento → append a CSV en disco. | pública. **Rate-limited 10/min y saneado contra CSV/Formula Injection desde la Fase 1.** |
+| POST | `/submit-lead-demo-pacs` | Formulario de la landing `/demo-pacs` (nombre, institución, cargo, volumen, email, teléfono, plan, origen) → una fila por envío en `leads_demo_pacs.csv` (relativo al cwd del server; UTF-8 con BOM, fecha en hora de Argentina). | pública. **Rate-limited 10/min**, validación de email/teléfono y largo máximo por campo, saneado contra CSV/Formula Injection. |
 | GET | `/beta`, `/beta/simulador` | Vista beta / simulador embebido. | `/beta` pública; `/beta/simulador` requiere login (sin chequeo de rol) |
 | GET | `/cliente` | Portal del rol Cliente. | login validado manualmente en el handler |
 

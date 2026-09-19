@@ -31,6 +31,22 @@ desactualizada y hay que revisarla.
     para resolver [S2](04-seguridad.md#s2) de forma escalonada por versión de agente, sin
     cortar ingesta de los hospitales que todavía no migraron (✅ implementado, falta correr
     la migración en producción y coordinar el rollout por hospital).
+12. [Última milla de alertas hacia Asana](12-ultima-milla-alertas-asana.md) — título,
+    contenido y seguidores del ticket para autoenrute DICOM, más el mecanismo de
+    protocolos de atención (`docs/runbooks/`) enlazados desde el ticket (✅ implementado,
+    falta completar el contenido real de `docs/runbooks/dicom-autoenrute.md`).
+13. [Mapa de integraciones Mirth](13-contrato-topologia-mirth.md) — topología HL7
+    (origen/canal/destino, routing interno vía Channel Writer), criticidad por canal,
+    panel de administración y endpoint del mapa (✅ implementado: agente >= 4.5.1 +
+    3 tablas nuevas + router de administración + endpoint de lectura + tab "Integraciones"
+    en `index_beta.html`).
+14. [Plan de migración a PostgreSQL](14-plan-migracion-postgres.md) — historial completo
+    para auditoría, compresión sin pérdida y niveles configurables, con mediciones de la
+    base actual (18,7 GB, 93% en `reportes_historicos`) y plan por fases (⏸️ diagramado, no
+    ejecutado).
+15. [Plan de redes DICOM](15-plan-redes-dicom.md) — categorías periférico/caché/central,
+    enlaces entre hospitales, mapa con selector de red y filtro por red en las listas
+    (⏸️ diagramado, no ejecutado; el agente no cambia: el AE title ya llega como `to_nickname`).
 
 ## Estado general — 2026-09-11
 
