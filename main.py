@@ -56,6 +56,79 @@ def _validar_token_ingesta(request: Request, raw_body: dict, db: Session) -> Non
     if hospital_id_payload != hospital.hospital_id:
         raise HTTPException(status_code=401, detail="No autorizado")
 
+
+def _upsert_topologia_mirth(db: Session, hospital_id: str, topo_payload, ts: datetime) -> None:
+    """
+    Guarda/actualiza (upsert, NO serie histórica) la definición técnica de
+    cada canal de Mirth reportada en `software_monitoring.mirth_topology`
+    (agente >= 4.5.1, ver tecnomonitor-agent/docs/CONTRATO_AGENTE.md §7bis).
+    Alimenta el mapa de integraciones -- ver docs/13-contrato-topologia-mirth.md.
+
+    Sin borrado: un canal que deja de aparecer envejece vía `last_seen` (se
+    ve como "no visto hace X" en el panel de administración), no se borra
+    solo -- perdería la curación asociada (criticidad, nodos asignados) ante
+    un corte temporal de la API de Mirth. Tolerante a payload ausente o mal
+    formado: un agente viejo que no manda esta clave no genera ninguna fila
+    ni rompe el resto de la ingesta.
+    """
+    if not topo_payload or not isinstance(topo_payload, dict):
+        return
+
+    for instancia, bloque in topo_payload.items():
+        if not isinstance(bloque, dict):
+            continue
+        canales = (bloque.get("channels") or [])[:500]  # tope defensivo
+
+        for ch in canales:
+            if not isinstance(ch, dict):
+                continue
+            cid = ch.get("channel_id")
+            if not cid:
+                continue
+
+            nombre = (ch.get("name") or "unknown")[:200]
+            component_id = f"[{instancia}] {nombre}" if instancia != "Default" else nombre
+            origen = ch.get("source") or {}
+            destinos = ch.get("destinations") or []
+
+            hash_bloque = hashlib.sha1(json.dumps(
+                {"nombre": nombre, "revision": ch.get("revision"), "origen": origen, "destinos": destinos},
+                sort_keys=True, default=str,
+            ).encode("utf-8")).hexdigest()
+
+            fila = db.query(database.MirthChannelTopology).filter_by(
+                hospital_id=hospital_id, instancia=instancia, channel_id=cid
+            ).first()
+
+            if fila is None:
+                db.add(database.MirthChannelTopology(
+                    hospital_id=hospital_id,
+                    instancia=instancia,
+                    channel_id=cid,
+                    component_id=component_id,
+                    nombre=nombre,
+                    revision=ch.get("revision"),
+                    source_transport=origen.get("transport"),
+                    source_endpoint=origen.get("endpoint"),
+                    destinos=destinos,
+                    topo_hash=hash_bloque,
+                    primera_vez=ts,
+                    last_seen=ts,
+                    updated_at=ts,
+                ))
+            else:
+                fila.last_seen = ts
+                if fila.topo_hash != hash_bloque:
+                    fila.component_id = component_id
+                    fila.nombre = nombre
+                    fila.revision = ch.get("revision")
+                    fila.source_transport = origen.get("transport")
+                    fila.source_endpoint = origen.get("endpoint")
+                    fila.destinos = destinos
+                    fila.topo_hash = hash_bloque
+                    fila.updated_at = ts
+
+
 # Definimos el esquema que espera recibir la API
 class DictionaryPayload(BaseModel):
     app_name: str
@@ -132,13 +205,17 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         # =========================================================
     except ClientDisconnect:
         logger.warning("⚠️ [Ingesta] Cliente desconectado a mitad del envío.")
-        return {"status": "error", "message": "Client disconnected during transfer"}
+        # HTTPException, no `return {...}`: la ruta declara status_code=201 por
+        # defecto para cualquier return que no sea una excepción -- un dict de
+        # error acá volvía como 201, y el agente (que solo mira raise_for_status())
+        # lo tomaba como éxito y avanzaba el checkpoint de un dato que nunca se guardó.
+        raise HTTPException(status_code=400, detail="Client disconnected during transfer")
     except json.JSONDecodeError:
         logger.warning("⚠️ [Ingesta] JSON recibido es inválido o corrupto.")
-        return {"status": "error", "message": "Invalid JSON"}
+        raise HTTPException(status_code=400, detail="Invalid JSON")
     except Exception as e:
         logger.warning(f"⚠️ [Ingesta] Error inesperado leyendo payload: {e}")
-        return {"status": "error", "message": "Bad request format"}
+        raise HTTPException(status_code=400, detail="Bad request format")
 
     # =========================================================
     # 2. LÓGICA DE PROCESAMIENTO
@@ -247,14 +324,20 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                         status_value=item.get("status", ""),
                         metric_value=item.get("queued", 0), # El encolado sigue siendo nuestra métrica de control
                         extra_data={
-                            "instancia": instance_name, 
+                            "instancia": instance_name,
                             "last_error": item.get("last_error", ""),
                             # --- NUEVOS DATOS AGREGADOS ---
                             "recibidos": item.get("received", 0),
-                            "enviados": item.get("sent", 0)
+                            "enviados": item.get("sent", 0),
+                            # --- Mapa de integraciones (ver docs/13-contrato-topologia-mirth.md) ---
+                            "channel_id": item.get("channel_id"),
+                            "errored": item.get("errored", 0),
                         },
                         timestamp=ts
                     ))
+
+            # --- PROCESAR TOPOLOGÍA DE MIRTH (mapa de integraciones) ---
+            _upsert_topologia_mirth(db, h_id, soft_monitoring.get("mirth_topology"), ts)
 
             # --- PROCESAR ELASTICSEARCH / SUITESTENSA LOGS ---
             suite_logs_data = soft_monitoring.get("suitestensa_logs", {})
@@ -323,7 +406,8 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                 origen  = rule.get("from_node") or {}
                 destino = rule.get("to_node") or {}
 
-                nick_o = origen.get("nickname")  or origen.get("hostname")  or "?"
+                # Sin nodo de origen (key nula) = la regla toma todos los equipos: no es "?".
+                nick_o = origen.get("nickname")  or origen.get("hostname")  or ("TODOS" if origen.get("key") is None else "?")
                 nick_d = destino.get("nickname") or destino.get("hostname") or "?"
 
                 db.add(database.SoftwareMonitoring(

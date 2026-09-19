@@ -60,6 +60,7 @@ class AlertaModel(Base):
     end_time = Column(DateTime, nullable=True)
     is_active = Column(Integer, default=1)
     asana_task_gid = Column(String, nullable=True)
+    reaperturas = Column(Integer, default=0)
 
 class ConfigModel(Base):
     __tablename__ = "configuracion"
@@ -289,6 +290,135 @@ class AlertExclusionModel(Base):
     __table_args__ = (
         Index("idx_excl_hospital_enabled", "hospital_id", "enabled"),
     )
+
+
+# --- Mapa de integraciones Mirth (ver docs/13-contrato-topologia-mirth.md) ---
+
+class MirthChannelTopology(Base):
+    """
+    Snapshot técnico de la definición de un canal de Mirth (conector de
+    origen, conectores de destino, y si alguno es un "Channel Writer", a
+    qué otro canal apunta) tal como lo manda el agente en
+    `software_monitoring.mirth_topology`. NO es serie histórica -- upsert
+    por (hospital_id, instancia, channel_id): la topología cambia rarísima
+    vez, tenerla en una fila por ciclo (como `SoftwareMonitoring`)
+    desperdiciaría espacio sin aportar nada. `channel_id` es el join
+    estable con `SoftwareMonitoring.extra_data.channel_id` (component_id
+    es frágil ante renames del canal).
+    """
+    __tablename__ = "mirth_channel_topology"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hospital_id = Column(String, index=True)
+    instancia = Column(String, default="Default")
+    channel_id = Column(String, index=True)     # GUID de Mirth
+    component_id = Column(String, index=True)   # "[alias] nombre" -- join legacy con software_monitoring
+    nombre = Column(String)
+    revision = Column(Integer, nullable=True)
+    source_transport = Column(String, nullable=True)
+    source_endpoint = Column(String, nullable=True)
+    destinos = Column(JSON, default=list)        # lista de conectores destino tal cual la manda el agente
+    topo_hash = Column(String)                   # sha1 del bloque distilado, para saber si cambió
+    primera_vez = Column(DateTime, default=datetime.now)
+    last_seen = Column(DateTime, index=True)      # último ciclo en que Mirth reportó este canal
+    updated_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "instancia", "channel_id", name="uq_mirth_topo_canal"),
+        Index("idx_mirth_topo_hosp", "hospital_id"),
+    )
+
+
+class MirthNodo(Base):
+    """
+    Nodo curado a mano desde el panel de admin: un sistema origen o destino
+    del mapa de integraciones (ej. "HIS Hospital", "RIS SUITESTENSA"). Mirth
+    no tiene ningún concepto de esto -- solo sabe host:puerto de un
+    conector -- así que es configuración de negocio, no dato de monitoreo.
+    Un mismo sistema puede ser origen en un canal y destino en otro (ej. el
+    HIS: recibe en un puerto, responde en otro), por eso `tipo` discrimina
+    en vez de usar dos tablas paralelas.
+    """
+    __tablename__ = "mirth_nodos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hospital_id = Column(String, ForeignKey("hospitales_metadata.hospital_id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    tipo = Column(String, nullable=False)   # 'origen' | 'destino'
+    clave = Column(String, nullable=False)  # slug estable, es el 'id' del JSON del mapa (ej. 'his', 'ris')
+    label = Column(String, nullable=False)  # nombre técnico (modo "Operación")
+    sub = Column(String, nullable=True)     # endpoint técnico mostrado (ej. "10.0.1.20:6661")
+    humano = Column(String, nullable=True)  # nombre no técnico (modo "Estado")
+    vm = Column(String, nullable=True)      # id dentro de virtual_layer, para mostrar CPU/RAM en el drawer
+    orden = Column(Integer, default=0)
+    activo = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "tipo", "clave", name="uq_mirth_nodo"),
+    )
+
+
+class DicomReglaBaseline(Base):
+    """
+    Piso habitual de cada regla de autoenrute DICOM (percentil 10 de sus
+    últimos 7 días), calculado por alerts_engine/software/dicom_baseline.py.
+    Una regla con un residuo constante (ej. 1164 pendientes inmóviles durante
+    días) no debe alertar mientras esté en su piso. Ver docs/12 §3quater.
+    """
+    __tablename__ = "dicom_regla_baseline"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hospital_id = Column(String, index=True, nullable=False)
+    component_id = Column(String, nullable=False)   # id de la regla, tal cual software_monitoring
+    piso = Column(Integer, default=0)
+    tolerancia = Column(Integer, default=300)
+    # Solo las reglas con actividad demostrada (>=5 bajadas de >=300 en 7 días)
+    # tienen piso vigente: una regla que nunca drenó no se autoperdona.
+    activa = Column(Boolean, default=False)
+    muestras = Column(Integer, default=0)
+    calculado_en = Column(DateTime, default=datetime.now)
+    piso_subido_en = Column(DateTime, nullable=True)  # límite de velocidad de subida del piso
+
+    __table_args__ = (
+        UniqueConstraint('hospital_id', 'component_id', name='uq_dicom_baseline_regla'),
+    )
+
+
+class MirthCanalMeta(Base):
+    """
+    Curación por canal: criticidad (define contra qué umbral de cola
+    alerta, ver dashboard_app/alerts_engine/software/mirth.py), nombre
+    humano, y a qué MirthNodo está asignado como origen/destino. Identidad
+    por `channel_id` (GUID de Mirth), no por nombre. SQLite no enforcea
+    FKs (ver database.py:24-29, solo setea WAL) -- borrar un MirthNodo
+    referenciado acá tiene que nulear `nodo_origen_id`/`nodo_destino_id` a
+    mano (lo hace el router de administración, no la base).
+    """
+    __tablename__ = "mirth_canales_meta"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hospital_id = Column(String, ForeignKey("hospitales_metadata.hospital_id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    instancia = Column(String, default="Default")
+    channel_id = Column(String, index=True)
+
+    nombre_tecnico = Column(String, nullable=True)  # cache del último nombre visto, solo para mostrar
+    hum = Column(String, nullable=True)              # descripción humana (modo "Estado")
+    crit = Column(String, default="media")            # 'alta' | 'media' | 'baja'
+    nodo_origen_id = Column(Integer, ForeignKey("mirth_nodos.id"), nullable=True)
+    nodo_destino_id = Column(Integer, ForeignKey("mirth_nodos.id"), nullable=True)
+    oculto = Column(Boolean, default=False)  # canales de prueba: no se muestran en el mapa
+    notas = Column(Text, nullable=True)
+
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_by = Column(String, nullable=True)  # email del usuario que curó
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "instancia", "channel_id", name="uq_mirth_canal_meta"),
+    )
+
 
 # --- FINAL DEL ARCHIVO: SE CREAN TODAS LAS TABLAS REGISTRADAS EN 'Base' ---
 Base.metadata.create_all(bind=engine)
