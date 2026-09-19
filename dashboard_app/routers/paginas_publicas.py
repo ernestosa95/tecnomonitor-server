@@ -6,7 +6,11 @@ Primer router extraído de dashboard.py -- ver docs/08-plan-refactor-dashboard.m
 (paso 1: bajo riesgo, sirve para validar el mecanismo de extracción).
 """
 import csv
+import logging
 import os
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -36,9 +40,17 @@ async def get_hl7_analytics(request: Request):
 async def get_pacs_capacity(request: Request):
     return templates.TemplateResponse("solucion3.html", {"request": request})
 
+@router.get("/proyectos-provincias")
+async def proyectos_provincias(request: Request):
+    return templates.TemplateResponse("proyectos_provincias.html", {"request": request})
+
 @router.get("/salta-project")
 def landing_salta():
     return FileResponse("dashboard_app/templates/solucion4.html")
+
+@router.get("/mendoza-project")
+def landing_mendoza():
+    return FileResponse("dashboard_app/templates/mendoza_project.html")
 
 @router.get("/renovacion")
 async def renovacion(request: Request):
@@ -104,3 +116,90 @@ async def handle_form(
 
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+# --- Leads de la landing /demo-pacs (un CSV propio, una fila por formulario enviado) ---
+logger = logging.getLogger(__name__)
+
+LEADS_DEMO_PACS_CSV = "leads_demo_pacs.csv"
+_LEADS_DEMO_PACS_HEADERS = [
+    "Fecha", "Nombre y Apellido", "Institución", "Cargo", "Volumen Estudios",
+    "Email", "Teléfono", "Plan de Interés", "Origen",
+]
+# Tope de largo por campo: el endpoint es público y el CSV crece sin cota (docs/04-seguridad.md#s3).
+_LEADS_DEMO_PACS_MAX = {
+    "nombre_apellido": 120, "institucion": 150, "cargo": 60, "volumen_estudios": 60,
+    "email": 254, "telefono": 30, "plan_interes": 120, "origen": 20,
+}
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_TELEFONO_RE = re.compile(r"^\+?[0-9][0-9\s().-]{5,}$")
+_TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+
+@router.post("/submit-lead-demo-pacs")
+@limiter.limit("10/minute")
+async def submit_lead_demo_pacs(
+    request: Request,
+    nombre_apellido: str = Form(...),
+    institucion: str = Form(...),
+    cargo: str = Form(...),
+    email: str = Form(...),
+    telefono: str = Form(...),
+    volumen_estudios: str = Form(""),
+    plan_interes: str = Form(""),
+    origen: str = Form("formulario"),
+):
+    campos = {
+        "nombre_apellido": nombre_apellido, "institucion": institucion, "cargo": cargo,
+        "volumen_estudios": volumen_estudios, "email": email, "telefono": telefono,
+        "plan_interes": plan_interes, "origen": origen,
+    }
+    campos = {k: " ".join(v.split()) for k, v in campos.items()}
+
+    for nombre in ("nombre_apellido", "institucion", "cargo", "email", "telefono"):
+        if not campos[nombre]:
+            return JSONResponse(
+                content={"status": "error", "message": "Complete todos los campos obligatorios."},
+                status_code=400,
+            )
+    if any(len(v) > _LEADS_DEMO_PACS_MAX[k] for k, v in campos.items()):
+        return JSONResponse(
+            content={"status": "error", "message": "Alguno de los datos ingresados es demasiado largo."},
+            status_code=400,
+        )
+    if not _EMAIL_RE.match(campos["email"]):
+        return JSONResponse(
+            content={"status": "error", "message": "Ingrese un correo electrónico válido."},
+            status_code=400,
+        )
+    if not _TELEFONO_RE.match(campos["telefono"]):
+        return JSONResponse(
+            content={"status": "error", "message": "Ingrese un teléfono válido (solo números, +, espacios, guiones o paréntesis)."},
+            status_code=400,
+        )
+
+    fila = [datetime.now(_TZ_AR).strftime("%Y-%m-%d %H:%M:%S")] + [
+        campos[k] for k in (
+            "nombre_apellido", "institucion", "cargo", "volumen_estudios",
+            "email", "telefono", "plan_interes", "origen",
+        )
+    ]
+
+    try:
+        # Sin await entre el chequeo del archivo y la escritura: en el event loop de un
+        # único proceso uvicorn dos requests no se pueden intercalar acá.
+        file_exists = os.path.isfile(LEADS_DEMO_PACS_CSV)
+        # utf-8-sig: el BOM hace que Excel abra bien las tildes (Python no lo repite en modo append).
+        with open(LEADS_DEMO_PACS_CSV, mode="a", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(_LEADS_DEMO_PACS_HEADERS)
+            writer.writerow([_sanear_campo_csv(v) for v in fila])
+    except Exception:
+        logger.exception("No se pudo guardar el lead de /demo-pacs")
+        return JSONResponse(
+            content={"status": "error", "message": "No pudimos guardar sus datos. Intente nuevamente en unos minutos."},
+            status_code=500,
+        )
+
+    return JSONResponse(content={"status": "success", "message": "Datos guardados correctamente"})

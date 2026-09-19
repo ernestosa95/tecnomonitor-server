@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proyectos por Provincia</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        html, body {
+            overflow-y: auto !important;
+            height: auto !important;
+            background-color: var(--bg-body);
+            margin: 0;
+            padding: 0;
+        }
+        .btn-action { padding: 10px 15px; background-color: #3498db; color: white; border: none; border-radius: 6px; font-size: 0.9em; font-weight: bold; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+        .btn-action:hover { background-color: #2980b9; }
+        .btn-action.pendiente { background-color: #95a5a6; cursor: not-allowed; }
+        .btn-action.pendiente:hover { background-color: #95a5a6; }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('temaUI') === 'oscuro') {
+                document.body.classList.add('dark-theme');
+            }
+        });
+    </script>
+</head>
+<body>
+
+<div style="padding: 40px; max-width: 1200px; margin: 0 auto;">
+
+    <div style="display: flex; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #e1e4e8; padding-bottom: 15px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2" style="margin-right: 15px;">
+            <path d="M12 2 2 7l10 5 10-5-10-5z"></path>
+            <path d="m2 17 10 5 10-5"></path>
+            <path d="m2 12 10 5 10-5"></path>
+        </svg>
+        <h1 style="color: #2c3e50; margin: 0; font-size: 1.8em;">Proyectos por Provincia</h1>
+    </div>
+
+    <p style="color: #7f8c8d; font-size: 1.1em; margin-bottom: 30px;">
+        Mapas y seguimiento de despliegue por provincia.
+    </p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+
+        <div class="card" style="padding: 25px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border-top: 4px solid #3498db;"
+             onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 8px 15px rgba(0,0,0,0.1)';"
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='var(--card-shadow)';"
+             onclick="window.location.href='/salta-project'">
+            <h3 style="margin-top: 0; color: #2c3e50; font-size: 1.3em;">📍 Salta</h3>
+            <p style="color: #7f8c8d; font-size: 0.95em; line-height: 1.5; margin-bottom: 20px;">
+                Mapa de despliegue de la provincia de Salta.
+            </p>
+            <button class="btn-action">Abrir Mapa</button>
+        </div>
+
+        <div class="card" style="padding: 25px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border-top: 4px solid #27ae60;"
+             onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 8px 15px rgba(0,0,0,0.1)';"
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='var(--card-shadow)';"
+             onclick="window.location.href='/mendoza-project'">
+            <h3 style="margin-top: 0; color: #2c3e50; font-size: 1.3em;">📍 Mendoza</h3>
+            <p style="color: #7f8c8d; font-size: 0.95em; line-height: 1.5; margin-bottom: 20px;">
+                Mapa de rutas y efectores de salud de la provincia de Mendoza.
+            </p>
+            <button class="btn-action" style="background-color: #27ae60;">Abrir Mapa</button>
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>

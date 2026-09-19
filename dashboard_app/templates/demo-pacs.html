@@ -79,6 +79,11 @@
 
         /* ===== SHARED ===== */
         section { width: 100%; }
+
+        /* Ocultamiento temporal (simulador + planes y sus referencias).
+           El HTML/JS sigue en el DOM; para volver a mostrarlo basta quitar esta clase. */
+        .tmp-oculto { display: none !important; }
+
         .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
         .section-label {
             display: inline-flex; align-items: center; gap: 8px;
@@ -574,6 +579,13 @@
         }
         .form-submit:hover { background: var(--accent2); transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,169,157,0.35); }
 
+        .form-error {
+            display: none; margin-top: 8px;
+            font-size: 0.8rem; color: var(--red); text-align: center; line-height: 1.5;
+        }
+        .form-error.show { display: block; }
+        .form-submit:disabled { opacity: .6; cursor: wait; transform: none; box-shadow: none; }
+
         .form-privacy {
             font-size: 0.72rem; color: #94a3b8; text-align: center;
             margin-top: 12px; line-height: 1.5;
@@ -769,6 +781,43 @@
             .stat-strip-item { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.07); }
             nav ul { display: none; }
         }
+
+        /* ===== MÓVIL VERTICAL ===== */
+        @media (max-width: 600px) {
+            /* El padding de la sección y el del .wrap se sumaban (48px por lado): se deja solo el de la sección. */
+            nav { padding: 0 16px; height: 60px; }
+            .nav-logo { font-size: 1.05rem; }
+            #hero { padding: 84px 16px 48px; }
+            #desafio, #autoridad, #demo, #simulador, #planes, #contacto { padding: 64px 16px; }
+            .wrap { padding: 0; }
+
+            .hero-ctas { flex-direction: column; }
+            .hero-ctas .btn { width: 100%; justify-content: center; text-align: center; }
+
+            /* Demo en vivo: la barra de info pasa a columna y las miniaturas a lista */
+            .demo-chrome { padding: 10px 14px; }
+            .demo-url-bar { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .demo-badge-chrome { display: none; }
+            .demo-info-bar { flex-direction: column; align-items: stretch; gap: 16px; padding: 18px 16px; }
+            .demo-info-cta { width: 100%; text-align: center; }
+            .demo-thumbs { grid-template-columns: 1fr; gap: 10px; }
+            .demo-thumb { display: flex; align-items: center; }
+            .demo-thumb-preview { width: 112px; flex-shrink: 0; }
+            .demo-thumb-label { flex: 1; padding: 8px 12px; font-size: 0.72rem; }
+
+            /* Formularios: un campo por fila; 16px evita el zoom automático de iOS al enfocar */
+            .contact-inner { gap: 36px; }
+            .form-card { padding: 24px 20px; }
+            .frow { grid-template-columns: 1fr; gap: 0; }
+            .fgroup input, .fgroup select { font-size: 16px; }
+            .form-submit { padding: 15px; font-size: 0.92rem; }
+
+            /* Modal: si no entra en pantalla, scrollea adentro */
+            .modal-content { padding: 28px 20px; max-height: 92vh; overflow-y: auto; }
+
+            #gracias { padding: 24px; }
+            .video-pill { padding: 22px 20px; }
+        }
     </style>
 </head>
 <body>
@@ -783,8 +832,8 @@
         <li><a href="#desafio">¿Por qué la Nube?</a></li>
         <li><a href="#autoridad">Tecnología</a></li>
         <li><a href="#demo">Demo en Vivo</a></li>
-        <li><a href="#simulador">Calculadora de Ahorro</a></li>
-        <li><a href="#planes">Planes</a></li>
+        <li class="tmp-oculto"><a href="#simulador">Calculadora de Ahorro</a></li>
+        <li class="tmp-oculto"><a href="#planes">Planes</a></li>
         <li><a href="#contacto" class="nav-cta">Agendar Demo Exclusiva</a></li>
     </ul>
 </nav>
@@ -804,7 +853,7 @@
                 Acceda al motor PACSonWEB de Dedalus —que procesa <strong>18.5 millones de imágenes diarias</strong> a nivel global— bajo un modelo <strong>OPEX 100% predecible</strong>. Movilidad Zero-Footprint para sus radiólogos, y ciberseguridad AWS para el prestigio de su institución.
             </p>
             <div class="hero-ctas">
-                <a href="#simulador" class="btn btn-orange">👉 Simular mi Ahorro Operativo Hoy</a>
+                <a href="#simulador" class="btn btn-orange tmp-oculto">👉 Simular mi Ahorro Operativo Hoy</a>
                 <a href="#contacto" class="btn btn-outline">Agendar Demo Exclusiva</a>
             </div>
             <p class="microcopy">Implementación ágil en 48 hs. Retención legal de 5 años garantizada.</p>
@@ -1025,7 +1074,7 @@
 </section>
 
 <!-- ===== SIMULADOR ===== -->
-<section id="simulador">
+<section id="simulador" class="tmp-oculto">
     <div class="wrap">
         <div class="section-label">📊 Calculadora de Ahorro</div>
         <h2 class="h2-section">Tome el Control de sus Costos. Proyecte su ROI.</h2>
@@ -1093,7 +1142,7 @@
 </section>
 
 <!-- ===== PLANES ===== -->
-<section id="planes">
+<section id="planes" class="tmp-oculto">
     <div class="wrap">
         <div class="section-label">💡 Planes de Suscripción</div>
         <h2 class="h2-section">Diseñado a la medida de su demanda.<br>Escale sin límites.</h2>
@@ -1219,17 +1268,17 @@
                     <div class="frow">
                         <div class="fgroup">
                             <label for="f-nombre">Nombre y Apellido</label>
-                            <input type="text" id="f-nombre" required placeholder="Dr. Juan Pérez">
+                            <input type="text" id="f-nombre" name="nombre_apellido" required maxlength="120" placeholder="Dr. Juan Pérez">
                         </div>
                         <div class="fgroup">
                             <label for="f-institucion">Institución Médica</label>
-                            <input type="text" id="f-institucion" required placeholder="Clínica / Hospital">
+                            <input type="text" id="f-institucion" name="institucion" required maxlength="150" placeholder="Clínica / Hospital">
                         </div>
                     </div>
 
                     <div class="fgroup">
                         <label for="f-cargo">Cargo Estratégico</label>
-                        <select id="f-cargo" required>
+                        <select id="f-cargo" name="cargo" required>
                             <option value="">— Seleccionar —</option>
                             <option>CEO</option>
                             <option>Director Médico</option>
@@ -1240,7 +1289,7 @@
 
                     <div class="fgroup">
                         <label for="f-volumen">Volumen de Estudios Mensuales</label>
-                        <select id="f-volumen" required>
+                        <select id="f-volumen" name="volumen_estudios" required>
                             <option value="">— Seleccionar —</option>
                             <option>Menos de 1.000 estudios/mes</option>
                             <option>Entre 1.000 y 5.000 estudios/mes</option>
@@ -1248,13 +1297,20 @@
                         </select>
                     </div>
 
-                    <div class="fgroup">
-                        <label for="f-email">Correo Corporativo</label>
-                        <input type="email" id="f-email" required placeholder="director@clinica.com.ar">
+                    <div class="frow">
+                        <div class="fgroup">
+                            <label for="f-email">Correo Corporativo</label>
+                            <input type="email" id="f-email" name="email" required maxlength="254" placeholder="director@clinica.com.ar">
+                        </div>
+                        <div class="fgroup">
+                            <label for="f-telefono">Teléfono</label>
+                            <input type="tel" id="f-telefono" name="telefono" required minlength="6" maxlength="30" placeholder="+54 9 11 1234-5678">
+                        </div>
                     </div>
 
+                    <p class="form-error" role="alert"></p>
                     <button type="submit" class="form-submit">
-                        🚀 SOLICITAR MI DEMO Y SIMULAR MI AHORRO
+                        🚀 SOLICITAR MI DEMO<span class="tmp-oculto"> Y SIMULAR MI AHORRO</span>
                     </button>
                     <p class="form-privacy">🔒 Sus datos están protegidos. No spam. Solo asesoramiento experto.</p>
                 </form>
@@ -1278,16 +1334,16 @@
             <div class="frow">
                 <div class="fgroup">
                     <label for="m-nombre">Nombre y Apellido</label>
-                    <input type="text" id="m-nombre" required placeholder="Dr. Juan Pérez">
+                    <input type="text" id="m-nombre" name="nombre_apellido" required maxlength="120" placeholder="Dr. Juan Pérez">
                 </div>
                 <div class="fgroup">
                     <label for="m-institucion">Institución Médica</label>
-                    <input type="text" id="m-institucion" required placeholder="Clínica / Hospital">
+                    <input type="text" id="m-institucion" name="institucion" required maxlength="150" placeholder="Clínica / Hospital">
                 </div>
             </div>
             <div class="fgroup">
                 <label for="m-cargo">Cargo</label>
-                <select id="m-cargo" required>
+                <select id="m-cargo" name="cargo" required>
                     <option value="">— Seleccionar —</option>
                     <option>CEO</option>
                     <option>Director Médico</option>
@@ -1295,11 +1351,19 @@
                     <option>Jefe de Radiología</option>
                 </select>
             </div>
-            <div class="fgroup">
-                <label for="m-email">Correo Corporativo</label>
-                <input type="email" id="m-email" required placeholder="director@clinica.com.ar">
+            <div class="frow">
+                <div class="fgroup">
+                    <label for="m-email">Correo Corporativo</label>
+                    <input type="email" id="m-email" name="email" required maxlength="254" placeholder="director@clinica.com.ar">
+                </div>
+                <div class="fgroup">
+                    <label for="m-telefono">Teléfono</label>
+                    <input type="tel" id="m-telefono" name="telefono" required minlength="6" maxlength="30" placeholder="+54 9 11 1234-5678">
+                </div>
             </div>
-            <button type="submit" class="form-submit">🚀 SOLICITAR MI DEMO Y SIMULAR MI AHORRO</button>
+            <input type="hidden" id="m-plan" name="plan_interes">
+            <p class="form-error" role="alert"></p>
+            <button type="submit" class="form-submit">🚀 SOLICITAR MI DEMO<span class="tmp-oculto"> Y SIMULAR MI AHORRO</span></button>
             <p class="form-privacy">🔒 Asesoramiento confidencial. Sin spam.</p>
         </form>
     </div>
@@ -1385,16 +1449,47 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-cerrar-modal').addEventListener('click', () => { modal.style.display = 'none'; });
     window.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
 
-    document.getElementById('form-modal').addEventListener('submit', (e) => {
+    /* ===== ENVÍO DE LEADS (guarda en leads_demo_pacs.csv del server) ===== */
+    async function enviarLead(form, origen) {
+        const btn = form.querySelector('button[type="submit"]');
+        const error = form.querySelector('.form-error');
+        error.classList.remove('show');
+
+        const datos = new FormData(form);
+        datos.append('origen', origen);
+
+        btn.disabled = true;
+        try {
+            const resp = await fetch('/submit-lead-demo-pacs', { method: 'POST', body: datos });
+            const resultado = await resp.json().catch(() => ({}));
+            if (resp.ok && resultado.status === 'success') {
+                form.reset();
+                return true;
+            }
+            error.textContent = resp.status === 429
+                ? 'Demasiados intentos seguidos. Espere un minuto e intente nuevamente.'
+                : (resultado.message || 'No pudimos guardar sus datos. Intente nuevamente.');
+        } catch (err) {
+            error.textContent = 'Error de conexión con el servidor. Intente nuevamente.';
+        } finally {
+            btn.disabled = false;
+        }
+        error.classList.add('show');
+        return false;
+    }
+
+    document.getElementById('form-modal').addEventListener('submit', async (e) => {
         e.preventDefault();
-        modal.style.display = 'none';
-        mostrarGracias();
+        if (await enviarLead(e.target, 'modal')) {
+            modal.style.display = 'none';
+            mostrarGracias();
+        }
     });
 
     /* ===== FORM CONTACTO ===== */
-    document.getElementById('form-contacto').addEventListener('submit', (e) => {
+    document.getElementById('form-contacto').addEventListener('submit', async (e) => {
         e.preventDefault();
-        mostrarGracias();
+        if (await enviarLead(e.target, 'formulario')) mostrarGracias();
     });
 
     /* ===== GRACIAS ACTIVA ===== */
@@ -1409,6 +1504,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function abrirModal(planTexto) {
     const modal = document.getElementById('modal-contacto');
     document.getElementById('modal-plan-text').textContent = 'Plan seleccionado: ' + planTexto + '. Un consultor de Tecnoimagen preparará su entorno.';
+    document.getElementById('m-plan').value = planTexto;
     modal.style.display = 'flex';
 }
 
