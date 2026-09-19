@@ -205,7 +205,7 @@ def obtener_historial_kpi(hospital_id: str, horas: int = 24,
 #    24H a 7D el mismo hospital podía mostrar estados distintos en el mismo
 #    instante. La salud de una ruta no cambia según el zoom.
 #
-# 2) El criterio lo pone alerts_engine.evaluar_cola_dicom(), no una copia
+# 2) El criterio lo pone alerts_engine.evaluar_cola(), no una copia
 #    local. Si el panel recalculara con su propia lógica, tarde o temprano
 #    mostraría verde con un ticket abierto en Asana, o al revés.
 # ============================================================
@@ -240,6 +240,8 @@ def _estado_colas_dicom(db: Session, hospital_id: str):
     for f in filas:
         por_regla.setdefault(f.component_id, []).append(f)
 
+    baselines = alerts_engine.cargar_baselines(db, hospital_id) if cfg.get('dicom_baseline_enabled', True) else {}
+
     estados = {}
     for id_rule, historia in por_regla.items():
         valores, timestamps = alerts_engine._serie_de(historia)
@@ -252,33 +254,22 @@ def _estado_colas_dicom(db: Session, hospital_id: str):
             continue
             
         actual = valores[-1]
-        
-        if actual <= 0 or actual < min_inst:
-            nivel = "OK"
-        else:
-            v_crit, cubre_crit = alerts_engine._ventana(valores, timestamps, win_crit, ahora)
-            v_warn, cubre_warn = alerts_engine._ventana(valores, timestamps, win_warn, ahora)
-            
-            if not cubre_warn:
-                nivel = None  # SIN_DATOS
-            else:
-                drena_warn = alerts_engine._drena(v_warn, drain_pct)
-                drena_crit = alerts_engine._drena(v_crit, drain_pct) if cubre_crit else True
-                
-                det["minimo_ventana"] = min(v_warn) if v_warn else 0
-                
-                if not drena_crit:
-                    nivel = "CRITICAL"
-                    det["creciendo"] = actual >= v_crit[0] if v_crit else False
-                    det["estancada"] = not det["creciendo"]
-                    det["ventana_minutos"] = win_crit
-                    det["minimo_ventana"] = min(v_crit) if v_crit else 0
-                elif not drena_warn:
-                    nivel = "WARNING"
-                    det["creciendo"] = actual >= v_warn[0] if v_warn else False
-                    det["estancada"] = not det["creciendo"]
-                else:
-                    nivel = "OK"
+        bl = baselines.get(str(id_rule))
+        res = alerts_engine.evaluar_cola(valores, timestamps, ahora, win_warn, win_crit,
+                                         min_inst, drain_pct, bl)
+        nivel = res["nivel"]
+
+        if res["motivo"] == "drenaje":
+            v_crit, v_warn = res["v_crit"], res["v_warn"]
+            det["minimo_ventana"] = min(v_warn) if v_warn else 0
+            if nivel == "CRITICAL":
+                det["creciendo"] = actual >= v_crit[0] if v_crit else False
+                det["estancada"] = not det["creciendo"]
+                det["ventana_minutos"] = win_crit
+                det["minimo_ventana"] = min(v_crit) if v_crit else 0
+            elif nivel == "WARNING":
+                det["creciendo"] = actual >= v_warn[0] if v_warn else False
+                det["estancada"] = not det["creciendo"]
 
         estados[id_rule] = {
             "status": nivel or "SIN_DATOS",
@@ -287,6 +278,7 @@ def _estado_colas_dicom(db: Session, hospital_id: str):
             "minimo_ventana": det.get("minimo_ventana"),
             "ventana_minutos": det.get("ventana_minutos"),
             "sin_datos": nivel is None,
+            "piso_habitual": bl["piso"] if bl and bl.get("activa") else None,
         }
         
     return estados

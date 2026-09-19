@@ -92,7 +92,33 @@ def cargar_config(db):
 
         # --- CONFIGURACIONES DE MIRTH ---
         "mirth_alert_enabled": g("mirth_alert_enabled", False, is_bool=True),
+        # DEPRECADO desde el mapa de integraciones (ver
+        # dashboard_app/alerts_engine/software/mirth.py y
+        # docs/13-contrato-topologia-mirth.md): el detector ya no lo lee, lo
+        # reemplazan los 6 umbrales por criticidad de abajo. Se deja la
+        # clave (con su default histórico) por si algo del panel viejo
+        # todavía la muestra, hasta sacarla del formulario.
         "mirth_queued_threshold": g("mirth_queued_threshold", 100),
+        # Umbrales de cola por criticidad de canal (alta/media/baja), mismos
+        # defaults que el prototipo del mapa de integraciones. `crit` es el
+        # que dispara CRITICAL (mismo criterio "todo o nada por umbral" que
+        # ya tenía `mirth_queued_threshold`); `warn` solo pinta el mapa a
+        # menos que se prenda `mirth_queue_warning_alert_enabled`.
+        "mirth_queue_warn_alta": g("mirth_queue_warn_alta", 20),
+        "mirth_queue_crit_alta": g("mirth_queue_crit_alta", 80),
+        "mirth_queue_warn_media": g("mirth_queue_warn_media", 60),
+        "mirth_queue_crit_media": g("mirth_queue_crit_media", 200),
+        "mirth_queue_warn_baja": g("mirth_queue_warn_baja", 150),
+        "mirth_queue_crit_baja": g("mirth_queue_crit_baja", 400),
+        # Criticidad que se le asume a un canal que todavía no fue
+        # clasificado en el panel de administración del mapa.
+        "mirth_crit_default": g("mirth_crit_default", "media"),
+        # Minutos sin una fila nueva de un canal para considerarlo "sin
+        # datos frescos" en el mapa (no dispara alerta, es solo visual).
+        "mirth_stale_minutes": g("mirth_stale_minutes", 15),
+        # Apagado por default: si se prende, cruzar el umbral `warn` (no solo
+        # `crit`) también genera un ticket de Asana en WARNING.
+        "mirth_queue_warning_alert_enabled": g("mirth_queue_warning_alert_enabled", False, is_bool=True),
         "mirth_responsible_email": g("mirth_responsible_email", ""),
 
         # --- CONFIGURACIONES DE AUTOENRUTE DICOM ---
@@ -112,6 +138,10 @@ def cargar_config(db):
         # para considerarla "drenando". 70 => bajó al menos al 70% del valor
         # con el que arrancó la ventana en algún momento.
         "dicom_drain_percent": g("dicom_drain_percent", 90),
+        # Piso habitual por regla (baseline adaptativo). Sin UI a propósito: es un
+        # interruptor de emergencia. Apagar: INSERT OR REPLACE INTO configuracion
+        # (clave, valor) VALUES ('dicom_baseline_enabled', '0'). Ver docs/12 §3quater.
+        "dicom_baseline_enabled": g("dicom_baseline_enabled", True, is_bool=True),
         "dicom_responsible_email": g("dicom_responsible_email", ""),
     }
 

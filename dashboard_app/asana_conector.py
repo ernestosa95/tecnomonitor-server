@@ -34,7 +34,7 @@ def _obtener_icono(nivel):
     if nivel == "OK": return "🟢"
     return "🚨"
 
-def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_project_gid=None, extra_followers=None):
+def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_project_gid=None, extra_followers=None, runbook_url=None):
     """Crea una tarea nueva con el nivel correspondiente en Asana."""
     # 🛡️ Cortocircuito si la integración está deshabilitada
     if not ASANA_ENABLED:
@@ -44,18 +44,20 @@ def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_proje
     configuration.access_token = ASANA_ACCESS_TOKEN
     api_client = asana.ApiClient(configuration)
     tasks_api_instance = asana.TasksApi(api_client)
-    
+
     titulo = f"{_obtener_icono(nivel)} {hospital_id} | {tipo}"
     ahora = datetime.now().strftime('%H:%M:%S')
-    
+
+    linea_protocolo = f"\n        📖 Protocolo de atención: {runbook_url}\n" if runbook_url else ""
+
     notas = f"""INCIDENTE DETECTADO - TECNOMONITOR V3
-    
+
         🏥 Hospital: {hospital_id}
         ⚠️ Tipo: {tipo}
         🕒 Hora Detección: {ahora}
         📊 Nivel: {nivel}
         📝 Detalle: {mensaje_detalle}
-
+{linea_protocolo}
         Asignada automáticamente por TecnoMonitor."""
     
     # Configurar proyectos de destino (Global + Específico del Hospital)
@@ -105,10 +107,21 @@ def crear_tarea_alerta(hospital_id, tipo, nivel, mensaje_detalle, hospital_proje
     return None
     
 
-def actualizar_tarea_asana(task_gid, hospital_id, tipo, nivel, mensaje_detalle, reabrir=False):
-    """Actualiza título, comenta y opcionalmente reabre una tarea existente."""
+def actualizar_tarea_asana(task_gid, hospital_id, tipo, nivel, mensaje_detalle, reabrir=False,
+                            extra_followers=None, runbook_url=None, veces_reabierta=None):
+    """
+    Actualiza título, comenta, y opcionalmente reabre una tarea existente.
+
+    `extra_followers` y `runbook_url` se re-sincronizan en CADA actualización
+    (no solo al crear la tarea): un incidente que lleva semanas reabriéndose
+    nunca vuelve a pasar por `crear_tarea_alerta`, así que sin esto un ticket
+    viejo (creado antes de configurar colaboradores para su categoría, o
+    antes de que existiera el link al protocolo) se queda sin ellos para
+    siempre. `add_followers_for_task` es aditivo: no duplica ni pisa
+    colaboradores ya presentes.
+    """
     # 🛡️ Cortocircuito
-    if not ASANA_ENABLED or not task_gid: 
+    if not ASANA_ENABLED or not task_gid:
         return
 
     configuration = asana.Configuration()
@@ -125,12 +138,22 @@ def actualizar_tarea_asana(task_gid, hospital_id, tipo, nivel, mensaje_detalle, 
         data_update = {'name': titulo_nuevo}
         if reabrir:
             data_update['completed'] = False
-            texto_comentario = f"⚠️ INCIDENTE REABIERTO ({ahora})\nNivel: {nivel}\nDetalle: {mensaje_detalle}"
+            reincidencia = f" -- van {veces_reabierta} veces" if veces_reabierta else ""
+            texto_comentario = f"⚠️ INCIDENTE REABIERTO{reincidencia} ({ahora})\nNivel: {nivel}\nDetalle: {mensaje_detalle}"
         else:
             texto_comentario = f"🔄 ACTUALIZACIÓN DE ESTADO ({ahora})\nNuevo Nivel: {nivel}\nDetalle: {mensaje_detalle}"
 
+        if runbook_url:
+            texto_comentario += f"\n📖 Protocolo de atención: {runbook_url}"
+
         tasks_api.update_task({'data': data_update}, task_gid, {})
-        
+
+        # 1.b Re-sincronizar colaboradores configurados actualmente
+        if extra_followers:
+            followers_validos = list(filter(None, {str(f).strip() for f in extra_followers}))
+            if followers_validos:
+                tasks_api.add_followers_for_task({'data': {'followers': followers_validos}}, task_gid, {})
+
         # 2. Agregar comentario con los nuevos datos
         stories_api.create_story_for_task({"data": {"text": texto_comentario}}, task_gid, {})
         logger.info(f"🔄 Asana: Tarea {task_gid} actualizada a {nivel}.")

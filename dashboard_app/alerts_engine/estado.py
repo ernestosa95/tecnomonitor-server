@@ -13,6 +13,7 @@ import requests
 import database
 
 from .exclusiones import evaluar_exclusion, _registrar_hit
+from .runbooks import runbook_url_para
 
 try:
     import asana_conector
@@ -49,9 +50,18 @@ def _parsear_timestamp(ts_val):
 
 
 # --- GESTOR INTELIGENTE DE INCIDENTES V3 ---
-def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None, asana_followers=None):
+def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=None, asana_followers=None, titulo_visible=None):
+    """
+    `tipo_unico` es la clave estable con la que se dedupe/rastrea la alerta en
+    la tabla `alertas` -- nunca cambia entre ticks para el mismo hallazgo.
+    `titulo_visible` es opcional: un nombre legible (ej. el nombre de una ruta
+    DICOM) para mostrar en el ticket de Asana en su lugar. Si no se pasa, se
+    usa `tipo_unico` como hasta ahora.
+    """
     ahora = datetime.now()
     DIAS_CADUCIDAD = 15
+    titulo_visible = titulo_visible or tipo_unico
+    runbook_url = runbook_url_para(tipo_unico)
 
     # Obtener la última alerta
     alerta = db.query(database.AlertaModel).filter(
@@ -69,7 +79,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         if alerta and alerta.is_active == 1:
             print(f"🔇 EXCLUIDA (cierre): {hid} -> {tipo_unico} [regla #{regla['id']}]")
             if alerta.asana_task_gid and asana_conector:
-                asana_conector.cerrar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, ahora)
+                asana_conector.cerrar_tarea_asana(alerta.asana_task_gid, hid, titulo_visible, ahora)
             alerta.end_time = ahora
             alerta.is_active = 0
             alerta.mensaje = f"[EXCLUIDA] Regla #{regla['id']}: {mensaje}"
@@ -102,7 +112,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         if alerta and alerta.is_active == 1:
             print(f"✅ NORMALIZADO: {hid} -> {tipo_unico}")
             if alerta.asana_task_gid and asana_conector:
-                asana_conector.cerrar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, ahora)
+                asana_conector.cerrar_tarea_asana(alerta.asana_task_gid, hid, titulo_visible, ahora)
             alerta.end_time = ahora
             alerta.is_active = 0
             alerta.mensaje = f"[OK] Normalizado: {mensaje}"
@@ -118,7 +128,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
     if not alerta:
         # B1: Nunca existió
         print(f"⚠️ NUEVA ALERTA: {hid} -> {tipo_unico} ({nivel})")
-        gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers) if asana_conector else None
+        gid = asana_conector.crear_tarea_alerta(hid, titulo_visible, nivel, mensaje, asana_proj_id, extra_followers=asana_followers, runbook_url=runbook_url) if asana_conector else None
         nueva = database.AlertaModel(hospital_id=hid, tipo=tipo_unico, mensaje=f"[{nivel}] {mensaje}", start_time=ahora, is_active=1, asana_task_gid=gid)
         db.add(nueva)
         db.commit()
@@ -134,7 +144,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         # 🛟 FIX SALVAVIDAS B2: Si la alerta está activa pero nunca se creó en Asana (falló en el pasado)
         if not alerta.asana_task_gid and asana_conector:
             print(f"⚠️ ALERTA ACTIVA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
-            nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers)
+            nuevo_gid = asana_conector.crear_tarea_alerta(hid, titulo_visible, nivel, mensaje, asana_proj_id, extra_followers=asana_followers, runbook_url=runbook_url)
             alerta.asana_task_gid = nuevo_gid
             db.commit()
 
@@ -142,7 +152,10 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
         elif nivel_db != nivel:
             print(f"🛡️ CAMBIO DE GRAVEDAD CONFIRMADO: {hid} -> {tipo_unico} (De {nivel_db} a {nivel})")
             if alerta.asana_task_gid and asana_conector:
-                asana_conector.actualizar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, nivel, mensaje, reabrir=False)
+                asana_conector.actualizar_tarea_asana(
+                    alerta.asana_task_gid, hid, titulo_visible, nivel, mensaje, reabrir=False,
+                    extra_followers=asana_followers, runbook_url=runbook_url,
+                )
 
         # 2. Guardado en DB silencioso (actualiza decimales y minutos sin tocar Asana)
         if str(alerta.mensaje) != nuevo_mensaje:
@@ -152,15 +165,20 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
     elif alerta.is_active == 0:
         # B3: Estaba cerrada. Amnesia de 15 días
         if alerta.end_time and (ahora - alerta.end_time).days <= DIAS_CADUCIDAD:
-            print(f"♻️ REINCIDENCIA (Reabriendo): {hid} -> {tipo_unico} ({nivel})")
+            alerta.reaperturas = (alerta.reaperturas or 0) + 1
+            print(f"♻️ REINCIDENCIA (Reabriendo, van {alerta.reaperturas}): {hid} -> {tipo_unico} ({nivel})")
 
             if alerta.asana_task_gid and asana_conector:
                 # Flujo normal: Reabre la tarea existente
-                asana_conector.actualizar_tarea_asana(alerta.asana_task_gid, hid, tipo_unico, nivel, mensaje, reabrir=True)
+                asana_conector.actualizar_tarea_asana(
+                    alerta.asana_task_gid, hid, titulo_visible, nivel, mensaje, reabrir=True,
+                    extra_followers=asana_followers, runbook_url=runbook_url,
+                    veces_reabierta=alerta.reaperturas,
+                )
             elif asana_conector:
                 # 🛟 FIX SALVAVIDAS: Si no hay tarea previa válida, creamos una nueva
                 print(f"⚠️ REINCIDENCIA SIN TAREA PREVIA: Creando nueva tarea en Asana para {hid}...")
-                nuevo_gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers)
+                nuevo_gid = asana_conector.crear_tarea_alerta(hid, titulo_visible, nivel, mensaje, asana_proj_id, extra_followers=asana_followers, runbook_url=runbook_url)
                 alerta.asana_task_gid = nuevo_gid
 
             alerta.is_active = 1
@@ -170,7 +188,7 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             db.commit()
         else:
             print(f"⚠️ NUEVA ALERTA (Caducidad superada): {hid} -> {tipo_unico}")
-            gid = asana_conector.crear_tarea_alerta(hid, tipo_unico, nivel, mensaje, asana_proj_id, extra_followers=asana_followers) if asana_conector else None
+            gid = asana_conector.crear_tarea_alerta(hid, titulo_visible, nivel, mensaje, asana_proj_id, extra_followers=asana_followers, runbook_url=runbook_url) if asana_conector else None
             nueva = database.AlertaModel(hospital_id=hid, tipo=tipo_unico, mensaje=f"[{nivel}] {mensaje}", start_time=ahora, is_active=1, asana_task_gid=gid)
             db.add(nueva)
             db.commit()

@@ -57,8 +57,24 @@ class ConfigRequest(BaseModel):
 
     # --- Parametros Software ---
     mirth_alert_enabled: bool
-    mirth_queued_threshold: int
+    # DEPRECADO: el detector ya no lo lee (reemplazado por los 6 umbrales de
+    # abajo). Con default porque el campo ya no tiene control en el
+    # formulario -- nada en el frontend lo manda más.
+    mirth_queued_threshold: int = 100
     mirth_responsible_email: str
+
+    # Umbrales de cola por criticidad de canal (mapa de integraciones, ver
+    # docs/13-contrato-topologia-mirth.md). Con default: un cliente viejo
+    # (script.js sin actualizar) sigue pudiendo guardar sin recibir un 422.
+    mirth_queue_warn_alta: int = 20
+    mirth_queue_crit_alta: int = 80
+    mirth_queue_warn_media: int = 60
+    mirth_queue_crit_media: int = 200
+    mirth_queue_warn_baja: int = 150
+    mirth_queue_crit_baja: int = 400
+    mirth_crit_default: str = "media"
+    mirth_stale_minutes: int = 15
+    mirth_queue_warning_alert_enabled: bool = False
 
     # --- Parametros Autoenrute DICOM ---
     # Con default: un cliente viejo (script.js sin actualizar) sigue pudiendo
@@ -137,6 +153,15 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "mirth_alert_enabled": g("mirth_alert_enabled", False, is_bool=True),
         "mirth_queued_threshold": g("mirth_queued_threshold", 100),
         "mirth_responsible_email": g("mirth_responsible_email", ""),
+        "mirth_queue_warn_alta": g("mirth_queue_warn_alta", 20),
+        "mirth_queue_crit_alta": g("mirth_queue_crit_alta", 80),
+        "mirth_queue_warn_media": g("mirth_queue_warn_media", 60),
+        "mirth_queue_crit_media": g("mirth_queue_crit_media", 200),
+        "mirth_queue_warn_baja": g("mirth_queue_warn_baja", 150),
+        "mirth_queue_crit_baja": g("mirth_queue_crit_baja", 400),
+        "mirth_crit_default": g("mirth_crit_default", "media"),
+        "mirth_stale_minutes": g("mirth_stale_minutes", 15),
+        "mirth_queue_warning_alert_enabled": g("mirth_queue_warning_alert_enabled", False, is_bool=True),
 
         # --- AUTOENRUTE DICOM ---
         # ⚠️ Estos defaults DEBEN coincidir con los de alerts_engine.cargar_config().
@@ -184,6 +209,15 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("mirth_alert_enabled", cfg.mirth_alert_enabled)
     s("mirth_queued_threshold", cfg.mirth_queued_threshold)
     s("mirth_responsible_email", cfg.mirth_responsible_email)
+    s("mirth_queue_warn_alta", cfg.mirth_queue_warn_alta)
+    s("mirth_queue_crit_alta", cfg.mirth_queue_crit_alta)
+    s("mirth_queue_warn_media", cfg.mirth_queue_warn_media)
+    s("mirth_queue_crit_media", cfg.mirth_queue_crit_media)
+    s("mirth_queue_warn_baja", cfg.mirth_queue_warn_baja)
+    s("mirth_queue_crit_baja", cfg.mirth_queue_crit_baja)
+    s("mirth_crit_default", cfg.mirth_crit_default)
+    s("mirth_stale_minutes", cfg.mirth_stale_minutes)
+    s("mirth_queue_warning_alert_enabled", cfg.mirth_queue_warning_alert_enabled)
 
     # --- GUARDAR CONFIGURACIONES DE AUTOENRUTE DICOM ---
     s("dicom_alert_enabled", cfg.dicom_alert_enabled)
