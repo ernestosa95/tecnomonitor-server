@@ -21,6 +21,7 @@ passlib[bcrypt]
 slowapi
 requests
 asana
+markdown
 
 # Generación de reportes/PDF
 matplotlib
