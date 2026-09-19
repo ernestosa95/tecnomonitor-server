@@ -20,6 +20,7 @@
     [class*="ti ti-"]::before{ content: ''; }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/mapa_integraciones.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
 /* ============================================================
@@ -1080,6 +1081,15 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 }
 .hosp-card-badge .row-1{font-weight:700;font-size:1em}
 .hosp-card-badge .row-2{font-size:.78em;color:var(--muted)}
+.btn-datos-nuevos{
+    display:flex;align-items:center;gap:7px;background:var(--blue-dim);border:1px solid rgba(74,143,255,.35);
+    color:var(--blue);padding:7px 13px;border-radius:20px;font-size:.8em;font-weight:700;cursor:pointer;
+    font-family:inherit;animation:mi-pulso-datos 1.8s ease-in-out infinite;
+}
+.btn-datos-nuevos:hover{background:rgba(74,143,255,.22)}
+.btn-datos-nuevos svg{flex-shrink:0}
+@keyframes mi-pulso-datos{0%,100%{box-shadow:0 0 0 0 rgba(74,143,255,.35)}50%{box-shadow:0 0 0 5px rgba(74,143,255,0)}}
+@media (prefers-reduced-motion:reduce){.btn-datos-nuevos{animation:none}}
 .tab-content{display:none}
 .tab-content.active{display:block}
 
@@ -2012,7 +2022,14 @@ canvas{color-scheme:dark}
                 <button class="tab-btn active" onclick="switchTab('infra',this)">Infraestructura</button>
                 <button class="tab-btn" onclick="switchTab('logs',this)">Software</button>
                 <button class="tab-btn" onclick="switchTab('kpis',this)">KPIs Uso</button>
+                <button class="tab-btn" onclick="switchTab('mapa',this)">Integraciones</button>
             </div>
+            <button id="btn-datos-nuevos" class="btn-datos-nuevos" style="display:none"
+                    onclick="window.aplicarDatosPendientes && window.aplicarDatosPendientes()"
+                    title="Hay datos nuevos del agente — click para actualizar la vista">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span>Datos nuevos</span>
+            </button>
             <div class="hosp-card-badge">
                 <div id="hosp-card-row1" class="row-1">-- | Cargando...</div>
                 <div id="hosp-card-row2" class="row-2">--/--/-- --:--</div>
@@ -2056,6 +2073,53 @@ canvas{color-scheme:dark}
             <div id="software-legend" style="display:none;"></div>
             
             <div id="logs-container"></div>
+            <div style="height:40px"></div>
+        </div>
+
+        <div id="tab-mapa" class="tab-content" style="padding:20px">
+            <div class="mi-head">
+                <div>
+                    <div class="mi-title">Mapa de integraciones</div>
+                    <p class="mi-sub" id="mi-head-sub">Topología HL7 derivada de la definición de canales de Mirth Connect.</p>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <div class="mi-toggle-bar" role="group" aria-label="Modo de vista">
+                        <button class="mi-toggle-btn active" id="mi-m-op" onclick="MapaIntegraciones.setModo('op')">Operación</button>
+                        <button class="mi-toggle-btn" id="mi-m-est" onclick="MapaIntegraciones.setModo('est')">Estado</button>
+                    </div>
+                    <div class="mi-toggle-bar" role="group" aria-label="Formato">
+                        <button class="mi-toggle-btn active" id="mi-f-map" onclick="MapaIntegraciones.setFormato('mapa')">Mapa</button>
+                        <button class="mi-toggle-btn" id="mi-f-lst" onclick="MapaIntegraciones.setFormato('lista')">Lista</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mi-summary" id="mi-summary"></div>
+
+            <div class="mi-canvas-card">
+                <div class="mi-mobile-only-note">El mapa necesita pantalla ancha. En celular se muestra la lista.</div>
+                <div id="mi-estado-vacio" class="mi-estado-vacio" style="display:none"></div>
+                <div class="mi-canvas-inner" id="mi-canvas-inner">
+                    <svg id="mi-mapa" viewBox="0 0 1180 792" role="img" aria-label="Diagrama de integraciones"></svg>
+                </div>
+                <div class="mi-listview" id="mi-listview"></div>
+                <div class="mi-timebar" style="display:none">
+                    <button class="mi-playbtn" id="mi-play" onclick="MapaIntegraciones.togglePlay()" aria-label="Reproducir línea de tiempo">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" id="mi-play-ico"><polygon points="6,4 20,12 6,20"/></svg>
+                    </button>
+                    <input type="range" id="mi-scrub" min="0" max="0" value="0" step="1" aria-label="Momento en el tiempo">
+                    <span class="mi-tstamp" id="mi-tstamp">--:--</span>
+                    <span class="mi-tlive" id="mi-tlive">En vivo</span>
+                </div>
+                <div class="mi-legend">
+                    <span><i class="mi-lline" style="background:var(--mi-green)"></i> Con tráfico</span>
+                    <span><i class="mi-lline" style="background:var(--mi-amber)"></i> Cola acumulando</span>
+                    <span><i class="mi-lline" style="background:var(--mi-red)"></i> Detenido o con error</span>
+                    <span><i class="mi-lline" style="background:var(--mi-muted2)"></i> Sin tráfico (en cero)</span>
+                    <span><i class="mi-lline" style="background:var(--mi-muted2);opacity:.5"></i> Sin datos frescos</span>
+                    <span><i class="mi-lline" style="background:var(--mi-purple)"></i> Salto interno entre canales</span>
+                </div>
+            </div>
             <div style="height:40px"></div>
         </div>
 
@@ -2588,8 +2652,28 @@ canvas{color-scheme:dark}
                             </div>
                             <input type="checkbox" id="mirth-alert-enabled" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer">
                         </div>
+                        <div style="font-size:.82em;color:var(--muted);margin-bottom:8px">Umbrales de cola por criticidad de canal (se clasifica cada canal desde el panel del mapa de integraciones; uno sin clasificar usa la criticidad por defecto).</div>
                         <div class="grid-2-col">
-                            <div class="input-group"><label>Umbral Mensajes Encolados</label><input type="number" id="mirth-queued-threshold" placeholder="100"></div>
+                            <div class="input-group"><label>Alta · Aviso</label><input type="number" id="mirth-queue-warn-alta" placeholder="20"></div>
+                            <div class="input-group"><label>Alta · Crítico</label><input type="number" id="mirth-queue-crit-alta" placeholder="80"></div>
+                            <div class="input-group"><label>Media · Aviso</label><input type="number" id="mirth-queue-warn-media" placeholder="60"></div>
+                            <div class="input-group"><label>Media · Crítico</label><input type="number" id="mirth-queue-crit-media" placeholder="200"></div>
+                            <div class="input-group"><label>Baja · Aviso</label><input type="number" id="mirth-queue-warn-baja" placeholder="150"></div>
+                            <div class="input-group"><label>Baja · Crítico</label><input type="number" id="mirth-queue-crit-baja" placeholder="400"></div>
+                        </div>
+                        <div class="grid-2-col" style="margin-top:8px">
+                            <div class="input-group">
+                                <label>Criticidad por defecto (sin clasificar)</label>
+                                <select id="mirth-crit-default">
+                                    <option value="alta">Alta</option>
+                                    <option value="media" selected>Media</option>
+                                    <option value="baja">Baja</option>
+                                </select>
+                            </div>
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-top:20px">
+                                <input type="checkbox" id="mirth-queue-warning-alert-enabled" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer">
+                                <span style="font-size:.85em;color:var(--text)">Avisar también en nivel "Aviso"</span>
+                            </label>
                         </div>
                         <div class="input-group" style="margin-top:8px">
                             <label>Responsables Asana (Mirth)</label>
@@ -2615,6 +2699,16 @@ canvas{color-scheme:dark}
                         <div class="grid-2-col">
                             <div class="input-group"><label>Ventana Warning (Minutos)</label><input type="number" id="dicom-warn-min" placeholder="45"></div>
                             <div class="input-group"><label>Ventana Critical (Minutos)</label><input type="number" id="dicom-crit-min" placeholder="120"></div>
+                        </div>
+                        <div class="input-group" style="margin-top:8px">
+                            <label>Responsables Asana (Autoenrutado DICOM)</label>
+                            <div class="autocomplete-wrapper" id="dicom-resp-wrapper">
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);min-height:42px;align-items:center">
+                                    <div id="dicom-resp-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                                    <input type="text" id="dicom-resp-input" placeholder="Buscar usuario técnico..." style="border:none;outline:none;background:transparent;flex-grow:1;min-width:150px;font-size:.9em;padding:0;color:var(--text)">
+                                </div>
+                                <div class="autocomplete-list" id="dicom-resp-list" style="display:none"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -4290,7 +4384,23 @@ window._nuestroVolverAlDashboard = function() {
     }
 };
 </script>
+
+<div class="mi-scrim" id="mi-scrim" onclick="MapaIntegraciones.cerrarDrawer()"></div>
+<aside class="mi-drawer" id="mi-drawer" role="dialog" aria-modal="true" aria-labelledby="mi-dtitle">
+    <div class="mi-dhead">
+        <div>
+            <div class="mi-eyebrow" id="mi-deyebrow">Canal</div>
+            <h3 id="mi-dtitle">—</h3>
+        </div>
+        <button class="mi-xbtn" onclick="MapaIntegraciones.cerrarDrawer()" aria-label="Cerrar detalle">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
+    <div class="mi-dbody" id="mi-dbody"></div>
+</aside>
+
 <script src="/static/script.js"></script>
+<script src="/static/mapa_integraciones.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ── Aplicar nuestros overrides DESPUÉS de que script.js cargó y definió los suyos ──

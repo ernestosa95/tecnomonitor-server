@@ -401,8 +401,21 @@ async function cargarConfigUI() {
         const chkMirth = document.getElementById('mirth-alert-enabled');
         if(chkMirth) chkMirth.checked = data.mirth_alert_enabled;
 
-        const inpMirthQueue = document.getElementById('mirth-queued-threshold');
-        if(inpMirthQueue) inpMirthQueue.value = data.mirth_queued_threshold || 100;
+        // Umbrales de cola por criticidad (mapa de integraciones) -- reemplazan
+        // al viejo campo único "mirth-queued-threshold".
+        const mirthUmbralesIds = {
+            'mirth-queue-warn-alta': 'mirth_queue_warn_alta', 'mirth-queue-crit-alta': 'mirth_queue_crit_alta',
+            'mirth-queue-warn-media': 'mirth_queue_warn_media', 'mirth-queue-crit-media': 'mirth_queue_crit_media',
+            'mirth-queue-warn-baja': 'mirth_queue_warn_baja', 'mirth-queue-crit-baja': 'mirth_queue_crit_baja',
+        };
+        for (const [elId, campo] of Object.entries(mirthUmbralesIds)) {
+            const el = document.getElementById(elId);
+            if (el) el.value = data[campo];
+        }
+        const selMirthCritDefault = document.getElementById('mirth-crit-default');
+        if (selMirthCritDefault) selMirthCritDefault.value = data.mirth_crit_default || 'media';
+        const chkMirthWarnAlert = document.getElementById('mirth-queue-warning-alert-enabled');
+        if (chkMirthWarnAlert) chkMirthWarnAlert.checked = !!data.mirth_queue_warning_alert_enabled;
 
         // --- CAMPOS DICOM ---
         const chkDicom = document.getElementById('dicom-alert-enabled');
@@ -414,7 +427,7 @@ async function cargarConfigUI() {
         const inpDicomCrit = document.getElementById('dicom-crit-min');
         if(inpDicomCrit) inpDicomCrit.value = data.dicom_stall_critical_minutes || 120;
 
-        cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email);
+        cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email, data.dicom_responsible_email);
         
         renderKpiModsChips();
         initKpiModsSelector();
@@ -451,13 +464,24 @@ async function guardarConfig() {
         kpi_mamo_threshold_days: parseInt(document.getElementById('kpi-mamo-days').value) || 7,
 
         mirth_alert_enabled: document.getElementById('mirth-alert-enabled').checked,
-        mirth_queued_threshold: parseInt(document.getElementById('mirth-queued-threshold').value) || 100,
         mirth_responsible_email: mirthSelectedUsers.join(','),
+
+        // Umbrales de cola por criticidad -- reemplazan a mirth_queued_threshold
+        // (deprecado en el backend, ya no se manda: el DTO tiene default).
+        mirth_queue_warn_alta: parseInt(document.getElementById('mirth-queue-warn-alta')?.value) || 20,
+        mirth_queue_crit_alta: parseInt(document.getElementById('mirth-queue-crit-alta')?.value) || 80,
+        mirth_queue_warn_media: parseInt(document.getElementById('mirth-queue-warn-media')?.value) || 60,
+        mirth_queue_crit_media: parseInt(document.getElementById('mirth-queue-crit-media')?.value) || 200,
+        mirth_queue_warn_baja: parseInt(document.getElementById('mirth-queue-warn-baja')?.value) || 150,
+        mirth_queue_crit_baja: parseInt(document.getElementById('mirth-queue-crit-baja')?.value) || 400,
+        mirth_crit_default: document.getElementById('mirth-crit-default')?.value || 'media',
+        mirth_queue_warning_alert_enabled: document.getElementById('mirth-queue-warning-alert-enabled')?.checked || false,
 
         // --- CAMPOS DICOM ---
         dicom_alert_enabled: document.getElementById('dicom-alert-enabled')?.checked || false,
         dicom_stall_warning_minutes: parseInt(document.getElementById('dicom-warn-min')?.value) || 45,
         dicom_stall_critical_minutes: parseInt(document.getElementById('dicom-crit-min')?.value) || 120,
+        dicom_responsible_email: dicomSelectedUsers.join(','),
     };
     
     try {
@@ -624,6 +648,14 @@ document.getElementById('filter-hospital')?.addEventListener('input', aplicarFil
 
 // --- VISTA DETALLE (CORREGIDA V4) ---
 async function verDetalle(hospitalId) {
+    // Frena el timer del mapa de integraciones si venía corriendo para otro
+    // hospital -- si no, seguiría reproduciéndose sobre datos del anterior.
+    if (window.MapaIntegraciones) window.MapaIntegraciones.destroy();
+
+    // Limpia el botón "Datos nuevos" (refresco-vivo.js) si quedaba pendiente
+    // del hospital anterior.
+    if (window.reiniciarBotonDatosNuevos) window.reiniciarBotonDatosNuevos();
+
     currentHospitalId = hospitalId;
     currentHistoryData = [];
     currentRangeHours = 24; 
@@ -3386,6 +3418,15 @@ function switchTab(tabId, btn) {
     const targetTab = document.getElementById(`tab-${tabId}`);
     if (targetTab) targetTab.classList.add('active');
 
+    // Mapa de integraciones: carga bajo demanda (recién al entrar al tab) y
+    // frena su timer de reproducción al salir, para no seguir corriendo
+    // sobre un SVG oculto.
+    if (tabId === 'mapa' && window.MapaIntegraciones && currentHospitalId) {
+        window.MapaIntegraciones.cargar(currentHospitalId);
+    } else if (window.MapaIntegraciones) {
+        window.MapaIntegraciones.destroy();
+    }
+
     // 5. FIX: Forzar redibujado de Chart.js al volver a hacer visible el contenedor
     setTimeout(() => {
         if (tabId === 'infra' && typeof myChart !== 'undefined' && myChart) {
@@ -4554,21 +4595,24 @@ function renderKpiModsList(filterText = "") {
 
 // Variables globales
 let mirthSelectedUsers = [];
+let dicomSelectedUsers = [];
 
-// MODIFICA LA FIRMA de la función para recibir el tercer parámetro
-async function cargarUsuariosResponsables(emailsKpi, emailsGlobal, emailsMirth) {
+// MODIFICA LA FIRMA de la función para recibir el cuarto parámetro
+async function cargarUsuariosResponsables(emailsKpi, emailsGlobal, emailsMirth, emailsDicom) {
     try {
         const res = await authFetch('/api/users/responsables');
-        kpiAllUsers = await res.json(); 
-        
+        kpiAllUsers = await res.json();
+
         kpiSelectedUsers = emailsKpi ? emailsKpi.split(',').map(e => e.trim()).filter(e => e) : [];
         globalSelectedUsers = emailsGlobal ? emailsGlobal.split(',').map(e => e.trim()).filter(e => e) : [];
         mirthSelectedUsers = emailsMirth ? emailsMirth.split(',').map(e => e.trim()).filter(e => e) : []; // NUEVO
-        
+        dicomSelectedUsers = emailsDicom ? emailsDicom.split(',').map(e => e.trim()).filter(e => e) : []; // NUEVO
+
         renderKpiRespChips();
-        renderGlobalRespChips(); 
+        renderGlobalRespChips();
         renderMirthRespChips(); // NUEVO
-        
+        renderDicomRespChips(); // NUEVO
+
         // ... (resto del código existente para inputKpi y inputGlb) ...
 
         // --- Iniciar buscador MIRTH ---
@@ -4580,14 +4624,77 @@ async function cargarUsuariosResponsables(emailsKpi, emailsGlobal, emailsMirth) 
             newInpM.addEventListener('input', (e) => renderMirthRespList(e.target.value));
         }
 
+        // --- Iniciar buscador DICOM ---
+        const inputDicom = document.getElementById('dicom-resp-input');
+        if (inputDicom) {
+            const newInpD = inputDicom.cloneNode(true);
+            inputDicom.parentNode.replaceChild(newInpD, inputDicom);
+            newInpD.addEventListener('focus', () => renderDicomRespList(newInpD.value));
+            newInpD.addEventListener('input', (e) => renderDicomRespList(e.target.value));
+        }
+
         // Listener global de clic afuera (Añadir a los existentes)
         document.addEventListener('click', (e) => {
             // ... (código existente)
             const wrapperMirth = document.getElementById('mirth-resp-wrapper');
             if (wrapperMirth && !wrapperMirth.contains(e.target)) document.getElementById('mirth-resp-list').style.display = 'none';
+
+            const wrapperDicom = document.getElementById('dicom-resp-wrapper');
+            if (wrapperDicom && !wrapperDicom.contains(e.target)) document.getElementById('dicom-resp-list').style.display = 'none';
         });
 
     } catch(e) { console.error("Error cargando responsables:", e); }
+}
+
+// ==========================================
+// --- FUNCIONES EXCLUSIVAS PARA DICOM AUTOENRUTE ---
+// ==========================================
+function renderDicomRespChips() {
+    const container = document.getElementById('dicom-resp-chips');
+    if (!container) return;
+    container.innerHTML = dicomSelectedUsers.map(email => {
+        const user = kpiAllUsers.find(u => u.email === email);
+        const nombre = user ? user.nombre : email;
+        const warn = user && !user.tiene_asana ? ' <span title="Sin Asana ID" style="color:#f39c12; margin-left:3px;">⚠️</span>' : '';
+        return `<div style="display:flex; align-items:center; background:#eafaf1; border:1px solid #c8f0d8; color:#27ae60; padding:4px 10px; border-radius:15px; font-size:0.85em; font-weight:600;">${nombre}${warn}<span style="margin-left:8px; cursor:pointer; color:#7f8c8d; transition:0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'" onclick="removeDicomResp('${email}')">✕</span></div>`;
+    }).join('');
+}
+
+function removeDicomResp(email) {
+    dicomSelectedUsers = dicomSelectedUsers.filter(e => e !== email);
+    renderDicomRespChips();
+    renderDicomRespList(document.getElementById('dicom-resp-input').value);
+}
+
+function addDicomResp(email) {
+    if (!dicomSelectedUsers.includes(email)) {
+        dicomSelectedUsers.push(email);
+        renderDicomRespChips();
+        const input = document.getElementById('dicom-resp-input');
+        input.value = ''; input.focus();
+        renderDicomRespList('');
+    }
+}
+
+function renderDicomRespList(filterText = "") {
+    const list = document.getElementById('dicom-resp-list');
+    if (!list) return;
+    const filterLower = filterText.toLowerCase();
+    const availableUsers = kpiAllUsers.filter(u => {
+        if (dicomSelectedUsers.includes(u.email)) return false;
+        if (filterLower && !u.nombre.toLowerCase().includes(filterLower) && !u.email.toLowerCase().includes(filterLower)) return false;
+        return true;
+    });
+
+    if (availableUsers.length === 0) {
+        list.innerHTML = `<div style="padding:15px; color:#7f8c8d; font-size:0.9em; text-align:center;">No se encontraron más usuarios</div>`;
+    } else {
+        list.innerHTML = availableUsers.map(u => {
+            const warn = u.tiene_asana ? '' : '<span style="color:#f39c12; font-size:0.9em; margin-left:5px;" title="No tiene Asana ID cargado">⚠️ Sin Asana ID</span>';
+            return `<div onclick="addDicomResp('${u.email}')" style="padding:10px 15px; border-bottom:1px solid #f1f5f8; cursor:pointer; font-size:0.9em; transition:0.2s;" onmouseover="this.style.background='#eafaf1'" onmouseout="this.style.background='transparent'"><div style="font-weight:600; color:#27ae60;">${u.nombre}${warn}</div><div style="font-size:0.85em; color:#7f8c8d;">${u.email}</div></div>`;
+        }).join('');
+    }
+    list.style.display = 'block';
 }
 
 // ==========================================
