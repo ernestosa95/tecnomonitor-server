@@ -1376,7 +1376,7 @@
     <p>En las próximas horas recibirá un contacto personalizado con su análisis de viabilidad y proyección de ahorro.</p>
     <div class="video-pill">
         <p>Mientras tanto, lo invitamos a ver este video de 1 minuto sobre cómo funciona nuestro visor Zero-Footprint 👇</p>
-        <a href="https://www.dedalus.com" target="_blank">▶ Ver Demo del Visor Zero-Footprint</a>
+        <a href="#demo" id="gracias-ver-demo">▶ Ver Demo del Visor Zero-Footprint</a>
     </div>
 </div>
 
@@ -1498,6 +1498,13 @@ document.addEventListener('DOMContentLoaded', () => {
         g.style.display = 'flex';
         setTimeout(() => { g.style.opacity = 1; }, 10);
     }
+
+    // El link de la página de gracias cierra la capa y deja al usuario en la sección de videos (#demo)
+    document.getElementById('gracias-ver-demo').addEventListener('click', () => {
+        const g = document.getElementById('gracias');
+        g.style.opacity = 0;
+        g.style.display = 'none';
+    });
 
 });
 
