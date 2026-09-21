@@ -204,22 +204,30 @@
     return Math.max(1, huecos[Math.floor(huecos.length / 2)]);
   }
 
+  // Tramos consecutivos sin lectura justo antes del tramo actual (el actual no cuenta: en vivo su
+  // lectura puede no haber llegado todavía). Un hueco a mitad de la ventana no pierde tráfico, porque
+  // el delta de la lectura siguiente lo recoge; lo que queda sin contar es lo posterior a la última.
+  function _tramosSinLectura(cid) {
+    let n = 0;
+    for (let i = paso - 1; i >= 0 && !((TL[i].ch[cid] || {}).fresco); i--) n++;
+    return n;
+  }
+
   function datoDe(cid) {
     const inst = (TL[paso] || { ch: {} }).ch[cid] || {};
     if (!acumulado) return inst;
     const v = _tramosVentana();
-    let trafico = 0, rx = 0, tx = 0, err = 0, lecturas = 0;
+    let trafico = 0, rx = 0, tx = 0, err = 0;
     for (let i = v.desde; i <= paso; i++) {
       const t = (TL[i] || { ch: {} }).ch[cid] || {};
       trafico += t.trafico || 0; rx += t.rx || 0; tx += t.tx || 0; err += t.err || 0;
-      if (t.fresco) lecturas++;
     }
-    const esperadas = Math.max(1, Math.floor(v.cant / CADENCIA));
-    return Object.assign({}, inst, { trafico, rx, tx, err, lecturas, esperadas, tramos: v.cant, parcial: lecturas < esperadas });
+    const sinLectura = _tramosSinLectura(cid);
+    return Object.assign({}, inst, { trafico, rx, tx, err, tramos: v.cant, sinLectura, parcial: sinLectura > CADENCIA });
   }
 
   const _fmtN = n => (n || 0).toLocaleString('es-AR');
-  // Cifra de tráfico de un canal; el asterisco marca un acumulado con lecturas incompletas.
+  // Cifra de tráfico de un canal; el asterisco marca un acumulado al que le falta lo posterior a la última lectura.
   const _fmtTrafico = d => acumulado ? _fmtN(d.trafico) + (d.parcial ? '*' : '') : String(d.trafico || 0);
 
   // ============================================================
@@ -488,7 +496,7 @@
     return `<div class="mi-sec">Flujo · últimos ${ACUM_MIN} min</div>
       <div class="mi-kv"><span class="mi-k">Recibidos</span><span class="mi-v">${v ? _fmtN(d.rx) : '—'}</span></div>
       <div class="mi-kv"><span class="mi-k">Enviados</span><span class="mi-v">${v ? _fmtN(d.tx) : '—'}</span></div>
-      ${v && d.parcial ? `<div class="mi-kv"><span class="mi-k">Lecturas en la ventana</span><span class="mi-v">${d.lecturas} de ${d.esperadas} esperadas *</span></div>` : ''}`;
+      ${v && d.parcial ? `<div class="mi-kv"><span class="mi-k">Sin lecturas desde hace</span><span class="mi-v">~${d.sinLectura * (META.paso_min || 5)} min *</span></div>` : ''}`;
   }
 
   // Aclaración bajo la barra temporal, solo en modo acumulado.
@@ -500,7 +508,7 @@
     const parciales = CANALES.filter(c => { const d = datoDe(c.id); return d.fresco && d.parcial; }).length;
     let txt = `Acumulado de los últimos ${v.cant * pasoMin} min hasta el momento de la barra. Estado y cola son los de ese momento.`;
     if (v.cant < v.pedidos) txt += ` Solo hay ${v.cant * pasoMin} min de historial hasta este punto.`;
-    if (parciales) txt += ` * ${parciales} canal(es) con lecturas incompletas en la ventana: el total podría ser mayor.`;
+    if (parciales) txt += ` * ${parciales} canal(es) sin lecturas recientes: su total no incluye lo posterior a la última lectura y podría ser mayor.`;
     nota.textContent = txt;
     nota.style.display = 'block';
   }

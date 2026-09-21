@@ -38,7 +38,7 @@ reproducirlo.
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
 | REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas | baja (propuesta) |
 | REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
-| REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado en código (2026-09-21), sin commitear; falta validar en un hospital real | por definir |
+| REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
 
@@ -738,9 +738,8 @@ tiene un tope de 288 tramos (24 h a paso 5).
 
 #### Cuidados
 
-1. **Datos incompletos:** si en la ventana faltan lecturas del hospital (tramos con `fresco: false`),
-   la suma queda por debajo de la realidad sin avisar. Mostrar un indicador ("datos parciales,
-   4 de 6 lecturas") en lugar de un número que parezca completo.
+1. **Datos incompletos:** si el hospital dejó de reportar hace un rato, la suma queda por debajo de
+   la realidad sin avisar. Se marca con un asterisco y la nota bajo la barra (ver Implementación).
 2. **Reinicio de contadores:** si Mirth reinicia o se resetean sus estadísticas, `_bucketizar`
    descarta ese delta (cuenta 0). En una ventana de 30 min ese tramo se pierde; conviene marcarlo
    o documentarlo.
@@ -761,12 +760,16 @@ detalle; errores solo en el detalle). Detalles que difieren o precisan lo propue
 - **Grosor de los enlaces:** en lugar de una escala relativa o logarítmica, usa la **tasa media por
   tramo** (total ÷ tramos de la ventana) con la misma fórmula de siempre. El mismo grosor significa
   el mismo caudal en ambas vistas y no satura.
-- **Datos parciales:** el asterisco (`50*`) aparece cuando las lecturas frescas de la ventana son
-  menos de las esperadas. Lo esperado sale de la cadencia de reporte del hospital, estimada como la
-  mediana de los huecos entre lecturas de todos los canales (así un hospital que reporta cada
-  10 min no aparece siempre como parcial). Es una heurística: un hueco a mitad de la ventana no
-  pierde tráfico salvo reinicio de contadores, pero igual se marca; la nota lo aclara como "podría
-  ser mayor".
+- **Datos parciales:** el asterisco (`60*`) aparece solo cuando a un canal le faltan lecturas **justo
+  antes del tramo actual** (más tramos consecutivos sin lectura que la cadencia de reporte del
+  hospital, estimada como la mediana de los huecos entre lecturas). Es lo único que puede dejar el
+  total corto: un hueco a mitad de la ventana no pierde tráfico, porque el delta de la lectura
+  siguiente lo recoge. *(Primera versión, corregida el mismo día: marcaba cualquier lectura faltante
+  en la ventana y, con lecturas algo corridas respecto de los tramos de 5 min, salían marcados casi
+  todos los canales en producción.)* Datos de producción (2026-09-21, filas por canal en 24 h):
+  P03 257 (~5,6 min entre lecturas), PMMN 246 (~5,9 min), OSECAC_GMS 222 (~6,5 min): el agente reporta
+  algo más lento que el tramo de 5 min, así que ~1 de cada 9 tramos queda sin lectura. Nota: los
+  `component_id` de Mirth llevan el nombre de la instancia (`[MIRTH_SE] OUT`, no `OUT`).
 - **Ventana acotada:** cerca del inicio del historial la barra suma solo los tramos disponibles y la
   nota lo dice ("Solo hay 15 min de historial hasta este punto").
 - **Reinicio de contadores** (cuidado 2): no se detecta en el frontend, porque el server ya lo
@@ -774,8 +777,10 @@ detalle; errores solo en el detalle). Detalles que difieren o precisan lo propue
 - **Fuera de esta entrega:** otras ventanas (1 h / 3 h) y errores sobre el enlace.
 
 Verificado con Chromium (Playwright) sobre el HTML, CSS y JS reales, con una API simulada de tres
-canales (estable, con huecos de lecturas y sin tráfico): totales, lista, detalle, ventana acotada y
-vuelta a instantáneo dieron lo esperado, sin errores de JS. **No se probó contra datos reales.**
+canales (estable, con huecos aislados de lecturas, con un hueco al final y sin tráfico): totales,
+lista, detalle, ventana acotada y vuelta a instantáneo dieron lo esperado, sin errores de JS. La
+primera prueba en producción mostró el problema del asterisco descrito arriba; el criterio corregido
+**no se volvió a probar con datos reales.**
 
 #### Decisiones abiertas (propuestas ya aplicadas por defecto)
 
