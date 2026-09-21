@@ -779,7 +779,8 @@
             .contact-inner { grid-template-columns: 1fr; }
             .stat-strip { grid-template-columns: 1fr; }
             .stat-strip-item { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.07); }
-            nav ul { display: none; }
+            /* Los links de sección se ocultan, pero el botón de contacto se queda visible */
+            nav ul li:not(.nav-cta-li) { display: none; }
         }
 
         /* ===== MÓVIL VERTICAL ===== */
@@ -787,6 +788,9 @@
             /* El padding de la sección y el del .wrap se sumaban (48px por lado): se deja solo el de la sección. */
             nav { padding: 0 16px; height: 60px; }
             .nav-logo { font-size: 1.05rem; }
+            .nav-cta-extra { display: none; }
+            .nav-cta { padding: 8px 14px !important; font-size: 0.8rem !important; white-space: nowrap; }
+            @media (max-width: 400px) { .nav-logo .powered { display: none; } }
             #hero { padding: 84px 16px 48px; }
             #desafio, #autoridad, #demo, #simulador, #planes, #contacto { padding: 64px 16px; }
             .wrap { padding: 0; }
@@ -834,7 +838,7 @@
         <li><a href="#demo">Demo en Vivo</a></li>
         <li class="tmp-oculto"><a href="#simulador">Calculadora de Ahorro</a></li>
         <li class="tmp-oculto"><a href="#planes">Planes</a></li>
-        <li><a href="#contacto" class="nav-cta">Agendar Demo Exclusiva</a></li>
+        <li class="nav-cta-li"><a href="#contacto" class="nav-cta">Agendar Demo<span class="nav-cta-extra"> Exclusiva</span></a></li>
     </ul>
 </nav>
 

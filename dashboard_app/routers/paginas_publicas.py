@@ -132,7 +132,7 @@ _LEADS_DEMO_PACS_MAX = {
     "email": 254, "telefono": 30, "plan_interes": 120, "origen": 20,
 }
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_TELEFONO_RE = re.compile(r"^\+?[0-9][0-9\s().-]{5,}$")
+_TELEFONO_RE = re.compile(r"^[+(]?[0-9][0-9\s().-]{5,}$")  # admite "(011) 4123-4567"
 _TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
 
 
@@ -178,6 +178,17 @@ async def submit_lead_demo_pacs(
             status_code=400,
         )
 
+    # El teléfono se guarda solo con dígitos (sin +, espacios ni guiones): queda uniforme para
+    # Excel y no dispara el saneado antifórmula. 15 dígitos es el máximo de un número internacional
+    # (E.164) y lo que Excel conserva sin perder precisión.
+    solo_digitos = re.sub(r"\D", "", campos["telefono"])
+    if not 6 <= len(solo_digitos) <= 15:
+        return JSONResponse(
+            content={"status": "error", "message": "Ingrese un teléfono válido (entre 6 y 15 dígitos; puede usar +, espacios, guiones o paréntesis)."},
+            status_code=400,
+        )
+    campos["telefono"] = solo_digitos
+
     fila = [datetime.now(_TZ_AR).strftime("%Y-%m-%d %H:%M:%S")] + [
         campos[k] for k in (
             "nombre_apellido", "institucion", "cargo", "volumen_estudios",
@@ -190,8 +201,10 @@ async def submit_lead_demo_pacs(
         # único proceso uvicorn dos requests no se pueden intercalar acá.
         file_exists = os.path.isfile(LEADS_DEMO_PACS_CSV)
         # utf-8-sig: el BOM hace que Excel abra bien las tildes (Python no lo repite en modo append).
+        # Separador ";" porque el Excel en español (es-AR) lo usa como separador de lista: con "," abriría
+        # el archivo con todo en una sola columna.
         with open(LEADS_DEMO_PACS_CSV, mode="a", newline="", encoding="utf-8-sig") as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f, delimiter=";")
             if not file_exists:
                 writer.writerow(_LEADS_DEMO_PACS_HEADERS)
             writer.writerow([_sanear_campo_csv(v) for v in fila])

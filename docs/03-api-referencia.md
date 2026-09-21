@@ -97,7 +97,7 @@ el detalle del RBAC).
 |---|---|---|---|
 | GET | `/herramientas`, `/ris-analytics`, `/prov-analytics`, `/hl7-analytics`, `/pacs-capacity`, `/salta-project`, `/renovacion`, `/demo-pacs`, `/tecno-solution` | Páginas HTML de ventas/herramientas internas. | mayormente públicas |
 | POST | `/submit-lead` | Formulario de contacto de un evento → append a CSV en disco. | pública. **Rate-limited 10/min y saneado contra CSV/Formula Injection desde la Fase 1.** |
-| POST | `/submit-lead-demo-pacs` | Formulario de la landing `/demo-pacs` (nombre, institución, cargo, volumen, email, teléfono, plan, origen) → una fila por envío en `leads_demo_pacs.csv` (relativo al cwd del server; UTF-8 con BOM, fecha en hora de Argentina). | pública. **Rate-limited 10/min**, validación de email/teléfono y largo máximo por campo, saneado contra CSV/Formula Injection. |
+| POST | `/submit-lead-demo-pacs` | Formulario de la landing `/demo-pacs` (nombre, institución, cargo, volumen, email, teléfono, plan, origen) → una fila por envío en `leads_demo_pacs.csv` (relativo al cwd del server; UTF-8 con BOM, separador `;` para que abra bien en Excel es-AR, fecha en hora de Argentina). El teléfono se guarda solo con dígitos (entre 6 y 15). | pública. **Rate-limited 10/min**, validación de email/teléfono y largo máximo por campo, saneado contra CSV/Formula Injection. |
 | GET | `/beta`, `/beta/simulador` | Vista beta / simulador embebido. | `/beta` pública; `/beta/simulador` requiere login (sin chequeo de rol) |
 | GET | `/cliente` | Portal del rol Cliente. | login validado manualmente en el handler |
 
