@@ -1,5 +1,5 @@
 """
-Login/logout, páginas de entrada (login, /monitor, /beta), y el rate
+Login/logout, páginas de entrada (login, /beta; /monitor solo redirige a /beta), y el rate
 limiting de intentos fallidos (por IP y por cuenta).
 
 Noveno router extraído de dashboard.py -- se dejó para casi el final a
@@ -15,6 +15,7 @@ ruta de import (`auth` vs `routers.auth`).
 import time
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -41,8 +42,11 @@ def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
 @router.get("/monitor")
-def dashboard_page(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+def dashboard_page():
+    # La interfaz clásica (index.html) se retiró: /monitor queda solo como redirección para que
+    # sigan funcionando los favoritos y las PWA instaladas con el manifest viejo en caché.
+    # Se puede eliminar cuando los logs de acceso ya no la muestren (ver docs/16, REQ-02).
+    return RedirectResponse("/beta", status_code=302)
 
 @router.post("/api/login")
 def verificar_login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_db)):

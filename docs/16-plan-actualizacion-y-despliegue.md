@@ -36,7 +36,7 @@ reproducirlo.
 |---|---|---|---|---|
 | REQ-01a | Alerta por reinicio de VM | server (motor de alertas) | definido, sin implementar | por definir |
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
-| REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas | baja (propuesta) |
+| REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas; **retiro de `/monitor` hecho (2026-09-21)** | baja (propuesta) |
 | REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
 
@@ -386,6 +386,12 @@ necesita el ítem S5 del plan de acción ([07](07-plan-de-accion.md), 2.2). Conv
 **versionar esa configuración en el repo** (hoy solo existe en el servidor).
 
 #### Retiro de `/monitor`
+
+**Estado (2026-09-21): pasos 1 y 2 hechos, `index.html` borrado y selector "clásica / beta" del login
+quitado.** `manifest.json` arranca en `/beta`, `/monitor` responde 302 a `/beta`. Queda el paso 3
+(eliminar la redirección cuando los logs de Nginx ya no la muestren). Los cambios locales sin
+commitear que tenía `index.html` se descartaron: no había nada de producción en ellos. `script.js`
+puede conservar código que solo usaba `index.html`; queda para la Fase 2 de REQ-02.
 
 **Riesgo a resolver antes de quitar la ruta:** `static/manifest.json` tiene
 `"start_url": "/monitor"` y lo cargan tanto `index.html` como `index_beta.html`. Quien haya

@@ -554,7 +554,7 @@
     tocando = null;
   }
 
-  // Solo cierra el drawer del mapa -- no le roba Escape a otros modales de index.html.
+  // Solo cierra el drawer del mapa -- no le roba Escape a otros modales de index_beta.html.
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     const d = $('mi-drawer');

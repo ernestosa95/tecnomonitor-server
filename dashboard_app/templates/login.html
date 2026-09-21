@@ -178,19 +178,6 @@ body{
     </div>
 </div>
 
-<div id="modal-version" class="modal-overlay">
-    <div class="modal-content" style="max-width:380px;text-align:center">
-        <h3 style="border-bottom:none;text-align:center;padding-bottom:0">¿Qué versión querés usar?</h3>
-        <p style="color:var(--muted);font-size:13px;margin:0 0 22px">
-            Estamos probando una nueva interfaz. Podés elegir la versión clásica o probar la beta.
-        </p>
-        <div style="display:flex;flex-direction:column;gap:10px">
-            <button class="btn-login" onclick="irAVersionBeta()">✨ Probar versión beta</button>
-            <button class="btn-login" onclick="irAVersionClasica()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Usar versión clásica</button>
-        </div>
-    </div>
-</div>
-
 <!-- Modal Solicitud de Acceso — interno o cliente -->
 <div id="modal-solicitud" class="modal-overlay">
     <div class="modal-content">
@@ -294,18 +281,6 @@ body{
             btn.disabled = false;
             btn.innerText = "Ingresar";
         }
-    }
-
-    function abrirModalVersion() {
-        document.getElementById('modal-version').style.display = 'flex';
-    }
-
-    function irAVersionClasica() {
-        window.location.href = '/monitor';
-    }
-
-    function irAVersionBeta() {
-        window.location.href = '/beta';
     }
 
     function mostrarError(texto) {
@@ -446,9 +421,6 @@ body{
     // Cerrar modal al hacer click afuera
     document.getElementById('modal-solicitud').addEventListener('click', function(e){
         if (e.target === this) cerrarModalSolicitud();
-    });
-    document.getElementById('modal-version').addEventListener('click', function(e){
-        if (e.target === this) irAVersionClasica();  // si cierra sin elegir, va a la clásica por defecto
     });
 </script>
 </body>

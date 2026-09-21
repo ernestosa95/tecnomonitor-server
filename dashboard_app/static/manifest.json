@@ -1,7 +1,7 @@
 {
   "name": "TecnoMonitor Infraestructura",
   "short_name": "TM Infra",
-  "start_url": "/monitor",
+  "start_url": "/beta",
   "display": "standalone",
   "background_color": "#f4f6f8",
   "theme_color": "#2c3e50",

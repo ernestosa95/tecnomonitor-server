@@ -56,7 +56,7 @@ canales vía "Channel Writer").
   todo como stale si el hospital reporta con un intervalo mayor al `paso` pedido).
 
 - **Frontend**: pestaña "Integraciones" (`static/mapa_integraciones.js` y `.css`) en
-  `index_beta.html` — y también todavía en `index.html`, la UI vieja en desuso — que consume
+  `index_beta.html`, que consume
   `GET /api/hospital/{id}/mirth/mapa`. Modos Operación/Estado, formato Mapa/Lista, barra temporal
   ("en vivo" o un momento pasado), botón secundario "Últimos 30 min" que reemplaza el tráfico del
   tramo por el acumulado de la ventana (solo `index_beta.html`; detalle en REQ-04 de

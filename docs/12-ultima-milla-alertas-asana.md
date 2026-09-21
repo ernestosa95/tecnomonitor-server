@@ -320,5 +320,4 @@ de levantar `server.py`, si no se instaló ya.
 
 **Nota sobre `/monitor` vs `/beta`**: el selector de responsables de DICOM se agregó en
 `templates/index_beta.html` (servido en `/beta`), que es la plantilla activamente
-mantenida — `templates/index.html` (servida en `/monitor`) no tiene sección de
-configuración de autoenrute DICOM en absoluto, con o sin este cambio.
+mantenida (`templates/index.html`, que se servía en `/monitor`, se retiró el 2026-09-21).

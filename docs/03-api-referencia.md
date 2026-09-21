@@ -33,7 +33,7 @@ el detalle del RBAC).
 
 | Método | Ruta | Descripción | Auth |
 |---|---|---|---|
-| GET | `/monitor` | Vista principal (tabla de toda la red). | HTML, chequeo real vía API |
+| GET | `/monitor` | Redirige (302) a `/beta`. La interfaz clásica (`index.html`) se retiró el 2026-09-21; la ruta queda solo por favoritos y PWA instaladas. | pública |
 | GET | `/api/resumen-hospitales` | Resumen agregado por hospital (cacheado 30s en memoria). | `bloquear_cliente()` (cualquier rol interno) |
 | GET | `/api/provincias` | Resumen agregado por provincia (cacheado 60s en memoria). | `bloquear_cliente()` |
 | GET | `/api/mapa-data` | Datos para el mapa nacional. | `bloquear_cliente()` |

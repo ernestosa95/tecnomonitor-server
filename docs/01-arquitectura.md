@@ -64,7 +64,7 @@ en [08-plan-refactor-dashboard.md](08-plan-refactor-dashboard.md).
 |---|---|
 | `dashboard_app/dashboard.py` (195 líneas) | Composición: crea la app, arma middleware (CORS, GZip, cabeceras de seguridad, rate limiting), y hace `include_router(...)` de los 10 módulos de abajo. |
 | `dashboard_app/core.py` | Lo mínimo que comparten 2+ routers: `get_db`, `templates`, `limiter`, `generar_password_temporal`, `ROLES_INTERNOS_VALIDOS`. |
-| `dashboard_app/routers/auth.py` | Login/logout, `/`, `/monitor`, `/beta`, rate limit de intentos fallidos. |
+| `dashboard_app/routers/auth.py` | Login/logout, `/`, `/beta` (y `/monitor`, que solo redirige a `/beta`), rate limit de intentos fallidos. |
 | `dashboard_app/routers/websocket.py` | `/ws/alertas` y su `ConnectionManager`. |
 | `dashboard_app/routers/resumen_red.py` | Resumen por hospital, por provincia/proyecto, datos del mapa. |
 | `dashboard_app/routers/hospitales_metadata.py` | ABM de hospitales (alta, edición, toggles, KPIs manuales). |
@@ -128,13 +128,11 @@ marketing/ventas (`solucion1..4.html`, `demo-pacs.html`, `herramientas.html`).
 ⚠️ **`index_beta.html` (`/beta`) es la plantilla que efectivamente usa el equipo interno
 hoy — no es una "vista beta" secundaria pese al nombre.** `login.html` redirige ahí a todo
 usuario interno tras un login exitoso (`window.location.href = '/beta'`, comentado
-explícitamente `// internos, como hasta ahora`). `index.html` (`/monitor`) es una versión
-anterior que quedó de una etapa previa del proyecto — sigue montada y accesible (hay un
-botón "Usar versión clásica" en el login que lleva ahí, y `manifest.json` todavía apunta
-`start_url` a `/monitor`), pero **no es la que se mantiene activamente ni la que ve el
-equipo por default**. Al tocar el frontend, el trabajo real va en `index_beta.html` +
-`script.js` — cualquier cambio espejado en `index.html` es best-effort para no romper esa
-ruta vieja, no el objetivo principal. Esto se confundió al menos una vez durante el
+explícitamente `// internos, como hasta ahora`). La interfaz anterior
+(`index.html`, servida en `/monitor`) se **retiró el 2026-09-21**: `/monitor` ahora solo redirige
+(302) a `/beta`, `manifest.json` arranca en `/beta` y el login ya no ofrece la "versión clásica".
+Al tocar el frontend, el trabajo va en `index_beta.html` + `script.js`, sin nada que espejar.
+Esto se confundió al menos una vez durante el
 desarrollo del mapa de integraciones (ver
 [13-contrato-topologia-mirth.md](13-contrato-topologia-mirth.md)); si se vuelve a tocar el
 frontend, confirmar primero en `login.html` a qué ruta redirige antes de asumir cuál

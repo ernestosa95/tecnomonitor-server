@@ -58,8 +58,8 @@ nada.**
   (`#map-dashboard-container`, al lado de la lista de hospitales, con su propio filtro de estado
   y el botón de recorrido). Lo arma `initMapaDashboard`/`renderizarMarcadoresDash` en
   `static/script.js` con `GET /api/mapa-data` (`routers/resumen_red.py`) y la variable global
-  `mapData`. `initMapa`/`renderizarMarcadores` (`#map-container`) pertenecen a la plantilla
-  legacy `index.html` y **no se tocan**.
+  `mapData`. `initMapa`/`renderizarMarcadores` (`#map-container`) pertenecían a la plantilla
+  legacy `index.html` (retirada el 2026-09-21); si siguen en `script.js` son código muerto (REQ-02) y **no se tocan**.
 - `/api/mapa-data` hace **una consulta por hospital** (~80) para saber si está online. Se
   aprovecha esta entrega para resolverlo con una sola consulta agrupada.
 - `HospitalDTO` (`routers/hospitales_metadata.py`): el `PUT` pisa todos los campos del
@@ -293,8 +293,8 @@ la confirmación de los textos antes de pasar a implementación.
 
 ## 11. Integración en `index_beta.html` — cambios mínimos (decisión 2026-09-19)
 
-**Principio**: la plantilla viva es `index_beta.html` (ruta `/beta`; `index.html` es legacy y no se
-toca). Recibe solo **puntos de anclaje**; la lógica y los estilos van en **archivos nuevos**, como
+**Principio**: la plantilla viva es `index_beta.html` (ruta `/beta`; `index.html` era legacy y se
+retiró el 2026-09-21). Recibe solo **puntos de anclaje**; la lógica y los estilos van en **archivos nuevos**, como
 se hizo con el mapa de Mirth (`mapa_integraciones.js/.css`).
 
 **Archivos nuevos**: `static/redes_dicom.js` (módulo `window.RedesDicom`),
