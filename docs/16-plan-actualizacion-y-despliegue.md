@@ -485,7 +485,11 @@ responda (con `state: "Offline"`), así que "presente" equivale a "configurada".
 8. **El mapa de integraciones ya resuelve esto, y la pestaña Software no:** usa
    `mirth_stale_minutes` (15 min) medido contra el último timestamp *del hospital* y tiene
    `oculto` por canal y `activo` por nodo (`mirth_mapa.py:133-207`). Dos vistas del mismo Mirth
-   se contradicen.
+   se contradicen. *(Parcialmente resuelto el 2026-09-21, solo lectura: `GET /api/hospital/{id}/software`
+   ahora devuelve `stale` y `sin_datos_min` por canal de Mirth, con el mismo umbral que el mapa
+   (`mirth_stale_minutes`, medido contra la última lectura de Mirth del hospital), y la pestaña
+   Software muestra esos canales en gris como "Sin datos hace N min". Sigue pendiente lo demás de
+   REQ-03: el detector de alertas, el cierre de tickets y SSL/Elastic/DICOM, que tienen otra cadencia.)*
 9. **Una alerta abierta solo se cierra** por un hallazgo OK, por una regla de exclusión o a mano.
    La limpieza de "huérfanas" solo sincroniza con Asana (tickets completados o borrados), y los
    15 días de `DIAS_CADUCIDAD` solo deciden si un incidente se reabre como reincidencia

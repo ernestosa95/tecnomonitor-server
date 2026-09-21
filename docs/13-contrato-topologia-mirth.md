@@ -65,10 +65,11 @@ canales vía "Channel Writer").
 
 ## Pendientes
 
-- **Criterio de antigüedad en la pestaña Software y en el detector de alertas de Mirth.** El mapa
-  ya descarta datos viejos (`mirth_stale_minutes`), pero la pestaña Software y el detector
-  (`alerts_engine/software/mirth.py`) no, y las dos vistas del mismo Mirth se contradicen: ver
-  REQ-03 en el mismo documento.
+- **Criterio de antigüedad en el detector de alertas de Mirth** (`alerts_engine/software/mirth.py`):
+  sigue evaluando canales sin ventana de tiempo, así que un canal fantasma puede mantener una alerta
+  abierta; ver REQ-03 en [16-plan-actualizacion-y-despliegue.md](16-plan-actualizacion-y-despliegue.md).
+  La pestaña Software ya marca como "sin datos" un canal sin lecturas recientes (`stale` /
+  `sin_datos_min` en `GET /api/hospital/{id}/software`), con el mismo criterio que el mapa.
 - **Clasificar los canales pendientes** de cada hospital (badge `/api/mirth/pendientes`); hasta
   entonces usan `mirth_crit_default`. Es una tarea operativa, no de código.
 

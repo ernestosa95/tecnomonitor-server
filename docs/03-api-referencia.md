@@ -49,7 +49,7 @@ el detalle del RBAC).
 | GET | `/api/hospital/{hospital_id}` | Último reporte completo de infraestructura. | pestaña `infra` |
 | GET | `/api/hospital/{hospital_id}/history` | Serie histórica (CPU, temperaturas, red, VMs). `LIMIT 15000` en SQL + downsampling a ~600 puntos antes de responder. | pestaña `infra` |
 | GET | `/api/hospital/{hospital_id}/kpi-history` | Histórico de KPIs de uso. | pestaña `kpis` |
-| GET | `/api/hospital/{hospital_id}/software` | Estado de Mirth / logs / SSL / colas DICOM. | pestaña `software` |
+| GET | `/api/hospital/{hospital_id}/software` | Estado de Mirth / logs / SSL / colas DICOM. Cada canal de Mirth trae `stale` y `sin_datos_min`: `stale` es true si su última lectura quedó más de `mirth_stale_minutes` (15 por defecto) detrás de la más reciente de Mirth del hospital, igual que el mapa de integraciones; `sin_datos_min` es ese atraso en minutos. | pestaña `software` |
 | GET / POST | `/api/hospital/{hospital_id}/kpi-settings` | Config de KPIs granulares (activa/desactiva alertas de inactividad RAD/MAMO, etc.). | GET: `Admin/Ingenieria/Comercial`; POST: `Admin/Ingenieria` |
 | GET | `/api/logs-dictionary/{event_id}` | Detalle de un evento del diccionario de logs. | logueado |
 | GET | `/api/cliente/casos/{hospital_id}` | Casos/incidentes vistos por un Cliente. | logueado + chequeo manual de `hospitales_de_cliente()` inline (equivalente a `require_hospital_access`, pero duplicando la lógica en vez de reusar el helper) |

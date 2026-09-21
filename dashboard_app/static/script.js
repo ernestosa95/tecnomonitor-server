@@ -3901,13 +3901,25 @@ function renderizarSoftware(data) {
                     badgeText += ` 🚨 (Encolados: ${c.queued.toLocaleString('es-AR')})`;
                 }
 
+                // Canal sin lecturas recientes (mismo criterio que el mapa de integraciones): no se
+                // muestra su último estado como si fuera vigente.
+                let pillTitle = `Encolados: ${c.queued}`, pillOpacity = '';
+                if (c.stale) {
+                    dotColor = 'var(--muted2)';
+                    badgeText = `Sin datos hace ${c.sin_datos_min} min`;
+                    pillTitle = `Sin lecturas recientes. Último estado conocido: ${status || '—'}, encolados: ${c.queued}`;
+                    pillOpacity = 'opacity:.6;';
+                }
+                const badgeBg = c.stale ? 'var(--surface2)' : qBg;
+                const badgeColor = c.stale ? 'var(--muted)' : qColor;
+
                 html += `
-                    <div class="mirth-pill" title="Encolados: ${c.queued}">
+                    <div class="mirth-pill" title="${pillTitle}" style="${pillOpacity}">
                         <div style="display:flex; align-items: center; gap: 10px; overflow:hidden;">
-                            <div class="mirth-dot" style="background: ${dotColor};" title="Estado: ${status}"></div>
+                            <div class="mirth-dot" style="background: ${dotColor};" title="Estado: ${c.stale ? 'sin datos' : status}"></div>
                             <span class="mirth-pill-name">${c.channel}</span>
                         </div>
-                        <div style="background: ${qBg}; color: ${qColor}; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; margin-left:10px; white-space: nowrap;">
+                        <div style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; margin-left:10px; white-space: nowrap;">
                             ${badgeText}
                         </div>
                     </div>

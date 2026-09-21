@@ -22,6 +22,7 @@ import auth
 import database
 from core import get_db
 from database import HospitalMetadata
+from routers.mirth_mapa import _parsear_ts
 
 router = APIRouter()
 
@@ -293,12 +294,14 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         query = text("""
             WITH RankedData AS (
                 SELECT app_name, component_id, status_value, metric_value, extra_data,
+                       timestamp AS ts_real,
                        ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                 FROM software_monitoring
                 WHERE hospital_id = :hid
                   AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
             )
-            SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp
+            SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp,
+                   ts_real AS ultimo_ts
             FROM RankedData WHERE rn = 1
         """)
         resultados = db.execute(query, {"hid": hospital_id}).fetchall()
@@ -320,12 +323,14 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             query_last = text("""
                 WITH RankedData AS (
                     SELECT app_name, component_id, status_value, metric_value, extra_data,
+                           timestamp AS ts_real,
                            ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
                     FROM software_monitoring
                     WHERE hospital_id = :hid
                       AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
                 )
-                SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp
+                SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp,
+                       ts_real AS ultimo_ts
                 FROM RankedData WHERE rn = 1
             """)
             resultados = db.execute(query_last, {"hid": hospital_id}).fetchall()
@@ -358,6 +363,14 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
     }
 
     # 3. PROCESAMOS MIRTH (deltas para el gráfico de tráfico)
+    # Un canal cuya última lectura quedó más de `mirth_stale_minutes` detrás de la más reciente de
+    # Mirth *del hospital* se marca `stale` (mismo criterio que el mapa de integraciones): así un
+    # canal borrado o un módulo apagado no se muestra como vigente con su último estado.
+    stale_min = alerts_engine.cargar_config(db).get("mirth_stale_minutes", 15)
+    ts_canal = {cid: _parsear_ts(getattr(h[-1], "ultimo_ts", None) or h[-1].timestamp)
+                for cid, h in canales_mirth.items() if h}
+    ultimo_ts_mirth = max((t for t in ts_canal.values() if t), default=None)
+
     for cid, history in canales_mirth.items():
         if not history: continue
         actual = history[-1]
@@ -406,6 +419,10 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
 
                     prev_r, prev_s = r, s
 
+        ts_actual = ts_canal.get(cid)
+        sin_datos_min = (int((ultimo_ts_mirth - ts_actual).total_seconds() // 60)
+                         if ts_actual and ultimo_ts_mirth else None)
+
         software_data["mirth"][instancia].append({
             "channel": canal_nombre,
             "status": actual.status_value,
@@ -413,7 +430,9 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             "received": total_recibidos,
             "sent": total_enviados,
             "last_error": extra_actual.get("last_error", ""),
-            "history": historial_canal
+            "history": historial_canal,
+            "stale": sin_datos_min is not None and sin_datos_min > stale_min,
+            "sin_datos_min": sin_datos_min,
         })
 
     # 4. PROCESAMOS CERTIFICADOS SSL
