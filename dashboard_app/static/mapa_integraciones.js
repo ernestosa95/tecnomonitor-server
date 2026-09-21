@@ -16,6 +16,10 @@
   let PASOS = 0;
   let modo = 'op', formato = 'mapa', paso = 0, tocando = null, playing = false, timer = null;
   let hospitalActualId = null, vmsCache = null;
+  // Vista secundaria: flujo acumulado de los últimos ACUM_MIN minutos (el texto del botón
+  // #mi-acum en index_beta.html debe coincidir). CADENCIA = cada cuántos tramos reporta el hospital.
+  const ACUM_MIN = 30;
+  let acumulado = false, CADENCIA = 1;
 
   const L = { oX: 34, oW: 158, cX: 404, cW: 330, dX: 966, dW: 180, y0: 64, paso: 46, alto: 34, nAlto: 42 };
   const COLOR = { ok: 'var(--mi-green)', warn: 'var(--mi-amber)', bad: 'var(--mi-red)', idle: 'var(--mi-muted2)', nodata: 'var(--mi-muted2)' };
@@ -92,6 +96,7 @@
     TL = (json.tl || []).map(snap => ({ ts: new Date(snap.ts), ch: snap.ch || {} }));
     PASOS = TL.length;
     paso = Math.max(0, PASOS - 1);
+    CADENCIA = _calcularCadencia();
 
     if (!CANALES.length) {
       _mostrarSinDatos();
@@ -171,17 +176,65 @@
     return 'ok';
   }
 
+  // ── Datos según la vista (instantáneo / acumulado) ──
+  // El server ya entrega deltas por tramo (`trafico`, `rx`, `tx`, `err`), así que el acumulado
+  // es la suma de los tramos de la ventana, terminando en la posición de la barra. Estado, cola
+  // y `fresco` son los del tramo puntual: no se acumulan.
+  function _tramosVentana() {
+    const pedidos = Math.max(1, Math.round(ACUM_MIN / (META.paso_min || 5)));
+    const desde = Math.max(0, paso - pedidos + 1);
+    return { desde, cant: paso - desde + 1, pedidos };
+  }
+
+  // Cada cuántos tramos llega una lectura fresca (mediana de los huecos entre lecturas de todos
+  // los canales): 1 si el hospital reporta cada `paso` min, 2 si cada el doble, etc. La mediana
+  // no se deja arrastrar por una caída puntual.
+  function _calcularCadencia() {
+    const huecos = [];
+    CANALES.forEach(c => {
+      let previo = null;
+      TL.forEach((s, i) => {
+        if (!(s.ch[c.id] || {}).fresco) return;
+        if (previo !== null) huecos.push(i - previo);
+        previo = i;
+      });
+    });
+    if (!huecos.length) return 1;
+    huecos.sort((a, b) => a - b);
+    return Math.max(1, huecos[Math.floor(huecos.length / 2)]);
+  }
+
+  function datoDe(cid) {
+    const inst = (TL[paso] || { ch: {} }).ch[cid] || {};
+    if (!acumulado) return inst;
+    const v = _tramosVentana();
+    let trafico = 0, rx = 0, tx = 0, err = 0, lecturas = 0;
+    for (let i = v.desde; i <= paso; i++) {
+      const t = (TL[i] || { ch: {} }).ch[cid] || {};
+      trafico += t.trafico || 0; rx += t.rx || 0; tx += t.tx || 0; err += t.err || 0;
+      if (t.fresco) lecturas++;
+    }
+    const esperadas = Math.max(1, Math.floor(v.cant / CADENCIA));
+    return Object.assign({}, inst, { trafico, rx, tx, err, lecturas, esperadas, tramos: v.cant, parcial: lecturas < esperadas });
+  }
+
+  const _fmtN = n => (n || 0).toLocaleString('es-AR');
+  // Cifra de tráfico de un canal; el asterisco marca un acumulado con lecturas incompletas.
+  const _fmtTrafico = d => acumulado ? _fmtN(d.trafico) + (d.parcial ? '*' : '') : String(d.trafico || 0);
+
   // ============================================================
   // RENDER
   // ============================================================
   function curva(x1, y1, x2, y2) { const dx = Math.max(46, (x2 - x1) * 0.46); return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`; }
   function grosor(tr) { return Math.max(1.1, Math.min(5.4, 1.1 + tr / 13)); }
+  // En acumulado el grosor sigue la tasa media por tramo (total / tramos de la ventana), así el
+  // mismo grosor significa el mismo caudal en ambas vistas y no satura con ventanas largas.
+  function _tasa(d) { return (d.trafico || 0) / (d.tramos || 1); }
 
   function render() {
     const svg = $('mi-mapa');
     if (!svg) return;
     svg.innerHTML = '';
-    const snap = TL[paso] || { ts: new Date(), ch: {} };
     const gE = el('g'), gN = el('g');
 
     const heads = modo === 'op'
@@ -191,8 +244,8 @@
 
     // ── Aristas
     CANALES.forEach(c => {
-      const d = snap.ch[c.id] || {}, s = salud(c, d);
-      const col = COLOR[s], w = grosor(d.trafico || 0);
+      const d = datoDe(c.id), s = salud(c, d);
+      const col = COLOR[s], w = grosor(_tasa(d));
       const anim = (s === 'ok' || s === 'warn') && (d.trafico || 0) > 0;
 
       if (c.origen) {
@@ -239,7 +292,7 @@
 
     // ── Nodos de canal
     CANALES.forEach(c => {
-      const d = snap.ch[c.id] || {}, s = salud(c, d), col = COLOR[s];
+      const d = datoDe(c.id), s = salud(c, d), col = COLOR[s];
       const g = el('g', { class: 'mi-node', tabindex: '0', role: 'button', 'data-nodo': c.id, 'aria-label': c.nom });
       g.appendChild(el('rect', { class: 'mi-nbox', x: L.cX, y: c.y, width: L.cW, height: L.alto, rx: 7 }));
       g.appendChild(el('rect', { x: L.cX, y: c.y, width: 3, height: L.alto, rx: 1.5, fill: col, opacity: s === 'idle' || s === 'nodata' ? .45 : 1 }));
@@ -252,7 +305,7 @@
         else if (d.estado && d.estado !== 'RUNNING' && d.estado !== 'STARTED') { der = d.estado.toLowerCase(); dcol = COLOR.bad; }
         else if ((d.cola || 0) > 0) { der = d.cola + ' en cola'; dcol = col; }
         else if ((d.trafico || 0) === 0) { der = 'sin tráfico'; }
-        else { der = d.trafico + ' msg'; dcol = 'var(--mi-muted)'; }
+        else { der = _fmtTrafico(d) + ' msg'; dcol = 'var(--mi-muted)'; }
         g.appendChild(el('text', { x: L.cX + L.cW - 13, y: c.cy + 4, 'text-anchor': 'end', class: 'mi-nsub', fill: dcol }, der));
       } else {
         const txt = s === 'bad' ? 'Detenido' : s === 'warn' ? 'Con demora' : s === 'nodata' ? 'Sin datos' : 'Operativo';
@@ -266,7 +319,7 @@
     });
 
     svg.appendChild(gE); svg.appendChild(gN);
-    _pintarResumen(); _pintarLista(); _pintarReloj();
+    _pintarResumen(); _pintarLista(); _pintarReloj(); _pintarNotaAcum();
   }
 
   function _dibujarArista(g, d, col, w, anim, s, cid, dir) {
@@ -297,10 +350,9 @@
 
   // ── Resumen superior ──
   function _pintarResumen() {
-    const snap = TL[paso] || { ch: {} };
     let ok = 0, warn = 0, bad = 0, nd = 0, colaTot = 0;
     CANALES.forEach(c => {
-      const d = snap.ch[c.id] || {}, s = salud(c, d);
+      const d = datoDe(c.id), s = salud(c, d);
       colaTot += (d.cola || 0);
       if (s === 'bad') bad++; else if (s === 'warn') warn++; else if (s === 'nodata') nd++; else ok++;
     });
@@ -321,22 +373,21 @@
 
   // ── Vista lista ──
   function _pintarLista() {
-    const snap = TL[paso] || { ch: {} };
     const filas = CANALES.map(c => {
-      const d = snap.ch[c.id] || {}, s = salud(c, d);
+      const d = datoDe(c.id), s = salud(c, d);
       const badge = s === 'bad' ? 'mi-status-critical' : s === 'warn' ? 'mi-status-warning' : s === 'nodata' ? 'mi-status-muted' : 'mi-status-online';
       const txt = s === 'bad' ? (d.fresco ? d.estado : 'Sin datos') : s === 'warn' ? 'Con demora' : s === 'nodata' ? 'Sin datos' : 'Operativo';
       return `<tr data-id="${c.id}">
         <td class="mi-cn">${modo === 'op' ? c.nom : c.hum}</td>
         <td><span class="mi-status-badge ${badge}">${txt}</span></td>
-        ${modo === 'op' ? `<td class="mi-num" style="color:${d.cola ? COLOR[s] : 'var(--mi-muted)'}">${d.cola || '—'}</td><td class="mi-num" style="color:var(--mi-muted)">${d.fresco ? (d.trafico || 0) : '—'}</td>` : ''}
+        ${modo === 'op' ? `<td class="mi-num" style="color:${d.cola ? COLOR[s] : 'var(--mi-muted)'}">${d.cola || '—'}</td><td class="mi-num" style="color:var(--mi-muted)">${d.fresco ? _fmtTrafico(d) : '—'}</td>` : ''}
       </tr>`;
     }).join('');
     const lv = $('mi-listview');
     if (!lv) return;
     lv.innerHTML = `<table><thead><tr>
       <th>${modo === 'op' ? 'Canal' : 'Flujo'}</th><th>Estado</th>
-      ${modo === 'op' ? '<th class="mi-num">En cola</th><th class="mi-num">Tráfico</th>' : ''}
+      ${modo === 'op' ? `<th class="mi-num">En cola</th><th class="mi-num">Tráfico${acumulado ? ' · ' + ACUM_MIN + ' min' : ''}</th>` : ''}
     </tr></thead><tbody>${filas}</tbody></table>`;
     lv.querySelectorAll('tbody tr').forEach(tr => {
       tr.onclick = () => abrirNodo('canal', tr.dataset.id);
@@ -360,13 +411,12 @@
   // PANEL DE DETALLE
   // ============================================================
   function abrirNodo(tipo, id) {
-    const snap = TL[paso] || { ch: {} };
     let eyebrow = '', titulo = '', cuerpo = '';
 
     if (tipo === 'canal') {
       const c = CANALES.find(x => x.id === id);
       if (!c) return;
-      const d = snap.ch[c.id] || {}, s = salud(c, d);
+      const d = datoDe(c.id), s = salud(c, d);
       eyebrow = modo === 'op' ? 'Canal de Mirth' : 'Flujo de información';
       titulo = modo === 'op' ? c.nom : c.hum;
       const badge = s === 'bad' ? 'mi-status-critical' : s === 'warn' ? 'mi-status-warning' : s === 'nodata' ? 'mi-status-muted' : 'mi-status-online';
@@ -383,10 +433,11 @@
       if (modo === 'op') {
         cuerpo += `<div class="mi-mgrid">
           <div class="mi-mcell"><div class="mi-k">En cola</div><div class="mi-v" style="color:${d.cola ? COLOR[s] : 'inherit'}">${d.fresco ? (d.cola || 0) : '—'}</div></div>
-          <div class="mi-mcell"><div class="mi-k">Tráfico / 5 min</div><div class="mi-v">${d.fresco ? (d.trafico || 0) : '—'}</div></div>
-          <div class="mi-mcell"><div class="mi-k">Errores</div><div class="mi-v" style="color:${d.err ? 'var(--mi-red)' : 'inherit'}">${d.fresco ? (d.err || 0) : '—'}</div></div>
+          <div class="mi-mcell"><div class="mi-k">${acumulado ? `Tráfico · ${ACUM_MIN} min` : 'Tráfico / 5 min'}</div><div class="mi-v">${d.fresco ? _fmtTrafico(d) : '—'}</div></div>
+          <div class="mi-mcell"><div class="mi-k">${acumulado ? `Errores · ${ACUM_MIN} min` : 'Errores'}</div><div class="mi-v" style="color:${d.err ? 'var(--mi-red)' : 'inherit'}">${d.fresco ? _fmtN(d.err) : '—'}</div></div>
           <div class="mi-mcell"><div class="mi-k">Criticidad</div><div class="mi-v" style="font-size:.9rem;text-transform:capitalize">${c.crit}</div></div>
         </div>
+        ${acumulado ? _flujoAcumulado(d) : ''}
         <div class="mi-sec">Cola · línea de tiempo</div>${_sparkline(c.id)}
         <div class="mi-sec">Ruteo</div>
         <div class="mi-kv"><span class="mi-k">Origen</span><span class="mi-v">${padre ? padre.nom + ' (interno)' : org ? org.label + (org.sub ? ' · ' + org.sub : '') : '—'}</span></div>
@@ -405,7 +456,7 @@
       eyebrow = tipo === 'origen' ? 'Sistema de origen' : 'Sistema de destino';
       titulo = modo === 'op' ? n.label : (n.humano || n.label);
       const rel = CANALES.filter(c => c[tipo] === id);
-      const malos = rel.filter(c => ['bad', 'warn'].includes(salud(c, snap.ch[c.id])));
+      const malos = rel.filter(c => ['bad', 'warn'].includes(salud(c, datoDe(c.id))));
       cuerpo = `<span class="mi-status-badge ${malos.length ? 'mi-status-warning' : 'mi-status-online'}">${malos.length ? malos.length + ' flujo(s) con problema' : 'Todo en orden'}</span>`;
       if (modo === 'op') {
         cuerpo += `<div class="mi-sec">Punto de conexión</div>
@@ -417,7 +468,7 @@
       }
       cuerpo += `<div class="mi-sec">${rel.length} ${modo === 'op' ? 'canal(es) conectado(s)' : 'flujo(s)'}</div>`;
       cuerpo += rel.map(c => {
-        const s = salud(c, snap.ch[c.id]);
+        const s = salud(c, datoDe(c.id));
         return `<div class="mi-kv"><span class="mi-k" style="color:var(--mi-text)">${modo === 'op' ? c.nom : c.hum}</span><span class="mi-v" style="color:${COLOR[s]};font-family:inherit">${s === 'bad' ? 'Detenido' : s === 'warn' ? 'Demora' : s === 'nodata' ? 'Sin datos' : 'OK'}</span></div>`;
       }).join('');
     }
@@ -429,6 +480,29 @@
     if (drawerEl) drawerEl.classList.add('mi-on');
     if (scrimEl) scrimEl.classList.add('mi-on');
     tocando = { tipo, id };
+  }
+
+  // Detalle del acumulado de un canal: recibidos y enviados por separado (el mapa muestra su suma).
+  function _flujoAcumulado(d) {
+    const v = d.fresco;
+    return `<div class="mi-sec">Flujo · últimos ${ACUM_MIN} min</div>
+      <div class="mi-kv"><span class="mi-k">Recibidos</span><span class="mi-v">${v ? _fmtN(d.rx) : '—'}</span></div>
+      <div class="mi-kv"><span class="mi-k">Enviados</span><span class="mi-v">${v ? _fmtN(d.tx) : '—'}</span></div>
+      ${v && d.parcial ? `<div class="mi-kv"><span class="mi-k">Lecturas en la ventana</span><span class="mi-v">${d.lecturas} de ${d.esperadas} esperadas *</span></div>` : ''}`;
+  }
+
+  // Aclaración bajo la barra temporal, solo en modo acumulado.
+  function _pintarNotaAcum() {
+    const nota = $('mi-acum-nota');
+    if (!nota) return;
+    if (!acumulado) { nota.style.display = 'none'; return; }
+    const v = _tramosVentana(), pasoMin = META.paso_min || 5;
+    const parciales = CANALES.filter(c => { const d = datoDe(c.id); return d.fresco && d.parcial; }).length;
+    let txt = `Acumulado de los últimos ${v.cant * pasoMin} min hasta el momento de la barra. Estado y cola son los de ese momento.`;
+    if (v.cant < v.pedidos) txt += ` Solo hay ${v.cant * pasoMin} min de historial hasta este punto.`;
+    if (parciales) txt += ` * ${parciales} canal(es) con lecturas incompletas en la ventana: el total podría ser mayor.`;
+    nota.textContent = txt;
+    nota.style.display = 'block';
   }
 
   function _alertaDe(c, d, s) {
@@ -500,6 +574,14 @@
     if (bLst) bLst.classList.toggle('active', f === 'lista');
   }
 
+  function toggleAcumulado() {
+    acumulado = !acumulado;
+    const b = $('mi-acum');
+    if (b) { b.classList.toggle('active', acumulado); b.setAttribute('aria-pressed', String(acumulado)); }
+    if (CANALES.length) render();
+    if (tocando) abrirNodo(tocando.tipo, tocando.id);
+  }
+
   function togglePlay() {
     playing = !playing;
     const ico = $('mi-play-ico');
@@ -531,5 +613,5 @@
     }
   });
 
-  window.MapaIntegraciones = { cargar, destroy, setModo, setFormato, togglePlay, abrirNodo, cerrarDrawer };
+  window.MapaIntegraciones = { cargar, destroy, setModo, setFormato, togglePlay, toggleAcumulado, abrirNodo, cerrarDrawer };
 })();

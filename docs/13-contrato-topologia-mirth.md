@@ -1,6 +1,7 @@
 # Contrato de datos — topología de integraciones Mirth (mapa de red)
 
-**Estado — 2026-09-17: en implementación.** Este documento reemplaza a la versión anterior
+**Estado — 2026-09-21: implementado en código (agente, servidor y frontend); ver "Pendientes".**
+Este documento reemplaza a la versión anterior
 (`2026-09-11`), que había dejado el problema bloqueado por dos motivos: sin confirmar si el
 agente tenía acceso a la config de canal de Mirth, y con criticidad por canal / etiquetas
 humanas explícitamente fuera de alcance. Ambos puntos se resolvieron: el acceso a
@@ -54,10 +55,22 @@ canales vía "Channel Writer").
   el scrubber) y del último punto "vivo" (más laxa, `mirth_stale_minutes`, para no marcar
   todo como stale si el hospital reporta con un intervalo mayor al `paso` pedido).
 
-## Qué falta (fase siguiente del plan, no implementado todavía)
+- **Frontend**: pestaña "Integraciones" (`static/mapa_integraciones.js` y `.css`) en
+  `index_beta.html` — y también todavía en `index.html`, la UI vieja en desuso — que consume
+  `GET /api/hospital/{id}/mirth/mapa`. Modos Operación/Estado, formato Mapa/Lista, barra temporal
+  ("en vivo" o un momento pasado), botón secundario "Últimos 30 min" que reemplaza el tráfico del
+  tramo por el acumulado de la ventana (solo `index_beta.html`; detalle en REQ-04 de
+  [16-plan-actualizacion-y-despliegue.md](16-plan-actualizacion-y-despliegue.md)) y panel de
+  detalle por canal. Los canales sin clasificar se clasifican desde este panel.
 
-- **Frontend**: tab nueva "Integraciones" en `index.html`, adaptando el JS del prototipo para
-  consumir `GET /api/hospital/{id}/mirth/mapa` en vez de generar datos sintéticos.
+## Pendientes
+
+- **Criterio de antigüedad en la pestaña Software y en el detector de alertas de Mirth.** El mapa
+  ya descarta datos viejos (`mirth_stale_minutes`), pero la pestaña Software y el detector
+  (`alerts_engine/software/mirth.py`) no, y las dos vistas del mismo Mirth se contradicen: ver
+  REQ-03 en el mismo documento.
+- **Clasificar los canales pendientes** de cada hospital (badge `/api/mirth/pendientes`); hasta
+  entonces usan `mirth_crit_default`. Es una tarea operativa, no de código.
 
 ## 1. Extensión a `software_monitoring.mirth[]` (implementado)
 
@@ -138,7 +151,7 @@ asignado) ante un corte temporal de la API de Mirth.
 
 Ver [02-modelo-de-datos.md](02-modelo-de-datos.md) para las columnas exactas de
 `mirth_channel_topology`, `mirth_nodos` y `mirth_canales_meta` (estas dos últimas, de
-curación, todavía no tienen router de administración — ver "Qué falta" arriba).
+curación, se administran desde `routers/mirth_topologia.py`, ver arriba).
 
 ## 4. Identificador estable de un canal — fallback en tres niveles
 

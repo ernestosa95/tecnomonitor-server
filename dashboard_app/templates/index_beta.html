@@ -2110,7 +2110,11 @@ canvas{color-scheme:dark}
                     <input type="range" id="mi-scrub" min="0" max="0" value="0" step="1" aria-label="Momento en el tiempo">
                     <span class="mi-tstamp" id="mi-tstamp">--:--</span>
                     <span class="mi-tlive" id="mi-tlive">En vivo</span>
+                    <div class="mi-toggle-bar" role="group" aria-label="Valores de tráfico">
+                        <button class="mi-toggle-btn" id="mi-acum" aria-pressed="false" onclick="MapaIntegraciones.toggleAcumulado()" title="Mostrar los mensajes totales que pasaron por cada canal en los últimos 30 minutos, en vez del tramo de 5 minutos">Últimos 30 min</button>
+                    </div>
                 </div>
+                <div class="mi-acum-nota" id="mi-acum-nota" style="display:none"></div>
                 <div class="mi-legend">
                     <span><i class="mi-lline" style="background:var(--mi-green)"></i> Con tráfico</span>
                     <span><i class="mi-lline" style="background:var(--mi-amber)"></i> Cola acumulando</span>
