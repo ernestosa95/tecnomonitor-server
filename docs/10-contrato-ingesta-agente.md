@@ -298,8 +298,9 @@ reporting.
 
 ## 7. `software_monitoring` — integraciones de software
 
-Clave opcional. Cuatro sub-claves, todas opcionales entre sí (podés mandar solo la que te
-sirva).
+Clave opcional. Varias sub-claves (`mirth`, `mirth_topology`, `suitestensa_logs`,
+`ssl_certificates`, `dicom_routing_queues`, `sql_integrity`), todas opcionales entre sí (podés
+mandar solo la que te sirva).
 
 ### 7.1 `mirth` — canales de Mirth Connect
 
@@ -387,6 +388,45 @@ de una ventana de tiempo (no un umbral fijo — ver
 para el porqué). Para que la heurística funcione bien, **mandá esta cola en cada reporte
 periódico**, no solo cuando cambia — el detector necesita varios puntos en el tiempo para
 distinguir una cola sana (sube y baja) de una trabada (solo sube).
+
+### 7.5 `sql_integrity` — chequeo de integridad de bases SQL Server tras un reinicio
+
+Agregado `2026-09` (agente >= 4.5.2). Resultado del `DBCC CHECKDB` que el agente ejecuta (o lee de
+Elasticsearch) cuando el servicio SQL Server de Extensa se reinicia, típicamente por un corte de
+energía. Plan completo en
+[PLAN_CHECKDB_POST_REINICIO.md](../../tecnomonitor-agent/docs/PLAN_CHECKDB_POST_REINICIO.md) (repo del
+agente).
+
+```json
+"sql_integrity": {
+  "sqlserver_start_time": "2026-09-21T08:14:03",
+  "check_type": "full",
+  "source": "elastic",
+  "databases": [
+    { "db": "ExtensaRadio", "status": "OK",    "error_count": 0, "detail": "",
+      "duration_s": 412, "checked_at": "2026-09-21T09:41:10" },
+    { "db": "ExtensaPACS",  "status": "ERROR", "error_count": 3, "detail": "Msg 8939 ...",
+      "duration_s": 95,  "checked_at": "2026-09-21T09:43:02" }
+  ]
+}
+```
+
+| Campo | Qué hace el servidor |
+|---|---|
+| `databases[].db` | `component_id` de la fila (obligatorio; un ítem sin `db` se descarta). Máx. 128 caracteres. |
+| `databases[].status` | `status_value`. Solo `OK`, `ERROR` o `NOT_ONLINE`; cualquier otro valor se guarda como `UNKNOWN`. |
+| `databases[].error_count` | `metric_value` (entero >= 0; si no es numérico, 0). |
+| `databases[].checked_at` | `timestamp` de la fila (hora local del hospital, sin zona, igual que `envelope.timestamp`). Si falta o es inválido, se usa el `timestamp` del reporte. |
+| `detail`, `duration_s`, `check_type`, `source`, `sqlserver_start_time` | Se guardan en `extra_data` (`detail` truncado a 500 caracteres). |
+
+- **Se manda una sola vez por reinicio**, no en cada ciclo. El agente lo reenvía si no llegó a saber
+  que un POST se guardó, así que la ingesta es **idempotente** por
+  `(hospital, base, checked_at)`: un reenvío no duplica filas.
+- **Tolerante a payloads mal formados:** una clave `sql_integrity` inválida (no es objeto,
+  `databases` no es lista, ítems sin `db`...) se descarta sin tumbar el reporte.
+- Se guarda como filas de `software_monitoring` con `app_name = 'sql_integrity'`, sin cambios de
+  esquema. **Todavía no se muestra en el dashboard ni dispara alertas**: se define más adelante,
+  cuando ya lleguen datos reales.
 
 ## 8. Payload mínimo que el servidor acepta
 

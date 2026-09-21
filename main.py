@@ -88,6 +88,80 @@ def _validar_token_ingesta(request: Request, raw_body: dict, db: Session) -> Non
         raise HTTPException(status_code=401, detail="No autorizado")
 
 
+_SQL_INTEGRITY_ESTADOS = {"OK", "ERROR", "NOT_ONLINE"}
+_SQL_INTEGRITY_MAX_BASES = 200
+
+
+def _ingerir_sql_integrity(db: Session, hospital_id: str, payload, ts: datetime) -> None:
+    """
+    Guarda el chequeo de integridad de bases SQL Server (DBCC CHECKDB) que el agente manda una
+    vez por reinicio en `software_monitoring.sql_integrity`. Una fila en `software_monitoring` por
+    base (`app_name='sql_integrity'`, `component_id`=base, `status_value`=OK/ERROR/NOT_ONLINE,
+    `metric_value`=cantidad de errores, `timestamp`=`checked_at` de esa base).
+
+    Idempotente por (hospital, base, timestamp): el agente reenvía el mismo resultado si no llegó
+    a saber que el POST anterior se guardó. Tolerante a un payload mal formado: descarta lo
+    inválido y sigue, para no tumbar el resto del reporte (es una clave opcional).
+    Ver docs/10-contrato-ingesta-agente.md §7.5.
+    """
+    if not isinstance(payload, dict):
+        return
+    bases = payload.get("databases")
+    if not isinstance(bases, list):
+        return
+
+    def _texto(valor, largo):
+        return str(valor)[:largo] if valor is not None else ""
+
+    def _fecha(valor):
+        if isinstance(valor, str) and valor:
+            try:
+                f = datetime.fromisoformat(valor.replace("Z", "+00:00"))
+                return f.replace(tzinfo=None)
+            except ValueError:
+                pass
+        return None
+
+    comunes = {
+        "sqlserver_start_time": _texto(payload.get("sqlserver_start_time"), 40),
+        "check_type": _texto(payload.get("check_type"), 20),
+        "source": _texto(payload.get("source"), 20),
+    }
+    vistos = set()
+    for item in bases[:_SQL_INTEGRITY_MAX_BASES]:
+        if not isinstance(item, dict) or not item.get("db"):
+            continue
+        nombre = _texto(item.get("db"), 128)
+        fecha = _fecha(item.get("checked_at")) or ts
+        if (nombre, fecha) in vistos:
+            continue
+        vistos.add((nombre, fecha))
+        if db.query(database.SoftwareMonitoring.id).filter_by(
+            hospital_id=hospital_id, app_name="sql_integrity", component_id=nombre, timestamp=fecha
+        ).first():
+            continue
+
+        estado = str(item.get("status") or "").upper()
+        try:
+            errores = max(0, int(item.get("error_count") or 0))
+        except (TypeError, ValueError):
+            errores = 0
+        try:
+            duracion = max(0, int(item.get("duration_s") or 0))
+        except (TypeError, ValueError):
+            duracion = 0
+
+        db.add(database.SoftwareMonitoring(
+            hospital_id=hospital_id,
+            app_name="sql_integrity",
+            component_id=nombre,
+            status_value=estado if estado in _SQL_INTEGRITY_ESTADOS else "UNKNOWN",
+            metric_value=errores,
+            extra_data={"detail": _texto(item.get("detail"), 500), "duration_s": duracion, **comunes},
+            timestamp=fecha,
+        ))
+
+
 def _upsert_topologia_mirth(db: Session, hospital_id: str, topo_payload, ts: datetime) -> None:
     """
     Guarda/actualiza (upsert, NO serie histórica) la definición técnica de
@@ -460,7 +534,10 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     },
                     timestamp=ts
                 ))
-                
+
+            # --- 5. INTEGRIDAD DE BASES SQL TRAS UN REINICIO (DBCC CHECKDB) ---
+            _ingerir_sql_integrity(db, h_id, soft_monitoring.get("sql_integrity"), ts)
+
             # Limpiamos el JSON antes de guardar la infraestructura
             del data_dict['software_monitoring']
 

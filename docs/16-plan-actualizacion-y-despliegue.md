@@ -38,6 +38,7 @@ reproducirlo.
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
 | REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas; **retiro de `/monitor` hecho (2026-09-21)** | baja (propuesta) |
 | REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
+| REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente (módulo nuevo) + server (solo ingesta) | plan definido y decisiones tomadas; **F1 (ingesta del server) hecha**; resto en el agente pendiente | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
@@ -815,6 +816,27 @@ primera prueba en producción mostró el problema del asterisco descrito arriba;
 *Cómo verificar:* con una serie sintética de lecturas (incluidos huecos y un reinicio de contadores)
 comprobar que la suma de los últimos 6 tramos coincide con el total esperado y que el indicador de
 datos parciales aparece cuando corresponde.
+
+### REQ-05 — Chequeo de integridad de bases SQL Server tras un reinicio
+
+**Pedido (2026-09-21):** cuando el SQL Server de Extensa se reinicia (típicamente por un corte de
+energía abrupto), ejecutar un `DBCC CHECKDB` sobre las bases y reportar si alguna está corrupta o con
+problemas. Es una consulta costosa: solo debe correr ante un reinicio.
+
+**El plan vive en el repo del agente:**
+[PLAN_CHECKDB_POST_REINICIO.md](../../tecnomonitor-agent/docs/PLAN_CHECKDB_POST_REINICIO.md), con las
+decisiones, el diseño, el contrato y las fases. Resumen de lo que toca al servidor:
+
+- **Solo ingesta por ahora** (F1, hecha): `software_monitoring.sql_integrity` se guarda como filas
+  `app_name='sql_integrity'`, una por base y por reinicio, idempotente ante reenvíos, sin cambios de
+  esquema. Contrato en [10 §7.5](10-contrato-ingesta-agente.md). Ver `main.py::_ingerir_sql_integrity`.
+- **Visualización y alertas: después**, con datos reales. Los demás consumidores de
+  `software_monitoring` filtran por `app_name`, así que no se ven afectados; la pestaña Software no
+  lo muestra todavía.
+- **Orden de despliegue:** el servidor primero. Un servidor viejo descarta la clave sin error, pero
+  pierde el dato.
+- El agente se entrega como **4.5.2** (no 4.6: `schema_version` "4.6" no lo reconoce este servidor y
+  lo trataría como formato legacy).
 
 ---
 
