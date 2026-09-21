@@ -33,6 +33,37 @@ VERSIONES_SIN_TOKEN = ["3.0", "4.0", "4.1", "4.2", "4.3"]
 VERSIONES_CON_TOKEN = ["4.5"]
 
 
+# Tope del body de la ingesta. Un reporte real pesa ~50 KB (peor caso medido: 50-55 KB, ver
+# docs/04-seguridad.md#s5); 2 MB deja ~35 veces de margen. Se deja generoso a propósito: un rechazo
+# es caro (el hospital se ve offline y el agente reintenta el mismo bloque en cada ciclo).
+MAX_BODY_INGESTA_BYTES = 2 * 1024 * 1024
+
+
+async def _leer_json_limitado(request: Request):
+    """
+    Equivale a `await request.json()`, pero corta con 413 si el body supera
+    MAX_BODY_INGESTA_BYTES. Se mira el header Content-Length (rechazo barato, sin leer nada) y
+    además lo acumulado del stream, porque el header puede faltar (chunked) o mentir.
+    """
+    def _rechazar(detalle: str):
+        cliente = request.client.host if request.client else "?"
+        logger.warning(f"⚠️ [Ingesta] Payload rechazado por tamaño (tope {MAX_BODY_INGESTA_BYTES} bytes) "
+                       f"desde {cliente}: {detalle}")
+        raise HTTPException(status_code=413, detail="Payload too large")
+
+    declarado = request.headers.get("content-length")
+    if declarado and declarado.isdigit() and int(declarado) > MAX_BODY_INGESTA_BYTES:
+        _rechazar(f"Content-Length {declarado}")
+
+    partes, total = [], 0
+    async for trozo in request.stream():
+        total += len(trozo)
+        if total > MAX_BODY_INGESTA_BYTES:
+            _rechazar("body acumulado por encima del tope")
+        partes.append(trozo)
+    return json.loads(b"".join(partes))
+
+
 def _validar_token_ingesta(request: Request, raw_body: dict, db: Session) -> None:
     """
     Valida el header `Authorization: Bearer <token>` para schema_version que
@@ -192,7 +223,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
     # 1. MANEJO DE RED SEGURO (Ataja ClientDisconnect)
     # =========================================================
     try:
-        raw_body = await request.json()
+        raw_body = await _leer_json_limitado(request)
 
         # =========================================================
         # 🔍 DEBUG TEMPORAL: IMPRIMIR PAYLOAD DE P10
@@ -203,6 +234,8 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                 logger.info("🔔 [DEBUG H45] Capturado reporte entrante:")
                 # print(json.dumps(raw_body, indent=2))
         # =========================================================
+    except HTTPException:
+        raise  # el 413 del tope de tamaño no debe caer en el "except Exception" (400 genérico) de abajo
     except ClientDisconnect:
         logger.warning("⚠️ [Ingesta] Cliente desconectado a mitad del envío.")
         # HTTPException, no `return {...}`: la ruta declara status_code=201 por

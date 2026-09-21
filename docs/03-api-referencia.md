@@ -14,7 +14,7 @@ el detalle del RBAC).
 
 | Método | Ruta | Descripción | Auth | Notas |
 |---|---|---|---|---|
-| POST | `/v1/hospital-status` | Recibe el reporte periódico de un agente (v2/v3/v4), normaliza y persiste en 3 tablas. | **Ninguna** | Sin API key de agente, sin rate limit. Ver [04-seguridad.md#s2](04-seguridad.md#s2). |
+| POST | `/v1/hospital-status` | Recibe el reporte periódico de un agente (v2/v3/v4), normaliza y persiste en 3 tablas. Body máximo 2 MB (`413` si lo supera). | **Ninguna** | Sin API key de agente, sin rate limit. Ver [04-seguridad.md#s2](04-seguridad.md#s2). |
 | POST | `/api/admin/diccionario-logs` | Alta/actualización masiva del diccionario de eventos de log. | `Admin` | |
 
 ## Autenticación / sesión

@@ -212,7 +212,9 @@ IP+usuario), con el mismo mecanismo de bloqueo temporal ya implementado.
 
 ## <a name="s5"></a>S5 — MEDIUM — `AgentReportV4` sin validación estructural real y sin límite de tamaño de payload
 
-**⏸️ PENDIENTE — Fase 2, pausada a pedido.** Ver
+**🟡 PARCIAL — 2026-09-21.** Aplicado el límite de tamaño de body en la ruta de ingesta (2 MB,
+`main.py::_leer_json_limitado`, responde `413`). **Sigue pendiente** el tipado estricto de
+`physical_layer`/`virtual_layer` en V4. Ver
 [07-plan-de-accion.md](07-plan-de-accion.md) Fase 2, ítem 2.2.
 
 **Dónde**: `schemas.py:164-171` (`envelope`, `physical_layer`, `virtual_layer` tipados como
@@ -224,6 +226,39 @@ práctica los agentes modernos— básicamente no valida forma ni tamaño. Combi
 auth), un payload gigante o profundamente anidado pasa la validación de Pydantic sin
 problema y termina completo en la columna `full_json_data` (tipo `JSON`, sin límite) de
 `reportes_historicos`.
+
+**Medición (2026-09-21, P03, agente 4.5.1 con `mirth_topology`).** Estimada desde las tablas del
+server, porque el agente no registra lo que envía y el server no guarda el `Content-Length`. El
+server separa el reporte al guardarlo (`full_json_data` ya no incluye `software_monitoring` ni
+`application_metrics`), así que se suman las partes:
+
+| Parte | KB guardados |
+|---|---|
+| Infraestructura (`full_json_data`; 256 reportes en 24 h, promedio = máximo) | 9,1 |
+| KPIs (`application_metrics`; 1 solo reporte con KPIs en 24 h) | 0–0,5 |
+| `software_monitoring` (Mirth 2,1 · DICOM 0,2 · SSL 0,1) | 2,4 |
+| `mirth_topology` (14 canales) | 21,5 |
+
+Total guardado ≈ 33 KB. Las filas de software y topología no llevan los nombres de clave del JSON
+que sí viajan en el body, así que con un factor conservador de ×1,5 sobre esas dos partes el body
+real ronda **45–50 KB**. La topología pesa ~1,5 KB por canal (~2,3 KB en el cable) y es ~65 % del
+payload; los hospitales con Mirth vistos hoy tienen entre 11 y 14 canales. Según
+[13](13-contrato-topologia-mirth.md) se adjunta en cada ciclo desde la copia en caché del agente.
+
+**Límite recomendado: 2 MB** (~40 veces lo medido; equivale a ~870 canales). Con 1 MB también
+sobra para P03, pero un rechazo (HTTP 413) es caro: el hospital pasa a verse offline y, según el plan
+del agente (§1.3), el agente reintenta el mismo bloque en cada ciclo. Como la ingesta ya exige token,
+el riesgo de abuso que cubre el límite es menor que el de un falso rechazo. Aplica a
+`POST /v1/hospital-status`.
+
+**Peor caso en el resto de los hospitales (2026-09-21).** KPIs, últimos 30 días: el máximo por
+reporte es 3,1 KB (H05; siguen H02 2,9 · P23 2,8 · H03 2,7 · H07 2,6), sin ningún lote que se
+dispare. Infraestructura, últimas 300 filas de `reportes_historicos`: el máximo es 12,0 KB (PMMN;
+luego H07 10,4). Sumando los máximos con la topología de 14 canales, el peor caso conocido ronda
+**50–55 KB**: 2 MB deja ~35 veces de margen (1 MB, ~18 veces, también alcanzaría). Límites de la
+medición: la muestra de infraestructura son los reportes más recientes (no el histórico completo;
+en P03 el tamaño fue constante en 24 h) y solo P03 tiene hoy el agente con `mirth_topology`, de modo
+que los demás hospitales sumarán esa topología cuando se actualicen.
 
 **Acción recomendada**: agregar un límite de tamaño de body a nivel de Nginx/Starlette
 (ej. 1-2 MB, generoso para un reporte de telemetría legítimo) y, si es viable, recuperar
@@ -299,7 +334,7 @@ en otra máquina. Ver más en [06-operaciones-y-scripts.md](06-operaciones-y-scr
 | S2 | Ingesta sin auth | HIGH | ⏸️ Pendiente (Fase 2, pausada) |
 | S3 | CSV injection + sin rate limit en endpoints públicos | MEDIUM | ✅ Resuelto (Fase 1) |
 | S4 | Rate limit de login solo por IP | MEDIUM | ✅ Resuelto (Fase 1) |
-| S5 | Schema V4 sin validar forma/tamaño | MEDIUM | ⏸️ Pendiente (Fase 2, pausada) |
+| S5 | Schema V4 sin validar forma/tamaño | MEDIUM | 🟡 Parcial: límite de tamaño (2 MB) aplicado; falta el tipado estricto |
 | S1c | Contraseña temporal fija compartida para altas nuevas | MEDIUM | ✅ Resuelto (Fase 1) |
 | S6 | JWT duplicado en body de login | LOW | ✅ Resuelto (Fase 1) |
 | S7 | Ruta interna duplicada sin protección | LOW | ✅ Resuelto (Fase 1) |

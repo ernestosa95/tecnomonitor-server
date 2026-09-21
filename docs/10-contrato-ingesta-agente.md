@@ -17,9 +17,9 @@ Status esperado: 201
 
 Sin autenticación para `schema_version` viejo (`3.0` a `4.3`); a partir de `"4.5"` exige
 token por hospital — ver [§2bis](#2bis--autenticación-por-token--a-partir-de-schema_version-45-vigente)
-más abajo, ya vigente, no pausado. Sin límite de tamaño de body explícito (ver
-[04-seguridad.md#s5](04-seguridad.md#s5)) — igual, no hay motivo para mandar payloads
-grandes; un reporte típico son unos pocos KB.
+más abajo, ya vigente, no pausado. El body tiene un **tope de 2 MB** (`MAX_BODY_INGESTA_BYTES` en
+`main.py`, ver [04-seguridad.md#s5](04-seguridad.md#s5)); un reporte real pesa unos 10–55 KB, así
+que el tope solo se alcanza con un payload anómalo.
 
 **Respuestas:**
 - `201` + `{"status": "ok", "id": <int>, "v3_conversion": false, "version": "4.3"}` — aceptado.
@@ -28,6 +28,9 @@ grandes; un reporte típico son unos pocos KB.
 - `401` + `{"detail": "No autorizado"}` — solo para `schema_version` que exige token (ver
   §2bis): falta el header, el token no existe, o no corresponde al `hospital_id` declarado.
   No se guarda nada.
+- `413` + `{"detail": "Payload too large"}` — el body supera los 2 MB (se mira el `Content-Length`
+  y también lo realmente recibido, por si el envío es en trozos). No se intenta leer ni se guarda
+  nada; el checkpoint del agente no avanza, igual que con cualquier otro error.
 - `500` + `{"detail": "Error interno de procesamiento de formato"}` — el JSON se pudo leer
   pero el payload no pasó la validación del contrato, o algo se rompió procesándolo. El
   servidor **no** te dice qué campo falló (es a propósito, para no filtrar detalles internos
