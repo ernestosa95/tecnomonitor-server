@@ -47,6 +47,9 @@ desactualizada y hay que revisarla.
 15. [Plan de redes DICOM](15-plan-redes-dicom.md) — categorías periférico/caché/central,
     enlaces entre hospitales, mapa con selector de red y filtro por red en las listas
     (⏸️ diagramado, no ejecutado; el agente no cambia: el AE title ya llega como `to_nickname`).
+16. [Plan de actualización y despliegue](16-plan-actualizacion-y-despliegue.md) — registro de
+    requerimientos y fases de despliegue (P03 → pocos hospitales → masivo) de server + agente
+    v4.5.1 (🚧 en construcción: se están juntando los requerimientos).
 
 ## Estado general — 2026-09-11
 
