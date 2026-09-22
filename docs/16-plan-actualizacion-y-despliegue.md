@@ -38,7 +38,7 @@ reproducirlo.
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
 | REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas; **retiro de `/monitor` hecho (2026-09-21)** | baja (propuesta) |
 | REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
-| REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente (módulo nuevo) + server (solo ingesta) | implementado (2026-09-21): ingesta en el server y módulo del agente 4.5.2; **falta compilar el agente y validar en P03** | alta: entra en el release 4.5.2 del agente |
+| REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
@@ -827,14 +827,23 @@ problemas. Es una consulta costosa: solo debe correr ante un reinicio.
 [PLAN_CHECKDB_POST_REINICIO.md](../../tecnomonitor-agent/docs/PLAN_CHECKDB_POST_REINICIO.md), con las
 decisiones, el diseño, el contrato y las fases. Resumen de lo que toca al servidor:
 
-- **Estado:** el agente 4.5.2 ya lo implementa (Elastic y SQL directo, GUI, tests; falta compilarlo en Windows y
-  validarlo en P03, ver la guía del plan del agente §7).
-- **Solo ingesta por ahora** (F1, hecha): `software_monitoring.sql_integrity` se guarda como filas
-  `app_name='sql_integrity'`, una por base y por reinicio, idempotente ante reenvíos, sin cambios de
-  esquema. Contrato en [10 §7.5](10-contrato-ingesta-agente.md). Ver `main.py::_ingerir_sql_integrity`.
-- **Visualización y alertas: después**, con datos reales. Los demás consumidores de
-  `software_monitoring` filtran por `app_name`, así que no se ven afectados; la pestaña Software no
-  lo muestra todavía.
+- **Estado: validado de punta a punta en P03 (2026-09-22).** SQL Server → Logstash
+  (`ext_checkdb.conf`) → índice `ext_checkdb` en Elastic → agente (`recolectar_elastic`) → server →
+  tabla `software_monitoring` → tarjeta en la pestaña Software → alerta. Las 26 bases del hospital
+  piloto quedaron `OK`.
+- **Ingesta** (F1): `software_monitoring.sql_integrity` se guarda como filas `app_name='sql_integrity'`,
+  una por base y por reinicio, idempotente ante reenvíos, sin cambios de esquema. Contrato en
+  [10 §7.5](10-contrato-ingesta-agente.md). Ver `main.py::_ingerir_sql_integrity`.
+- **Visualización y alerta** (agregadas 2026-09-22): tarjeta resumen en la pestaña Software
+  (`_ultimo_checkdb()` en `routers/hospital_detalle.py`) y detector de alertas
+  (`alerts_engine/software/sql_integrity.py`, CRITICAL solo por `ERROR`, apagado por default vía
+  `sql_integrity_alert_enabled`). Detalle en [10 §7.5](10-contrato-ingesta-agente.md).
+- **Bugs reales encontrados en la validación de P03, ninguno del T-SQL en sí:** el `.conf` de
+  Logstash desplegado tenía `SRVDB-ESTENSA` (placeholder de la plantilla del repo que nunca resolvía
+  en el DNS del hospital) en vez de `localhost` (la convención real, ya que Logstash y SQL Server
+  corren en la misma VM) — quedó colgado reintentando la conexión y bloqueando la tarea programada;
+  y el server de producción estaba un commit atrás de `_ingerir_sql_integrity`. Detalle completo en
+  la memoria del proyecto (`plan-checkdb-post-reinicio`, sesión 2026-09-22).
 - **Orden de despliegue:** el servidor primero. Un servidor viejo descarta la clave sin error, pero
   pierde el dato.
 - El agente se entrega como **4.5.2** (no 4.6: `schema_version` "4.6" no lo reconoce este servidor y

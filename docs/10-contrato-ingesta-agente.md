@@ -425,8 +425,16 @@ agente).
 - **Tolerante a payloads mal formados:** una clave `sql_integrity` inválida (no es objeto,
   `databases` no es lista, ítems sin `db`...) se descarta sin tumbar el reporte.
 - Se guarda como filas de `software_monitoring` con `app_name = 'sql_integrity'`, sin cambios de
-  esquema. **Todavía no se muestra en el dashboard ni dispara alertas**: se define más adelante,
-  cuando ya lleguen datos reales.
+  esquema.
+- **Visualización y alerta agregadas y validadas en P03 (2026-09-22).** `GET
+  /api/hospital/{id}/software` expone un resumen (`_ultimo_checkdb()` en
+  `routers/hospital_detalle.py`, con estado fijo por su propia query, igual criterio que
+  `_estado_colas_dicom` — no depende del selector de tiempo del panel) que la pestaña Software
+  pinta como una tarjeta compacta con el detalle de cada base en el tooltip. El motor de alertas
+  (`alerts_engine/software/sql_integrity.py`, gateado por `sql_integrity_alert_enabled` en
+  Configuración → Alertas, apagado por default) dispara **CRITICAL solo si alguna base queda en
+  `ERROR`** — `NOT_ONLINE` no alerta a propósito — y reusa los responsables de Infraestructura
+  (`global_alert_responsible_email`), sin campo de responsable propio.
 
 ## 8. Payload mínimo que el servidor acepta
 
