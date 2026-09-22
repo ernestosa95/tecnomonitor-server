@@ -15,7 +15,7 @@ alertas lo revisa cada minuto para abrir/cerrar tickets en Asana solo.
 ## Diagrama
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph P03["🏥 P03 — dentro del hospital"]
         direction TB
         PROX["Proxmox (hipervisor)<br/>172.31.3.156<br/>CPU / RAM / sensores del host físico"]
@@ -98,4 +98,4 @@ de reportar.
    un ticket en Asana — sin que nadie lo dispare a mano.
 
 Ver el contrato completo del reporte JSON en
-[10-contrato-ingesta-agente.md](./10-contrato-ingesta-agente.md).
+[10-contrato-ingesta-agente.md](../10-contrato-ingesta-agente.md).
