@@ -89,7 +89,7 @@ from core import custom_rate_limit_handler, get_db, limiter, templates
 # --- ROUTERS EXTRAÍDOS ---
 from routers import (
     alertas_config, clientes, hospital_detalle, hospitales_metadata, informes,
-    mirth_mapa, mirth_topologia, paginas_publicas, resumen_red, runbooks,
+    manual, mirth_mapa, mirth_topologia, paginas_publicas, resumen_red, runbooks,
     solicitudes_acceso, usuarios, websocket,
 )
 # Alias: dashboard.py ya tiene `import auth` (dashboard_app/auth.py, todavía
@@ -110,6 +110,7 @@ app.include_router(hospital_detalle.router)
 app.include_router(mirth_topologia.router)
 app.include_router(mirth_mapa.router)
 app.include_router(runbooks.router)
+app.include_router(manual.router)
 app.include_router(auth_router.router)
 
 # ==========================================

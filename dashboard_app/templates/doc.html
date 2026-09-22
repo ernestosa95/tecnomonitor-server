@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual - TecnoMonitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+    --bg:#0A0A0B;
+    --surface:#111113;
+    --surface2:#18181B;
+    --border:#232327;
+    --text:#F0F0F2;
+    --muted:#6B6B7A;
+    --green:#00E5A0;
+    --radius2:12px;
+}
+html,body{
+    background:var(--bg);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    color:var(--text);
+}
+body{ padding:32px 16px; }
+.back-link{ display:block; max-width:760px; margin:0 auto 12px; color:var(--muted); text-decoration:none; font-size:.85em; }
+.back-link:hover{ color:var(--green); }
+.wrap{
+    max-width:760px; margin:0 auto;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius2);
+    padding:32px 40px;
+}
+.wrap h1{ font-size:1.5em; color:var(--green); margin-bottom:4px; }
+.wrap h2{ font-size:1.15em; margin:28px 0 10px; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; }
+.wrap h3{ font-size:1em; margin:20px 0 8px; color:var(--text); }
+.wrap p, .wrap li{ color:var(--muted); line-height:1.6; font-size:.95em; }
+.wrap strong{ color:var(--text); }
+.wrap blockquote{
+    border-left:3px solid var(--green); padding:8px 16px; margin:16px 0;
+    background:var(--surface2); color:var(--text); font-size:.9em; border-radius:0 8px 8px 0;
+}
+.wrap code{ background:var(--surface2); padding:1px 6px; border-radius:4px; font-size:.9em; }
+.wrap pre{
+    background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+    padding:14px 16px; overflow-x:auto; margin:12px 0;
+}
+.wrap pre code{ background:none; padding:0; color:var(--text); }
+.wrap table{ width:100%; border-collapse:collapse; margin:12px 0; font-size:.85em; }
+.wrap th, .wrap td{ border:1px solid var(--border); padding:6px 10px; text-align:left; }
+.wrap th{ background:var(--surface2); color:var(--text); }
+.wrap ul, .wrap ol{ margin-left:22px; margin-bottom:12px; }
+.wrap a{ color:var(--green); }
+.wrap .mermaid{ background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:14px; margin:12px 0; overflow-x:auto; }
+</style>
+</head>
+<body>
+    <a class="back-link" href="/manual">&larr; Volver al manual</a>
+    <div class="wrap">
+        {{ contenido_html | safe }}
+    </div>
+    <script>
+        // El markdown de Python deja los bloques ```mermaid como
+        // <pre><code class="language-mermaid">...</code></pre> -- Mermaid.js
+        // solo renderiza <div class="mermaid">, así que hay que convertirlos
+        // antes de inicializar.
+        document.querySelectorAll('pre > code.language-mermaid').forEach(function (bloque) {
+            var contenedor = document.createElement('div');
+            contenedor.className = 'mermaid';
+            contenedor.textContent = bloque.textContent;
+            bloque.parentElement.replaceWith(contenedor);
+        });
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#18181B',
+                primaryTextColor: '#F0F0F2',
+                primaryBorderColor: '#232327',
+                lineColor: '#6B6B7A',
+                secondaryColor: '#18181B',
+                tertiaryColor: '#18181B',
+                fontSize: '14px'
+            },
+            flowchart: { curve: 'basis', htmlLabels: true }
+        });
+    </script>
+</body>
+</html>

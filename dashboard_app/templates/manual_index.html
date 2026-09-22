@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual - TecnoMonitor</title>
+    <style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+    --bg:#0A0A0B;
+    --surface:#111113;
+    --surface2:#18181B;
+    --border:#232327;
+    --text:#F0F0F2;
+    --muted:#6B6B7A;
+    --green:#00E5A0;
+    --radius2:12px;
+}
+html,body{
+    background:var(--bg);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    color:var(--text);
+}
+body{ padding:32px 16px; }
+.wrap{ max-width:760px; margin:0 auto; }
+.wrap h1{ font-size:1.5em; color:var(--green); margin-bottom:6px; }
+.wrap p.sub{ color:var(--muted); font-size:.9em; margin-bottom:28px; }
+.doc-list{ display:flex; flex-direction:column; gap:10px; }
+.doc-item{
+    display:block; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius2);
+    padding:16px 20px; text-decoration:none; color:var(--text); transition:border-color .15s, background .15s;
+}
+.doc-item:hover{ border-color:var(--green); background:var(--surface2); }
+.doc-item .slug{ display:block; font-size:.75em; color:var(--muted); margin-top:3px; font-family:monospace; }
+</style>
+</head>
+<body>
+    <div class="wrap">
+        <h1>Manual técnico</h1>
+        <p class="sub">Documentación del repositorio, generada desde <code>docs/*.md</code>.</p>
+        <div class="doc-list">
+        {% for doc in docs %}
+            <a class="doc-item" href="/manual/{{ doc.slug }}">
+                {{ doc.titulo }}
+                <span class="slug">{{ doc.slug }}.md</span>
+            </a>
+        {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
