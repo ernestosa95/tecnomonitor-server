@@ -1,12 +1,14 @@
 # Análisis de seguridad
 
-**Estado — 2026-09-10**: de los 10 hallazgos de este análisis, **7 ya están resueltos**
-(Fase 1, ejecutada y verificada en producción el mismo día del análisis) — quedan
-pendientes S2 (ingesta sin auth) y S5 (schema sin validar tamaño), que forman la Fase 2 del
-plan y están **pausados a pedido** hasta coordinar el rollout con los agentes de los
-hospitales. Cada hallazgo dice su estado actual en su propia sección; el resumen priorizado
-al final también lo refleja. Ver [07-plan-de-accion.md](07-plan-de-accion.md) para el plan
-completo de remediación y su estado por fase.
+**Estado — actualizado 2026-09-22** (análisis original 2026-09-10): de los 10 hallazgos,
+**8 están resueltos** y **2 parciales**, ninguno pendiente sin arrancar. S2 (ingesta sin
+auth) se resolvió de forma escalonada el 2026-09-11 —
+[11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md)— y S5 (schema sin validar
+tamaño) tiene el límite de 2 MB aplicado desde el 2026-09-21, con el tipado estricto de
+`physical_layer`/`virtual_layer` todavía pendiente. Cada hallazgo dice su estado actual en
+su propia sección; el resumen priorizado al final también lo refleja. Ver
+[07-plan-de-accion.md](07-plan-de-accion.md) para el plan completo de remediación y su
+estado por fase.
 
 Metodología: lectura completa de `auth.py`, `permissions.py`, `main.py`, `server.py`,
 `database.py`, y del código fuente de `dashboard_app/dashboard.py` (~74 endpoints),
@@ -331,7 +333,7 @@ en otra máquina. Ver más en [06-operaciones-y-scripts.md](06-operaciones-y-scr
 |---|---|---|---|
 | S1 | Token Asana filtrado en git | CRITICAL | ✅ Resuelto (Fase 0) |
 | S1b | Contraseña real de un empleado filtrada en git | CRITICAL | ✅ Resuelto (Fase 0) |
-| S2 | Ingesta sin auth | HIGH | ⏸️ Pendiente (Fase 2, pausada) |
+| S2 | Ingesta sin auth | HIGH | 🟡 Parcial: token exigido desde `schema_version 4.5` (2026-09-11); hospitales sin migrar siguen sin auth |
 | S3 | CSV injection + sin rate limit en endpoints públicos | MEDIUM | ✅ Resuelto (Fase 1) |
 | S4 | Rate limit de login solo por IP | MEDIUM | ✅ Resuelto (Fase 1) |
 | S5 | Schema V4 sin validar forma/tamaño | MEDIUM | 🟡 Parcial: límite de tamaño (2 MB) aplicado; falta el tipado estricto |
