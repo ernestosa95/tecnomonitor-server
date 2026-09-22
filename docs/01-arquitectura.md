@@ -95,7 +95,14 @@ aislamiento de fallos entre "recibir datos de agentes" y "servir el dashboard a 
 
 1. Un agente hace `POST /v1/hospital-status` con el payload JSON (`main.py:82`).
 2. Se detecta la versión de schema (`3.0`/`4.0`.. pasan directo; cualquier otra cosa se
-   asume v2 legacy y pasa por `transformer.transformar_v2_a_v3`).
+   asume v2 legacy y pasa por `transformer.transformar_v2_a_v3`). **Desde `4.5`, además,
+   se exige `Authorization: Bearer <token>`** — un token propio por hospital (hash SHA-256
+   contra `HospitalMetadata.ingest_token_hash`, cruzado con el `hospital_id` del payload).
+   Las versiones viejas (`3.0`-`4.3`) siguen sin pedirlo, así cada hospital migra solo, el
+   día que se le actualiza el agente — no hay fecha de corte global. Diseño completo en
+   [11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md); cómo generar el token
+   para un hospital nuevo en
+   [guías/18-guia-configuracion-hospital-nuevo.md](guias/18-guia-configuracion-hospital-nuevo.md#paso-3-dar-de-alta-el-hospital-y-generar-el-token).
 3. Se valida contra `schemas.AgentReportV4` (Pydantic).
 4. Se separan y persisten en tablas distintas: `reportes_historicos` (infra),
    `reportes_uso` (KPIs de aplicación), `software_monitoring` (Mirth, Elasticsearch/logs,

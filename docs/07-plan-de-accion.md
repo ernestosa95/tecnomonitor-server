@@ -56,7 +56,7 @@ producción, no desde este checkout.
 
 ## Fase 2 — Próximas 2-3 semanas (esfuerzo medio, tocan contrato de API o lógica de negocio)
 
-**▶️ Retomada (2026-09-11)** — 2.1 ejecutado. Quedan 2.2-2.6.
+**▶️ Retomada (2026-09-11)** — 2.1 y 2.2 ejecutados. Quedan 2.3-2.6.
 
 Requieren más diseño (definir un umbral de tamaño de payload) y coordinación con quien
 mantiene los agentes desplegados en los hospitales, porque algunos cambios los afectan
@@ -64,7 +64,7 @@ directamente.
 
 | # | Acción | Archivo(s) | Ref | Estado |
 |---|---|---|---|---|
-| 2.1 | Token por hospital (SHA-256, columna `ingest_token_hash` en `hospitales_metadata`), exigido vía `Authorization: Bearer <token>` solo para `schema_version 4.5` en adelante. Las versiones viejas (`3.0`-`4.3`) no cambian, así los ~80 hospitales migran de a uno según se les actualiza el agente, sin fecha de corte global. Diseño en [11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md). Rate limiting del endpoint sigue como ítem separado (2.2, no bloquea este). | `main.py`, `database.py`, `dashboard_app/core.py`, `routers/hospitales_metadata.py`, `Accesorios/agregar_token_ingesta_hospitales.py` (nuevo) | [S2](04-seguridad.md#s2) — HIGH, el hallazgo de seguridad más importante después de las credenciales filtradas | ✅ código, verificado local con `TestClient` (4 casos: versión vieja sin token, 4.5 sin token, 4.5 con token de otro hospital, 4.5 con token correcto) — **falta correr la migración (`Accesorios/agregar_token_ingesta_hospitales.py`) en producción y generar/distribuir tokens a los hospitales que migren** |
+| 2.1 | Token por hospital (SHA-256, columna `ingest_token_hash` en `hospitales_metadata`), exigido vía `Authorization: Bearer <token>` solo para `schema_version 4.5` en adelante. Las versiones viejas (`3.0`-`4.3`) no cambian, así los ~80 hospitales migran de a uno según se les actualiza el agente, sin fecha de corte global. Diseño en [11-plan-auth-ingesta-agente.md](11-plan-auth-ingesta-agente.md). Rate limiting del endpoint sigue como ítem separado (2.2, no bloquea este). | `main.py`, `database.py`, `dashboard_app/core.py`, `routers/hospitales_metadata.py`, `Accesorios/agregar_token_ingesta_hospitales.py` (nuevo) | [S2](04-seguridad.md#s2) — HIGH, el hallazgo de seguridad más importante después de las credenciales filtradas | ✅ migración corrida en producción; P03 migrado y verificado (2026-09-11, revalidado 2026-09-22) — resto de hospitales migran de a uno según se les actualiza el agente, ver [docs/guias/18-guia-configuracion-hospital-nuevo.md](guias/18-guia-configuracion-hospital-nuevo.md) |
 | 2.2 | Agregar límite de tamaño de body (1-2 MB) a nivel de Nginx/Starlette para las rutas de ingesta. *Medido (2026-09-21): ~45–50 KB por reporte en P03 y ~50–55 KB en el peor caso del resto; se recomienda 2 MB, ver S5.* | Nginx config / `main.py` | [S5](04-seguridad.md#s5) | ✅ hecho en `main.py` el 2026-09-21 (2 MB, responde 413); un límite en Nginx queda como refuerzo opcional |
 | 2.3 | Reescribir `calcular_kpis_hospital` para agregar con `SUM()` en SQL en vez de traer todas las filas de `reportes_uso` a Python, o mantener un contador incremental en `hospitales_metadata`. | `dashboard_app/resumen_hospital.py:74-76` | [P2](05-performance.md#p2) — HIGH | pendiente |
 | 2.4 | Normalizar `app_name` a minúsculas al escribir en `software_monitoring` (ya se hace para el diccionario de logs) y reemplazar los loops por-hospital en `verificar_estado_software`/`verificar_mirth` por una sola query con `WHERE hospital_id IN (...)`. | `dashboard_app/alerts_engine/orquestador.py`, `software/mirth.py` (reorganizado en paquete, ver [09](09-plan-refactor-alertas.md)) | [P3](05-performance.md#p3) | pendiente |
@@ -120,8 +120,8 @@ plan todavía.
 Fase 0 (hoy)         →  ✅ rotar token Asana + cambiar contraseña filtrada
 Fase 1 (esta semana) →  ✅ borrar archivos con secretos, to_thread en alertas,
                          índice software_monitoring, limpiezas de auth/API menores
-Fase 2 (2-3 semanas) →  ▶️ en curso — ✅ auth en ingesta (2.1), pendiente: límite de
-                         payload, agregados en SQL, N+1 queries, desnormalización
+Fase 2 (2-3 semanas) →  ▶️ en curso — ✅ auth en ingesta (2.1) y límite de payload (2.2),
+                         pendiente: agregados en SQL, N+1 queries, desnormalización
 Fase 3 (backlog)     →  pendiente — purga automática, scripts con --dry-run,
                          consolidar Accesorios/, reescribir historial de git (si aplica)
 Fase 4 (si crece)    →  pendiente — evaluar Postgres

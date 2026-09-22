@@ -72,9 +72,21 @@ def listar_manual(request: Request,
     })
 
 
-@router.get("/manual/{slug}")
-def ver_doc(slug: str, request: Request,
+@router.get("/manual/{full_path:path}")
+def ver_doc(full_path: str, request: Request,
             current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
+    # Los docs se linkean entre sí con la ruta relativa real del archivo (ej.
+    # "08-plan-refactor-dashboard.md", o "guias/18-....md" desde uno de afuera de esa
+    # carpeta) -- así funcionan también mirando el repo crudo en GitHub/VS Code. Acá el
+    # namespace es plano (un slug puede vivir en docs/ o en docs/guias/, ver _ruta_md),
+    # así que basta con el nombre de archivo sin carpeta ni extensión: se admite
+    # "/manual/08-plan-refactor-dashboard", "/manual/08-plan-refactor-dashboard.md" y
+    # "/manual/guias/18-....md" por igual.
+    slug = full_path.rsplit("/", 1)[-1]
+    if slug.endswith(".md"):
+        slug = slug[:-3]
+    slug = slug.lower()
+
     # Slug estricto (solo minúsculas/números/guiones): evita path traversal
     # y cualquier intento de leer un archivo fuera de docs/.
     if not _SLUG_VALIDO.match(slug):
@@ -87,7 +99,10 @@ def ver_doc(slug: str, request: Request,
     with open(ruta_md, "r", encoding="utf-8") as f:
         contenido_md = f.read()
 
-    contenido_html = markdown.markdown(contenido_md, extensions=["tables", "fenced_code"])
+    # "toc" no agrega tabla de contenidos visible (no ponemos [TOC] en ningún doc) --
+    # lo único que aprovechamos es que le pone id="..." a cada h1-h6, así los links
+    # con ancla (#seccion) entre docs funcionan también acá, no solo en GitHub.
+    contenido_html = markdown.markdown(contenido_md, extensions=["tables", "fenced_code", "toc"])
 
     return templates.TemplateResponse("doc.html", {
         "request": request,
