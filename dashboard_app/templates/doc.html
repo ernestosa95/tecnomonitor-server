@@ -25,11 +25,15 @@ html,body{
 body{ padding:32px 16px; }
 .back-link{ display:block; max-width:760px; margin:0 auto 12px; color:var(--muted); text-decoration:none; font-size:.85em; }
 .back-link:hover{ color:var(--green); }
+/* La tarjeta usa casi todo el ancho del monitor -- el diagrama y las
+   tablas lo necesitan; el texto (h1-h3, p, li) se limita aparte a 760px
+   para no quedar con líneas larguísimas en pantallas anchas. */
 .wrap{
-    max-width:760px; margin:0 auto;
+    max-width:min(1400px, 95vw); margin:0 auto;
     background:var(--surface); border:1px solid var(--border); border-radius:var(--radius2);
     padding:32px 40px;
 }
+.wrap h1, .wrap h2, .wrap h3, .wrap p, .wrap ul, .wrap ol, .wrap blockquote{ max-width:760px; }
 .wrap h1{ font-size:1.5em; color:var(--green); margin-bottom:4px; }
 .wrap h2{ font-size:1.15em; margin:28px 0 10px; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; }
 .wrap h3{ font-size:1em; margin:20px 0 8px; color:var(--text); }
@@ -45,12 +49,16 @@ body{ padding:32px 16px; }
     padding:14px 16px; overflow-x:auto; margin:12px 0;
 }
 .wrap pre code{ background:none; padding:0; color:var(--text); }
-.wrap table{ width:100%; border-collapse:collapse; margin:12px 0; font-size:.85em; }
+.wrap table{ width:100%; max-width:900px; border-collapse:collapse; margin:12px 0; font-size:.85em; }
 .wrap th, .wrap td{ border:1px solid var(--border); padding:6px 10px; text-align:left; }
 .wrap th{ background:var(--surface2); color:var(--text); }
 .wrap ul, .wrap ol{ margin-left:22px; margin-bottom:12px; }
 .wrap a{ color:var(--green); }
 .wrap .mermaid{ background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:14px; margin:12px 0; overflow-x:auto; }
+/* Mermaid le pone max-width:100% al SVG por default (lo achica para que
+   entre en el contenedor) -- lo sacamos: mejor scroll horizontal a tamaño
+   real que un diagrama ilegible por estar reducido. */
+.wrap .mermaid svg{ max-width:none !important; height:auto !important; }
 </style>
 </head>
 <body>
