@@ -25,6 +25,8 @@ body{ padding:32px 16px; }
 .wrap{ max-width:760px; margin:0 auto; }
 .wrap h1{ font-size:1.5em; color:var(--green); margin-bottom:6px; }
 .wrap p.sub{ color:var(--muted); font-size:.9em; margin-bottom:28px; }
+.section-title{ font-size:1em; color:var(--text); margin:28px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.section-title:first-of-type{ margin-top:0; }
 .doc-list{ display:flex; flex-direction:column; gap:10px; }
 .doc-item{
     display:block; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius2);
@@ -38,11 +40,23 @@ body{ padding:32px 16px; }
     <div class="wrap">
         <h1>Manual técnico</h1>
         <p class="sub">Documentación del repositorio, generada desde <code>docs/*.md</code>.</p>
+
+        <h2 class="section-title">Documentación del server</h2>
         <div class="doc-list">
-        {% for doc in docs %}
+        {% for doc in docs_server %}
             <a class="doc-item" href="/manual/{{ doc.slug }}">
                 {{ doc.titulo }}
-                <span class="slug">{{ doc.slug }}.md</span>
+                <span class="slug">docs/{{ doc.slug }}.md</span>
+            </a>
+        {% endfor %}
+        </div>
+
+        <h2 class="section-title">Guías y tutoriales</h2>
+        <div class="doc-list">
+        {% for doc in guias %}
+            <a class="doc-item" href="/manual/{{ doc.slug }}">
+                {{ doc.titulo }}
+                <span class="slug">docs/guias/{{ doc.slug }}.md</span>
             </a>
         {% endfor %}
         </div>
