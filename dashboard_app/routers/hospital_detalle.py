@@ -284,6 +284,54 @@ def _estado_colas_dicom(db: Session, hospital_id: str):
         
     return estados
 
+# ============================================================
+# INTEGRIDAD DE BASES SQL (DBCC CHECKDB post-reinicio)
+# ------------------------------------------------------------
+# Mismo motivo que _estado_colas_dicom: el último chequeo de integridad es
+# un evento raro (una vez por reinicio real de SQL Server), no algo que
+# tenga sentido filtrar por el selector de tiempo del panel -- si el
+# usuario mira "30 min" no debería dejar de ver el resultado de un
+# reinicio de hace 3 días. Siempre trae la última fila por base,
+# independiente de `minutos`.
+# ============================================================
+def _ultimo_checkdb(db: Session, hospital_id: str):
+    filas = db.execute(text("""
+        WITH RankedData AS (
+            SELECT component_id, status_value, metric_value, extra_data, timestamp,
+                   ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
+            FROM software_monitoring
+            WHERE hospital_id = :hid AND app_name = 'sql_integrity'
+        )
+        SELECT component_id, status_value, metric_value, extra_data, timestamp
+        FROM RankedData WHERE rn = 1
+    """), {"hid": hospital_id}).fetchall()
+
+    if not filas:
+        return None
+
+    bases = []
+    for f in filas:
+        extra = json.loads(f.extra_data) if f.extra_data else {}
+        ts_str = ""
+        if f.timestamp:
+            ts_str = f.timestamp[:19] if isinstance(f.timestamp, str) else f.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        bases.append({
+            "db": f.component_id,
+            "status": f.status_value,
+            "error_count": f.metric_value,
+            "detail": extra.get("detail", ""),
+            "checked_at": ts_str,
+        })
+    bases.sort(key=lambda b: b["db"])
+
+    return {
+        "last_checked_at": max((b["checked_at"] for b in bases if b["checked_at"]), default=""),
+        "total": len(bases),
+        "con_error": sum(1 for b in bases if (b["status"] or "").upper() == "ERROR"),
+        "databases": bases,
+    }
+
+
 @router.get("/api/hospital/{hospital_id}/software")
 def obtener_estado_software(hospital_id: str, minutos: int = 0,
                             db: Session = Depends(get_db),
@@ -567,6 +615,9 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             "pico_label": pico_label,
             "history": historial_regla
         })
+
+    # 7. 🆕 INTEGRIDAD DE BASES SQL (DBCC CHECKDB) — ver _ultimo_checkdb().
+    software_data["sql_integrity"] = _ultimo_checkdb(db, hospital_id)
 
     return software_data
 

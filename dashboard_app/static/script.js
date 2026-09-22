@@ -427,6 +427,10 @@ async function cargarConfigUI() {
         const inpDicomCrit = document.getElementById('dicom-crit-min');
         if(inpDicomCrit) inpDicomCrit.value = data.dicom_stall_critical_minutes || 120;
 
+        // --- CAMPO INTEGRIDAD DE BASES (CHECKDB) ---
+        const chkSqlIntegrity = document.getElementById('sql-integrity-alert-enabled');
+        if(chkSqlIntegrity) chkSqlIntegrity.checked = !!data.sql_integrity_alert_enabled;
+
         cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email, data.dicom_responsible_email);
         
         renderKpiModsChips();
@@ -482,6 +486,9 @@ async function guardarConfig() {
         dicom_stall_warning_minutes: parseInt(document.getElementById('dicom-warn-min')?.value) || 45,
         dicom_stall_critical_minutes: parseInt(document.getElementById('dicom-crit-min')?.value) || 120,
         dicom_responsible_email: dicomSelectedUsers.join(','),
+
+        // --- CAMPO INTEGRIDAD DE BASES (CHECKDB) ---
+        sql_integrity_alert_enabled: document.getElementById('sql-integrity-alert-enabled')?.checked || false,
     };
     
     try {
@@ -3758,8 +3765,9 @@ function renderizarSoftware(data) {
     const hasMirth = data.mirth && Object.keys(data.mirth).length > 0;
     const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
     const hasDicom = data.dicom_routing && data.dicom_routing.length > 0;
+    const hasSqlIntegrity = data.sql_integrity && data.sql_integrity.total > 0;
 
-    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom) {
+    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom && !hasSqlIntegrity) {
         container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; color: var(--muted);">
                 <h3 style="margin-top: 20px; color: var(--text);">Sin Reportes</h3>
@@ -3840,6 +3848,44 @@ function renderizarSoftware(data) {
         });
         sslHtml += `</tbody></table></div></div></div>`;
         html += sslHtml;
+    }
+
+    // ==========================================
+    // --- 1bis. INTEGRIDAD DE BASES (DBCC CHECKDB) ---
+    // Resumen, no tabla: el detalle de las 26 bases va en el tooltip nativo
+    // (title), mismo patrón que .mirth-pill, para no ensuciar la vista con
+    // un chequeo que solo cambia una vez cada tanto (post-reinicio de SQL).
+    // ==========================================
+    if (hasSqlIntegrity) {
+        const si = data.sql_integrity;
+        const conError = si.con_error > 0;
+        const estadoTexto = conError ? `${si.con_error} con error` : 'OK';
+        const estadoColor = conError ? 'var(--red)' : 'var(--green)';
+        const estadoBg = conError ? 'rgba(255, 92, 92, 0.12)' : 'rgba(0, 229, 160, 0.12)';
+
+        let fechaVisual = '-';
+        if (si.last_checked_at) {
+            const d = new Date(si.last_checked_at.replace(' ', 'T'));
+            if (!isNaN(d)) {
+                fechaVisual = d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+        }
+
+        const listaBases = si.databases
+            .map(b => `${b.db}: ${b.status}${b.error_count ? ` (${b.error_count} errores)` : ''}`)
+            .join('\n')
+            .replace(/"/g, '&quot;');
+
+        html += `
+            <div class="detail-card" style="padding: 15px 20px; margin-bottom: 25px; border-top: 4px solid ${estadoColor}; display:flex; align-items:center; gap: 12px;" title="${listaBases}">
+                <span style="font-size: 1.5em;">🗄️</span>
+                <div>
+                    <h3 style="margin:0 0 2px 0; font-size:1.05em; color:var(--text); text-transform:none;">Integridad de bases (CHECKDB)</h3>
+                    <span style="color: var(--muted);">Último chequeo: <b style="color:var(--text);">${fechaVisual}</b> — ${si.total} bases — </span>
+                    <span style="color: ${estadoColor}; background: ${estadoBg}; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">${estadoTexto}</span>
+                </div>
+            </div>
+        `;
     }
 
     // ==========================================

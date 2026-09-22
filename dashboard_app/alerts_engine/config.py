@@ -143,6 +143,11 @@ def cargar_config(db):
         # (clave, valor) VALUES ('dicom_baseline_enabled', '0'). Ver docs/12 §3quater.
         "dicom_baseline_enabled": g("dicom_baseline_enabled", True, is_bool=True),
         "dicom_responsible_email": g("dicom_responsible_email", ""),
+
+        # --- INTEGRIDAD DE BASES SQL (DBCC CHECKDB post-reinicio) ---
+        # Sin responsable propio a propósito: reusa 'global_alert_responsible_email'
+        # (Infraestructura) -- es la misma gente que ya atiende un reinicio de SQL.
+        "sql_integrity_alert_enabled": g("sql_integrity_alert_enabled", False, is_bool=True),
     }
 
 

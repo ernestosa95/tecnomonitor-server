@@ -17,7 +17,7 @@ from .config import _followers_de, cargar_config
 from .exclusiones import cargar_exclusiones
 from .kpis_negocio import mamo as kpi_mamo
 from .kpis_negocio import ris as kpi_ris
-from .software import dicom_autoenrute, mirth
+from .software import dicom_autoenrute, mirth, sql_integrity
 
 # Variable global para registrar la última ejecución de KPIs (el chequeo
 # diario no debe repetirse dos veces el mismo día).
@@ -127,3 +127,13 @@ def verificar_estado_software(db):
             except Exception:
                 pass
             print(f"❌ [Software] Falló la verificación de autoenrute DICOM: {repr(e)}")
+
+    if config.get('sql_integrity_alert_enabled'):
+        try:
+            sql_integrity.verificar_integridad_bases(db, config, hospitales_activos)
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            print(f"❌ [Software] Falló la verificación de integridad de bases (CHECKDB): {repr(e)}")

@@ -86,6 +86,10 @@ class ConfigRequest(BaseModel):
     dicom_drain_percent: int = 70
     dicom_responsible_email: str = ""
 
+    # --- Integridad de bases SQL (DBCC CHECKDB post-reinicio) ---
+    # Sin responsable propio: reusa global_alert_responsible_email.
+    sql_integrity_alert_enabled: bool = False
+
 class ExclusionRequest(BaseModel):
     hospital_id: str = "*"
     patron: str
@@ -171,7 +175,10 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "dicom_stall_critical_minutes": g("dicom_stall_critical_minutes", 120),
         "dicom_min_instances": g("dicom_min_instances", 50),
         "dicom_drain_percent": g("dicom_drain_percent", 70),
-        "dicom_responsible_email": g("dicom_responsible_email", "")
+        "dicom_responsible_email": g("dicom_responsible_email", ""),
+
+        # --- INTEGRIDAD DE BASES SQL (CHECKDB) ---
+        "sql_integrity_alert_enabled": g("sql_integrity_alert_enabled", False, is_bool=True),
     }
 
 
@@ -226,6 +233,9 @@ def guardar_configuracion(cfg: ConfigRequest,
     s("dicom_min_instances", cfg.dicom_min_instances)
     s("dicom_drain_percent", cfg.dicom_drain_percent)
     s("dicom_responsible_email", cfg.dicom_responsible_email)
+
+    # --- GUARDAR CONFIGURACIÓN DE INTEGRIDAD DE BASES (CHECKDB) ---
+    s("sql_integrity_alert_enabled", cfg.sql_integrity_alert_enabled)
 
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}

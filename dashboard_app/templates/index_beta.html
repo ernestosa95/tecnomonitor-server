@@ -2716,6 +2716,17 @@ canvas{color-scheme:dark}
                         </div>
                     </div>
 
+                    <div class="conf-section-block">
+                        <div class="conf-section-title">Integridad de bases (CHECKDB)</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div>
+                                <strong style="font-size:.9em">Alertar por errores de CHECKDB</strong>
+                                <div style="font-size:.82em;color:var(--muted);margin-top:2px">Crea un ticket si el chequeo posterior a un reinicio de SQL Server encuentra errores en alguna base. Usa los mismos responsables de Infraestructura configurados arriba.</div>
+                            </div>
+                            <input type="checkbox" id="sql-integrity-alert-enabled" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+                        </div>
+                    </div>
+
                     <button class="btn-action" onclick="guardarConfig()" style="width:auto;border-radius:50px;padding:10px 32px;font-size:.9em">
                         Guardar configuración
                     </button>
