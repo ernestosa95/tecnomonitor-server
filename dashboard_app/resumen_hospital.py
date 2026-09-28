@@ -89,6 +89,51 @@ def ram_pct(full_json):
         return None
 
 
+def pacs_almacenados(item):
+    """
+    (aet, almacenados) de un item "pacs" del reporte de uso, con almacenados=0
+    si el item no cuenta como estudio (AET/modalidad excluidos). Criterio
+    único para el total de "estudios" y para su serie temporal.
+    """
+    aet = (item.get("aet") or "Desc").upper().strip()
+    mod = item.get("mod", "") or ""
+    if aet in EXCLUDED_AETS or mod in EXCLUDED_MODS:
+        return aet, 0
+    return aet, int(item.get("almacenados", 0) or 0)
+
+
+def serie_semanal_pacs(db, hospital_id: str) -> dict:
+    """
+    {"YYYY-MM-DD" (lunes de la semana): estudios PACS de esa semana}, por
+    fecha del evento (fecha_evento). Mismo criterio que "estudios" en
+    calcular_kpis_hospital, así el acumulado termina en el mismo número que
+    la tabla de /prov-analytics. Semanas sin estudios no aparecen.
+    """
+    semanas = defaultdict(int)
+    usos = db.query(database.ReporteUso).filter(
+        database.ReporteUso.hospital_id == hospital_id
+    ).all()
+    for uso in usos:
+        if not uso.kpi_json_data:
+            continue
+        try:
+            metrics = json.loads(uso.kpi_json_data) if isinstance(uso.kpi_json_data, str) else uso.kpi_json_data
+        except (json.JSONDecodeError, TypeError):
+            continue
+        fecha = fecha_evento(uso, metrics)
+        if fecha is None:
+            continue
+        total = 0
+        for item in metrics.get("pacs", []) or []:
+            _, val = pacs_almacenados(item)
+            if val > 0:
+                total += val
+        if total:
+            lunes = (fecha - timedelta(days=fecha.weekday())).strftime("%Y-%m-%d")
+            semanas[lunes] += total
+    return dict(semanas)
+
+
 def calcular_kpis_hospital(db, hospital_id: str) -> dict:
     """
     Devuelve estudios/admitidas/asociadas/definitivas/ia/equipos (acumulado
@@ -143,11 +188,7 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
                 hay_actividad = True
 
         for item in metrics.get("pacs", []) or []:
-            aet = (item.get("aet") or "Desc").upper().strip()
-            mod = item.get("mod", "") or ""
-            if aet in EXCLUDED_AETS or mod in EXCLUDED_MODS:
-                continue
-            val = int(item.get("almacenados", 0) or 0)
+            aet, val = pacs_almacenados(item)
             if val <= 0:
                 continue
             acc["estudios"] += val

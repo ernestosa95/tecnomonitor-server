@@ -41,6 +41,10 @@ CACHE_TTL_SEGUNDOS = 30
 _cache_provincias = {"data": None, "ts": 0}
 CACHE_TTL_PROVINCIAS = 60
 
+# Los KPIs de uso llegan cada varias horas: la serie semanal no necesita más frescura.
+_cache_evolucion = {"data": None, "ts": 0}
+CACHE_TTL_EVOLUCION = 300
+
 # Centroides aprox. de provincias (lat, lng) para ubicar el marcador en /prov-analytics.
 CENTROIDES_PROVINCIAS = {
     "Buenos Aires": [-36.5, -60.2], "CABA": [-34.61, -58.38], "Córdoba": [-32.0, -63.5],
@@ -330,6 +334,38 @@ def obtener_resumen_provincias(db: Session = Depends(get_db),
     }
     _cache_provincias["data"] = resultado
     _cache_provincias["ts"] = ahora
+    return resultado
+
+
+@router.get("/api/provincias/evolucion")
+def evolucion_estudios_pacs(db: Session = Depends(get_db),
+                            current_user: dict = Depends(auth.bloquear_cliente())):
+    """
+    Estudios PACS por semana y por hospital, para el gráfico de evolución
+    acumulada de /prov-analytics. Devuelve todos los hospitales visibles y el
+    frontend filtra los de la provincia/proyecto elegido (una sola carga).
+    Los hospitales con datos_manuales no tienen historia (su carga es un total
+    puntual), así que no figuran.
+    """
+    global _cache_evolucion
+    ahora = time.time()
+
+    if _cache_evolucion["data"] is not None and (ahora - _cache_evolucion.get("ts", 0)) < CACHE_TTL_EVOLUCION:
+        return _cache_evolucion["data"]
+
+    hospitales_meta = db.query(HospitalMetadata).filter(
+        HospitalMetadata.is_visible == True
+    ).all()
+
+    series = {}
+    for hosp in hospitales_meta:
+        if getattr(hosp, "datos_manuales", False):
+            continue
+        series[hosp.hospital_id] = resumen_hospital.serie_semanal_pacs(db, hosp.hospital_id)
+
+    resultado = {"hospitales": series}
+    _cache_evolucion["data"] = resultado
+    _cache_evolucion["ts"] = ahora
     return resultado
 
 

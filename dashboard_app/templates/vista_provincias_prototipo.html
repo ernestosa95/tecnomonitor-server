@@ -6,6 +6,7 @@
 <title>TecnoMonitor · Panel Nacional Unificado</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 :root {
   /* Paleta clara, plana y minimalista */
@@ -335,6 +336,54 @@ tr:hover td { background: var(--surface2); }
 }
 
 .resumen-ia-row b { font-weight: 800; }
+
+/* ---- MODAL EVOLUCIÓN TEMPORAL (acumulado de estudios PACS) ---- */
+#evo-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(33, 37, 41, 0.45);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+#evo-modal.open { display: flex; }
+
+.evo-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  width: min(1200px, 100%);
+  height: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.evo-card .dc-head { padding: 18px 24px; }
+.evo-card .dc-head h3 { font-size: 1.15rem; }
+
+.evo-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 24px 12px;
+  position: relative;
+}
+
+.evo-nota {
+  padding: 0 24px 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.evo-msg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+}
 </style>
 </head>
 <body>
@@ -403,9 +452,14 @@ tr:hover td { background: var(--surface2); }
         <h3 id="d-name">Panel Nacional</h3>
         <div class="badge" id="d-badge">Seleccioná una provincia en el mapa</div>
       </div>
-      <button type="button" class="toggle-btn" id="btn-exportar-csv" onclick="descargarCSV()" style="display:none; border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius2);">
-        ⬇ CSV
-      </button>
+      <div style="display:flex;gap:10px">
+        <button type="button" class="toggle-btn" id="btn-evolucion" onclick="abrirEvolucion()" style="display:none; border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius2);">
+          📈 <span id="lbl-evolucion">Evolución temporal</span>
+        </button>
+        <button type="button" class="toggle-btn" id="btn-exportar-csv" onclick="descargarCSV()" style="display:none; border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius2);">
+          ⬇ CSV
+        </button>
+      </div>
     </div>
     <div class="dc-body" id="d-body">
       <div class="empty-detail">
@@ -415,6 +469,21 @@ tr:hover td { background: var(--surface2); }
     </div>
   </div>
 
+</div>
+
+<!-- Modal: evolución temporal del acumulado de estudios PACS de la selección -->
+<div id="evo-modal" onclick="if (event.target === this) cerrarEvolucion()">
+  <div class="evo-card">
+    <div class="dc-head">
+      <div>
+        <h3 id="evo-titulo"></h3>
+        <div class="badge" id="evo-sub"></div>
+      </div>
+      <button type="button" class="toggle-btn" onclick="cerrarEvolucion()" style="border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius2);">✕</button>
+    </div>
+    <div class="evo-body" id="evo-body"><canvas id="evo-canvas"></canvas></div>
+    <div class="evo-nota" id="evo-nota"></div>
+  </div>
 </div>
 
 <script>
@@ -474,6 +543,14 @@ const I18N = {
     footerTitulo: 'Red BID + PROSEPU',
     footerEstudiosTotales: 'estudios totales (PACS)',
     footerViaIA: 'vía IA',
+    btnEvolucion: 'Evolución temporal',
+    evoTitulo: 'Evolución de estudios PACS (acumulado)',
+    evoSub: 'Estudios almacenados en PACS, acumulados por semana',
+    evoTotal: 'Total',
+    evoOtros: 'Otros',
+    evoSinHistorial: 'sin historial (carga manual): no se incluyen en el gráfico.',
+    evoSinDatos: 'No hay datos históricos para esta selección.',
+    evoCargando: 'Cargando…',
   },
   it: {
     locale: 'it-IT',
@@ -522,6 +599,14 @@ const I18N = {
     footerTitulo: 'Rete BID + PROSEPU',
     footerEstudiosTotales: 'studi totali (PACS)',
     footerViaIA: 'via IA',
+    btnEvolucion: 'Evoluzione temporale',
+    evoTitulo: 'Evoluzione degli studi PACS (cumulativo)',
+    evoSub: 'Studi archiviati nel PACS, cumulati per settimana',
+    evoTotal: 'Totale',
+    evoOtros: 'Altri',
+    evoSinHistorial: 'senza storico (caricamento manuale): non inclusi nel grafico.',
+    evoSinDatos: 'Nessun dato storico per questa selezione.',
+    evoCargando: 'Caricamento…',
   },
 };
 
@@ -535,6 +620,7 @@ const TEXTOS_ESTATICOS = {
   'lbl-equipos': 'kpiEquipos',
   'btn-modo-provincia': 'provincia',
   'btn-modo-proyecto': 'proyecto',
+  'lbl-evolucion': 'btnEvolucion',
 };
 
 function aplicarTextosEstaticos() {
@@ -588,6 +674,7 @@ function cambiarIdioma(lang) {
   actualizarPopups();
   if (modo === 'proyecto') renderProjectCards();
   if (seleccionActual) mostrarDetalle(seleccionActual); else resetPanelDetalle();
+  if (document.getElementById('evo-modal').classList.contains('open')) renderEvolucion();
 }
 
 const CENT = {"Buenos Aires": [-36.5, -60.2], "CABA": [-34.61, -58.38], "Córdoba": [-32.0, -63.5], "Santa Fe": [-30.7, -60.9], "Tucumán": [-26.9, -65.2], "Chubut": [-43.8, -68.5], "Neuquén": [-38.9, -69.8], "Mendoza": [-34.9, -68.5], "Catamarca": [-27.3, -66.9], "Jujuy": [-23.3, -65.8], "Entre Ríos": [-32.0, -59.2], "Salta": [-24.3, -64.8], "San Juan": [-30.8, -68.9], "Formosa": [-24.9, -59.9], "La Rioja": [-29.7, -67.0], "Tierra del Fuego": [-53.8, -67.9], "Chaco": [-26.4, -60.5], "Corrientes": [-28.7, -57.8], "Río Negro": [-40.2, -67.2], "Santiago del Estero": [-27.8, -63.2], "Misiones": [-26.9, -54.5], "Santa Cruz": [-48.6, -70.0], "San Luis": [-33.7, -66.0], "La Pampa": [-37.2, -65.5]};
@@ -750,7 +837,8 @@ function tooltipEstudiosAnual(h) {
 function mostrarDetalle(p) {
   seleccionActual = p;
   document.getElementById('btn-exportar-csv').style.display = 'inline-block';
-  
+  document.getElementById('btn-evolucion').style.display = 'inline-block';
+
   const nombre = p.provincia || p.proyecto;
   document.getElementById('d-name').textContent = nombre;
   document.getElementById('d-badge').textContent = p.n_hospitales + ' ' + t('hospitalesEnMonitoreo');
@@ -788,6 +876,7 @@ function mostrarDetalle(p) {
 function resetPanelDetalle() {
   seleccionActual = null;
   document.getElementById('btn-exportar-csv').style.display = 'none';
+  document.getElementById('btn-evolucion').style.display = 'none';
   document.getElementById('d-name').textContent = t('panelNacional');
   document.getElementById('d-badge').textContent = modo === 'provincia'
     ? t('selProvinciaMapa')
@@ -878,6 +967,152 @@ function cambiarModo(nuevo) {
     renderProjectCards();
   }
   resetPanelDetalle();
+}
+
+// ---- Evolución temporal: acumulado semanal de estudios PACS de la selección ----
+// Una línea por hospital + una de total. Con más de EVO_MAX_LINEAS hospitales,
+// los más chicos se suman en una línea "Otros" (más de 8 colores ya no se
+// distinguen). El color sigue al orden por estudios, igual que la tabla.
+let EVOLUCION = null;
+let chartEvo = null;
+const EVO_COLORES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+const EVO_MAX_LINEAS = 8;
+
+function evoLunesActual() {
+  const n = new Date();
+  const d = new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+function evoSemanas(desde, hasta) {
+  const out = [];
+  const d = new Date(desde + 'T00:00:00Z');
+  const fin = new Date(hasta + 'T00:00:00Z');
+  while (d <= fin) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 7);
+  }
+  return out;
+}
+
+// Acumulado sobre el eje de semanas; null antes de la primera semana con datos
+// (el hospital todavía no reportaba), para que la línea arranque donde empieza.
+function evoAcumulado(serie, semanas) {
+  let acc = 0, empezo = false;
+  return semanas.map(s => {
+    const v = serie[s] || 0;
+    if (v) empezo = true;
+    acc += v;
+    return empezo ? acc : null;
+  });
+}
+
+function evoSumar(arrays, largo) {
+  return Array.from({ length: largo }, (_, i) => {
+    let suma = null;
+    arrays.forEach(a => { if (a[i] != null) suma = (suma || 0) + a[i]; });
+    return suma;
+  });
+}
+
+async function abrirEvolucion() {
+  if (!seleccionActual) return;
+  document.getElementById('evo-modal').classList.add('open');
+  if (!EVOLUCION) {
+    evoMensaje(t('evoCargando'));
+    const res = await fetch('/api/provincias/evolucion', { credentials: 'include' });
+    if (res.status === 401) { window.location.href = '/'; return; }
+    if (!res.ok) { evoMensaje(t('errorCargando') + ' (' + res.status + ')'); return; }
+    EVOLUCION = (await res.json()).hospitales || {};
+  }
+  renderEvolucion();
+}
+
+function cerrarEvolucion() {
+  document.getElementById('evo-modal').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarEvolucion(); });
+
+function evoMensaje(txt) {
+  if (chartEvo) { chartEvo.destroy(); chartEvo = null; }
+  document.getElementById('evo-body').innerHTML = '<div class="evo-msg">' + txt + '</div>';
+}
+
+function renderEvolucion() {
+  const p = seleccionActual;
+  if (!p || !EVOLUCION) return;
+  const nombre = p.provincia || p.proyecto;
+  document.getElementById('evo-titulo').textContent = t('evoTitulo') + ' · ' + nombre;
+  document.getElementById('evo-sub').textContent = t('evoSub');
+
+  const conSerie = p.hospitales.filter(h => EVOLUCION[h.id] && Object.keys(EVOLUCION[h.id]).length);
+  const sinHistorial = p.hospitales.filter(h => !EVOLUCION[h.id]);
+  document.getElementById('evo-nota').textContent = sinHistorial.length
+    ? sinHistorial.map(h => h.nombre).join(', ') + ' — ' + t('evoSinHistorial')
+    : '';
+
+  if (!conSerie.length) { evoMensaje(t('evoSinDatos')); return; }
+
+  let desde = null;
+  conSerie.forEach(h => Object.keys(EVOLUCION[h.id]).forEach(s => { if (!desde || s < desde) desde = s; }));
+  const hasta = evoLunesActual();
+  const semanas = evoSemanas(desde, hasta > desde ? hasta : desde);
+
+  const lineas = conSerie
+    .map(h => ({ nombre: h.nombre, datos: evoAcumulado(EVOLUCION[h.id], semanas) }))
+    .sort((a, b) => (b.datos[b.datos.length - 1] || 0) - (a.datos[a.datos.length - 1] || 0));
+
+  const base = { fill: false, tension: 0, pointRadius: 0, pointHoverRadius: 4, borderWidth: 2, spanGaps: false };
+  let datasets;
+  if (lineas.length > EVO_MAX_LINEAS) {
+    const visibles = lineas.slice(0, EVO_MAX_LINEAS - 1);
+    const resto = lineas.slice(EVO_MAX_LINEAS - 1);
+    datasets = visibles.map((l, i) => Object.assign({}, base, { label: l.nombre, data: l.datos, borderColor: EVO_COLORES[i], backgroundColor: EVO_COLORES[i] }));
+    datasets.push(Object.assign({}, base, {
+      label: t('evoOtros') + ' (' + resto.length + ' ' + t('hospitalesLbl') + ')',
+      data: evoSumar(resto.map(l => l.datos), semanas.length),
+      borderColor: '#868e96', backgroundColor: '#868e96', borderDash: [5, 4],
+    }));
+  } else {
+    datasets = lineas.map((l, i) => Object.assign({}, base, { label: l.nombre, data: l.datos, borderColor: EVO_COLORES[i], backgroundColor: EVO_COLORES[i] }));
+  }
+  // Con un solo hospital, la línea de total sería la misma: se omite.
+  if (lineas.length > 1) {
+    datasets.unshift(Object.assign({}, base, {
+      label: t('evoTotal'),
+      data: evoSumar(lineas.map(l => l.datos), semanas.length),
+      borderColor: '#212529', backgroundColor: '#212529', borderWidth: 3,
+    }));
+  }
+
+  const loc = t('locale');
+  const etiqueta = s => s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(2, 4);
+
+  if (chartEvo) chartEvo.destroy();
+  document.getElementById('evo-body').innerHTML = '<canvas id="evo-canvas"></canvas>';
+  chartEvo = new Chart(document.getElementById('evo-canvas'), {
+    type: 'line',
+    data: { labels: semanas.map(etiqueta), datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { usePointStyle: true, pointStyle: 'line', color: '#212529', font: { size: 12 } } },
+        tooltip: {
+          itemSort: (a, b) => (b.raw || 0) - (a.raw || 0),
+          filter: item => item.raw != null,
+          callbacks: { label: c => ' ' + c.dataset.label + ': ' + c.raw.toLocaleString(loc) },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#868e96', maxTicksLimit: 12, maxRotation: 0 } },
+        y: { beginAtZero: true, grid: { color: '#e9ecef' }, ticks: { color: '#868e96', callback: v => v.toLocaleString(loc) } },
+      },
+    },
+  });
 }
 
 function descargarCSV() {
