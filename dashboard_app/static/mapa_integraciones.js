@@ -89,6 +89,8 @@
     META = json.meta || {};
     ORIGENES = json.origenes || [];
     DESTINOS = json.destinos || [];
+    _acortarAutodetectados(ORIGENES);
+    _acortarAutodetectados(DESTINOS);
     CANALES = (json.canales || []).map(c => ({
       id: c.id, nom: c.nom || c.id, hum: c.hum || c.nom || c.id,
       origen: c.origen || null, destino: c.destino || null, padre: c.padre || null,
@@ -134,6 +136,50 @@
 
   // Ubica los nodos laterales a la altura media de sus canales. `yMin` (solo en bandas) evita
   // que suban por encima del rótulo de su instancia. Devuelve el borde inferior del último nodo.
+  // ── Rótulos cortos para orígenes/destinos auto-detectados ──
+  // El endpoint crudo de Mirth no entra en la caja ("${GlobalExtensaConnectHttp}/api/Report...").
+  // Se arma un nombre corto (la variable sin "Global" ni el sufijo Http/Url, o el host) y la ruta
+  // va en la segunda línea. El endpoint completo queda en `full` (tooltip y panel de detalle).
+  function _nombreVariable(v) {
+    return v.replace(/^Global/, '').replace(/^Path/, '').replace(/(Https?|Url|Path)$/i, '') || v;
+  }
+
+  function _resumirEndpoint(txt) {
+    let s = String(txt || '').trim();
+    const jdbc = s.match(/^jdbc:\w+:\/\/([^;/]+)(.*)$/i);
+    if (jdbc) {
+      const base = jdbc[2].match(/databaseName=([^;]+)/i);
+      return { nombre: jdbc[1], ruta: base ? 'BD ' + base[1] : '' };
+    }
+    const archivo = s.match(/^FILE\s+(.*)$/i);
+    if (archivo) s = archivo[1];
+    s = s.replace(/\$\{([^}]+)\}/g, (_, v) => _nombreVariable(v)).replace(/^[a-z]+:\/\//i, '');
+    const i = s.search(/[/\\]/);
+    if (archivo) return i >= 0 ? { nombre: 'Archivo', ruta: s } : { nombre: 'Archivo ' + s, ruta: '' };
+    return { nombre: i > 0 ? s.slice(0, i) : s, ruta: i > 0 ? s.slice(i) : '' };
+  }
+
+  function _acortarAutodetectados(nodos) {
+    nodos.forEach(n => {
+      if (!n.auto) return;
+      const r = _resumirEndpoint(n.sub || n.label);
+      n.full = n.sub || n.label;
+      n.label = r.nombre || n.full;
+      n.sub = r.ruta;
+    });
+  }
+
+  // Recorte por cantidad de caracteres según el ancho de la caja (aprox. del tamaño de fuente).
+  function _cortar(txt, max) {
+    txt = String(txt || '');
+    return txt.length > max ? txt.slice(0, Math.max(1, max - 1)) + '…' : txt;
+  }
+  // Para rutas: se conserva el final, que es lo que distingue un endpoint de otro.
+  function _cortarFin(txt, max) {
+    txt = String(txt || '');
+    return txt.length > max ? '…' + txt.slice(-(max - 1)) : txt;
+  }
+
   function _ubicarLateral(nodos, campoRef, canales, yMin) {
     nodos.forEach(n => {
       const rel = canales.filter(c => c[campoRef] === n.id);
@@ -357,10 +403,14 @@
     // ── Nodos laterales
     [[ORIGENES, L.oX, L.oW, 'origen'], [DESTINOS, L.dX, L.dW, 'destino']].forEach(([lista, x, w, tipo]) => {
       lista.forEach(n => {
-        const g = el('g', { class: 'mi-node', tabindex: '0', role: 'button', 'data-nodo': n.id, 'aria-label': n.label });
+        const titulo = modo === 'op' ? n.label : (n.humano || n.label);
+        const sub = modo === 'op' ? (n.sub || '') : '';
+        const g = el('g', { class: 'mi-node', tabindex: '0', role: 'button', 'data-nodo': n.id, 'aria-label': n.full || titulo });
+        g.appendChild(el('title', {}, n.full || [titulo, sub].filter(Boolean).join(' · ')));
         g.appendChild(el('rect', { class: 'mi-nbox', x, y: n.cy - L.nAlto / 2, width: w, height: L.nAlto, rx: 7 }));
-        g.appendChild(el('text', { x: x + 13, y: n.cy - 2, class: 'mi-nlabel' }, modo === 'op' ? n.label : (n.humano || n.label)));
-        g.appendChild(el('text', { x: x + 13, y: n.cy + 12, class: 'mi-nsub' }, modo === 'op' ? (n.sub || '') : ''));
+        // Sin segunda línea, el rótulo va centrado en la caja.
+        g.appendChild(el('text', { x: x + 13, y: sub ? n.cy - 2 : n.cy + 4, class: 'mi-nlabel' }, _cortar(titulo, Math.floor((w - 26) / 6.6))));
+        if (sub) g.appendChild(el('text', { x: x + 13, y: n.cy + 12, class: 'mi-nsub' }, _cortarFin(sub, Math.floor((w - 26) / 5.8))));
         g.onclick = () => abrirNodo(tipo, n.id);
         g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirNodo(tipo, n.id); } };
         g.onmouseenter = () => resaltar(n.rel);
@@ -522,8 +572,8 @@
         ${acumulado ? _flujoAcumulado(d) : ''}
         <div class="mi-sec">Cola · línea de tiempo</div>${_sparkline(c.id)}
         <div class="mi-sec">Ruteo</div>
-        <div class="mi-kv"><span class="mi-k">Origen</span><span class="mi-v">${padre ? padre.nom + ' (interno)' : org ? org.label + (org.sub ? ' · ' + org.sub : '') : '—'}</span></div>
-        <div class="mi-kv"><span class="mi-k">Destino</span><span class="mi-v">${dst ? dst.label + (dst.sub ? ' · ' + dst.sub : '') : 'canales internos'}</span></div>
+        <div class="mi-kv"><span class="mi-k">Origen</span><span class="mi-v">${padre ? padre.nom + ' (interno)' : org ? (org.full || org.label + (org.sub ? ' · ' + org.sub : '')) : '—'}</span></div>
+        <div class="mi-kv"><span class="mi-k">Destino</span><span class="mi-v">${dst ? (dst.full || dst.label + (dst.sub ? ' · ' + dst.sub : '')) : 'canales internos'}</span></div>
         <div class="mi-kv"><span class="mi-k">Umbral de cola</span><span class="mi-v">${(UMBRALES[c.crit] || {}).warn} / ${(UMBRALES[c.crit] || {}).crit}</span></div>
         <div class="mi-kv"><span class="mi-k">Identificador de alerta</span><span class="mi-v">${c.tipo_alerta}</span></div>`;
       } else {
@@ -542,7 +592,7 @@
       cuerpo = `<span class="mi-status-badge ${malos.length ? 'mi-status-warning' : 'mi-status-online'}">${malos.length ? malos.length + ' flujo(s) con problema' : 'Todo en orden'}</span>`;
       if (modo === 'op') {
         cuerpo += `<div class="mi-sec">Punto de conexión</div>
-        <div class="mi-kv"><span class="mi-k">Endpoint</span><span class="mi-v">${n.sub || '—'}</span></div>`;
+        <div class="mi-kv"><span class="mi-k">Endpoint</span><span class="mi-v">${n.full || n.sub || '—'}</span></div>`;
         if (n.auto) cuerpo += `<div class="mi-kv"><span class="mi-k">Origen del dato</span><span class="mi-v" style="font-family:inherit">Auto-detectado (sin curar)</span></div>`;
         const vmTxt = _vmInfo(n.vm);
         if (n.vm) cuerpo += `<div class="mi-kv"><span class="mi-k">Servidor monitoreado</span><span class="mi-v">${n.vm}</span></div>
