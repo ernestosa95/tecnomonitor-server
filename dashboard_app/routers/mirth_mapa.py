@@ -25,6 +25,7 @@ from routers.mirth_topologia import _armar_inventario_canales
 router = APIRouter()
 
 _PASOS_MAX = 288  # tope defensivo (24h a paso=5min) contra un query param abusivo
+_ACUM_MINUTOS_MAX = 7 * 24 * 60  # ventana más larga del acumulado (7 días)
 
 
 def _parsear_ts(v):
@@ -293,4 +294,64 @@ def obtener_mapa_mirth(hospital_id: str, minutos: int = 180, paso: int = 5, incl
         "destinos": list(destinos_out.values()),
         "canales": canales_out,
         "tl": tl_out,
+    }
+
+
+@router.get("/api/hospital/{hospital_id}/mirth/acumulado")
+def obtener_acumulado_mirth(hospital_id: str, minutos: int = 1440,
+                            db: Session = Depends(get_db),
+                            current_user: dict = Depends(auth.require_hospital_access("software"))):
+    """
+    Totales por canal en una ventana larga (24 h o 7 días) que termina ahora, para la vista
+    "acumulado" del mapa. La de 30 min se arma en el navegador con la serie de /mirth/mapa; esta
+    no, porque traer 7 días de tramos pasaría el tope de filas de ese endpoint (que además corta
+    por el lado de los datos más recientes).
+
+    Mismo criterio que _bucketizar: identidad del canal por _identidad_de y suma de los deltas
+    positivos entre lecturas consecutivas de recibidos/enviados/errored (un contador que baja es
+    un reinicio de Mirth: ese tramo no suma). Sin LIMIT: la ventana está acotada a 7 días.
+    """
+    minutos = max(5, min(_ACUM_MINUTOS_MAX, minutos))
+    ahora = datetime.now()
+    t0 = ahora - timedelta(minutes=minutos)
+
+    component_a_channel = {
+        t.component_id: t.channel_id
+        for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hospital_id).all()
+    }
+    filas = db.execute(text("""
+        SELECT component_id, extra_data, timestamp
+        FROM software_monitoring
+        WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%' AND timestamp >= :t0
+        ORDER BY timestamp ASC
+    """), {"hid": hospital_id, "t0": t0}).fetchall()
+
+    canales, previos = {}, {}
+    primera = None
+    for row in filas:
+        ident, extra = _identidad_de(row, component_a_channel)
+        ts = _parsear_ts(row.timestamp)
+        if ts and (primera is None or ts < primera):
+            primera = ts
+        acc = canales.setdefault(ident, {"rx": 0, "tx": 0, "err": 0, "lecturas": 0, "ultima": None})
+        r, s_, e = extra.get("recibidos", 0) or 0, extra.get("enviados", 0) or 0, extra.get("errored", 0) or 0
+        prev = previos.get(ident)
+        if prev is not None:
+            acc["rx"] += r - prev[0] if r >= prev[0] else 0
+            acc["tx"] += s_ - prev[1] if s_ >= prev[1] else 0
+            acc["err"] += e - prev[2] if e >= prev[2] else 0
+        previos[ident] = (r, s_, e)
+        acc["lecturas"] += 1
+        if ts:
+            acc["ultima"] = ts.isoformat()
+
+    for acc in canales.values():
+        acc["trafico"] = acc["rx"] + acc["tx"]
+
+    return {
+        "minutos": minutos,
+        "desde": t0.isoformat(),
+        "hasta": ahora.isoformat(),
+        "primera_lectura": primera.isoformat() if primera else None,
+        "canales": canales,
     }

@@ -19,10 +19,16 @@
   let INSTANCIAS = [], MULTI = false, BANDAS = [];
   let modo = 'op', formato = 'mapa', paso = 0, tocando = null, playing = false, timer = null;
   let hospitalActualId = null, vmsCache = null;
-  // Vista secundaria: flujo acumulado de los últimos ACUM_MIN minutos (el texto del botón
-  // #mi-acum en index_beta.html debe coincidir). CADENCIA = cada cuántos tramos reporta el hospital.
+  // Vista secundaria: flujo acumulado de una ventana. La de ACUM_MIN (30 min) se arma acá con la
+  // serie del mapa y sigue a la barra de tiempo; las largas (24 h, 7 días) vienen totalizadas de
+  // /mirth/acumulado y terminan "ahora". Las opciones del select #mi-acum-ventana de
+  // index_beta.html deben coincidir con VENTANAS. CADENCIA = cada cuántos tramos reporta el hospital.
   const ACUM_MIN = 30;
-  let acumulado = false, CADENCIA = 1;
+  const VENTANAS = { 30: { corto: '30 min' }, 1440: { corto: '24 h' }, 10080: { corto: '7 días' } };
+  let acumulado = false, CADENCIA = 1, ventanaAcum = ACUM_MIN;
+  let acumExt = {};  // minutos -> respuesta de /mirth/acumulado (se descarta en cada cargar())
+  const _ventanaLarga = () => ventanaAcum > ACUM_MIN;
+  const _etqVentana = () => (VENTANAS[ventanaAcum] || VENTANAS[ACUM_MIN]).corto;
 
   const L = { oX: 34, oW: 158, cX: 404, cW: 330, dX: 966, dW: 180, y0: 64, paso: 46, alto: 34, nAlto: 42, banda: 44, bandaGap: 26 };
   const COLOR = { ok: 'var(--mi-green)', warn: 'var(--mi-amber)', bad: 'var(--mi-red)', idle: 'var(--mi-muted2)', nodata: 'var(--mi-muted2)' };
@@ -41,6 +47,7 @@
   async function cargar(hid) {
     if (!hid) return;
     hospitalActualId = hid;
+    acumExt = {};
     _mostrarCargando();
     try {
       const res = await authFetch(`/api/hospital/${encodeURIComponent(hid)}/mirth/mapa?minutos=180&paso=5&incluir_auto=1`);
@@ -324,6 +331,13 @@
   function datoDe(cid) {
     const inst = (TL[paso] || { ch: {} }).ch[cid] || {};
     if (!acumulado) return inst;
+    if (_ventanaLarga()) {
+      // Totales del server para la ventana larga; `tramos` es para que el grosor siga la tasa
+      // media por tramo de 5 min, igual que en la de 30 min.
+      const a = ((acumExt[ventanaAcum] || {}).canales || {})[cid] || {};
+      return Object.assign({}, inst, { trafico: a.trafico || 0, rx: a.rx || 0, tx: a.tx || 0, err: a.err || 0,
+        tramos: ventanaAcum / (META.paso_min || 5), sinLectura: 0, parcial: false });
+    }
     const v = _tramosVentana();
     let trafico = 0, rx = 0, tx = 0, err = 0;
     for (let i = v.desde; i <= paso; i++) {
@@ -519,7 +533,7 @@
     if (!lv) return;
     lv.innerHTML = `<table><thead><tr>
       <th>${modo === 'op' ? 'Canal' : 'Flujo'}</th><th>Estado</th>
-      ${modo === 'op' ? `<th class="mi-num">En cola</th><th class="mi-num">Tráfico${acumulado ? ' · ' + ACUM_MIN + ' min' : ''}</th>` : ''}
+      ${modo === 'op' ? `<th class="mi-num">En cola</th><th class="mi-num">Tráfico${acumulado ? ' · ' + _etqVentana() : ''}</th>` : ''}
     </tr></thead><tbody>${filas}</tbody></table>`;
     lv.querySelectorAll('tbody tr[data-id]').forEach(tr => {
       tr.onclick = () => abrirNodo('canal', tr.dataset.id);
@@ -565,8 +579,8 @@
       if (modo === 'op') {
         cuerpo += `<div class="mi-mgrid">
           <div class="mi-mcell"><div class="mi-k">En cola</div><div class="mi-v" style="color:${d.cola ? COLOR[s] : 'inherit'}">${d.fresco ? (d.cola || 0) : '—'}</div></div>
-          <div class="mi-mcell"><div class="mi-k">${acumulado ? `Tráfico · ${ACUM_MIN} min` : 'Tráfico / 5 min'}</div><div class="mi-v">${d.fresco ? _fmtTrafico(d) : '—'}</div></div>
-          <div class="mi-mcell"><div class="mi-k">${acumulado ? `Errores · ${ACUM_MIN} min` : 'Errores'}</div><div class="mi-v" style="color:${d.err ? 'var(--mi-red)' : 'inherit'}">${d.fresco ? _fmtN(d.err) : '—'}</div></div>
+          <div class="mi-mcell"><div class="mi-k">${acumulado ? `Tráfico · ${_etqVentana()}` : 'Tráfico / 5 min'}</div><div class="mi-v">${d.fresco ? _fmtTrafico(d) : '—'}</div></div>
+          <div class="mi-mcell"><div class="mi-k">${acumulado ? `Errores · ${_etqVentana()}` : 'Errores'}</div><div class="mi-v" style="color:${d.err ? 'var(--mi-red)' : 'inherit'}">${d.fresco ? _fmtN(d.err) : '—'}</div></div>
           <div class="mi-mcell"><div class="mi-k">Criticidad</div><div class="mi-v" style="font-size:.9rem;text-transform:capitalize">${c.crit}</div></div>
         </div>
         ${acumulado ? _flujoAcumulado(d) : ''}
@@ -617,7 +631,7 @@
   // Detalle del acumulado de un canal: recibidos y enviados por separado (el mapa muestra su suma).
   function _flujoAcumulado(d) {
     const v = d.fresco;
-    return `<div class="mi-sec">Flujo · últimos ${ACUM_MIN} min</div>
+    return `<div class="mi-sec">Flujo · ${_etqVentana()}</div>
       <div class="mi-kv"><span class="mi-k">Recibidos</span><span class="mi-v">${v ? _fmtN(d.rx) : '—'}</span></div>
       <div class="mi-kv"><span class="mi-k">Enviados</span><span class="mi-v">${v ? _fmtN(d.tx) : '—'}</span></div>
       ${v && d.parcial ? `<div class="mi-kv"><span class="mi-k">Sin lecturas desde hace</span><span class="mi-v">~${d.sinLectura * (META.paso_min || 5)} min *</span></div>` : ''}`;
@@ -628,6 +642,16 @@
     const nota = $('mi-acum-nota');
     if (!nota) return;
     if (!acumulado) { nota.style.display = 'none'; return; }
+    if (_ventanaLarga()) {
+      const a = acumExt[ventanaAcum];
+      let txt = `Acumulado de ${ventanaAcum === 1440 ? 'las últimas 24 h' : 'los últimos 7 días'} hasta ahora: esta vista no sigue a la barra de tiempo. Estado y cola son los del momento de la barra.`;
+      if (a && a.primera_lectura && new Date(a.primera_lectura) - new Date(a.desde) > 3600 * 1000) {
+        txt += ` Solo hay datos desde el ${new Date(a.primera_lectura).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })} h.`;
+      }
+      nota.textContent = txt;
+      nota.style.display = 'block';
+      return;
+    }
     const v = _tramosVentana(), pasoMin = META.paso_min || 5;
     const parciales = CANALES.filter(c => { const d = datoDe(c.id); return d.fresco && d.parcial; }).length;
     let txt = `Acumulado de los últimos ${v.cant * pasoMin} min hasta el momento de la barra. Estado y cola son los de ese momento.`;
@@ -706,12 +730,47 @@
     if (bLst) bLst.classList.toggle('active', f === 'lista');
   }
 
-  function toggleAcumulado() {
-    acumulado = !acumulado;
+  function _pintarBotonAcum() {
     const b = $('mi-acum');
-    if (b) { b.classList.toggle('active', acumulado); b.setAttribute('aria-pressed', String(acumulado)); }
+    if (b) {
+      b.classList.toggle('active', acumulado);
+      b.setAttribute('aria-pressed', String(acumulado));
+    }
+    const sel = $('mi-acum-ventana');
+    if (sel) sel.value = String(ventanaAcum);
+  }
+
+  // Trae (una vez por carga del mapa) los totales de una ventana larga. Devuelve false si falló.
+  async function _cargarAcumExt(minutos) {
+    if (acumExt[minutos] || !hospitalActualId) return true;
+    const nota = $('mi-acum-nota');
+    if (nota) { nota.textContent = 'Calculando el acumulado…'; nota.style.display = 'block'; }
+    try {
+      const res = await authFetch(`/api/hospital/${encodeURIComponent(hospitalActualId)}/mirth/acumulado?minutos=${minutos}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      acumExt[minutos] = await res.json();
+      return true;
+    } catch (e) {
+      console.error('[MapaIntegraciones] error cargando el acumulado', e);
+      if (nota) nota.textContent = 'No se pudo calcular el acumulado. Probá de nuevo en unos segundos.';
+      return false;
+    }
+  }
+
+  async function _aplicarAcumulado(activo) {
+    if (activo && _ventanaLarga() && !(await _cargarAcumExt(ventanaAcum))) activo = false;
+    acumulado = activo;
+    _pintarBotonAcum();
     if (CANALES.length) render();
     if (tocando) abrirNodo(tocando.tipo, tocando.id);
+  }
+
+  function toggleAcumulado() { return _aplicarAcumulado(!acumulado); }
+
+  // Elegir una ventana en el desplegable también activa la vista acumulada.
+  function setVentanaAcumulado(minutos) {
+    ventanaAcum = VENTANAS[+minutos] ? +minutos : ACUM_MIN;
+    return _aplicarAcumulado(true);
   }
 
   function togglePlay() {
@@ -745,5 +804,5 @@
     }
   });
 
-  window.MapaIntegraciones = { cargar, destroy, setModo, setFormato, togglePlay, toggleAcumulado, abrirNodo, cerrarDrawer };
+  window.MapaIntegraciones = { cargar, destroy, setModo, setFormato, togglePlay, toggleAcumulado, setVentanaAcumulado, abrirNodo, cerrarDrawer };
 })();

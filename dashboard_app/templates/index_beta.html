@@ -2114,7 +2114,12 @@ canvas{color-scheme:dark}
                     <span class="mi-tstamp" id="mi-tstamp">--:--</span>
                     <span class="mi-tlive" id="mi-tlive">En vivo</span>
                     <div class="mi-toggle-bar" role="group" aria-label="Valores de tráfico">
-                        <button class="mi-toggle-btn" id="mi-acum" aria-pressed="false" onclick="MapaIntegraciones.toggleAcumulado()" title="Mostrar los mensajes totales que pasaron por cada canal en los últimos 30 minutos, en vez del tramo de 5 minutos">Últimos 30 min</button>
+                        <button class="mi-toggle-btn" id="mi-acum" aria-pressed="false" onclick="MapaIntegraciones.toggleAcumulado()" title="Mostrar los mensajes totales que pasaron por cada canal en la ventana elegida al lado, en vez del tramo de 5 minutos">Acumulado</button>
+                        <select class="mi-acum-sel" id="mi-acum-ventana" aria-label="Ventana del acumulado" onchange="MapaIntegraciones.setVentanaAcumulado(this.value)">
+                            <option value="30">30 min</option>
+                            <option value="1440">24 h</option>
+                            <option value="10080">7 días</option>
+                        </select>
                     </div>
                 </div>
                 <div class="mi-acum-nota" id="mi-acum-nota" style="display:none"></div>

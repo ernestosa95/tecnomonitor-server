@@ -800,7 +800,11 @@ primera prueba en producción mostró el problema del asterisco descrito arriba;
   en el panel de detalle? *(Propuesta: mantener `trafico` en el mapa y abrir rx/tx/err en el detalle.)*
 - ¿La ventana termina en "ahora" o en la posición de la barra? *(Propuesta: en la posición de la
   barra, así que en vivo son los últimos 30 min reales y al retroceder se ve cualquier ventana.)*
-- ¿Qué ventanas se ofrecen además de 30 min? Más de 3 h obliga a pedir `minutos` mayor.
+- ~~¿Qué ventanas se ofrecen además de 30 min?~~ **Resuelto (2026-09-28):** 30 min, 24 h y 7 días,
+  elegidas en un desplegable junto al botón "Acumulado". Las de 24 h y 7 días no salen de la serie
+  del mapa (3 h, y su tope de filas cortaría lo más reciente): las totaliza un endpoint aparte,
+  `GET /api/hospital/{id}/mirth/acumulado?minutos=` (máx. 7 días, mismo criterio de deltas que
+  `_bucketizar`), y **terminan en "ahora"**, no en la posición de la barra. La de 30 min sigue igual.
 - ¿Se muestran también los errores acumulados (`err`) sobre el enlace o solo en el detalle?
 
 #### Alcance e impacto

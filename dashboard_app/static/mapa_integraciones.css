@@ -93,6 +93,9 @@
 #tab-mapa .mi-tstamp{font-family:monospace;font-size:.82rem;font-weight:700;min-width:112px;text-align:right;color:var(--mi-text)}
 #tab-mapa .mi-tlive{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--mi-green-dim);color:var(--mi-green);border:1px solid rgba(0,229,160,.2)}
 #tab-mapa .mi-tpast{background:var(--mi-amber-dim);color:var(--mi-amber);border-color:rgba(255,169,64,.25)}
+#tab-mapa .mi-acum-sel{border:none;background:transparent;color:var(--mi-muted);font-weight:600;font-size:.82em;font-family:inherit;padding:6px 8px;border-radius:16px;cursor:pointer}
+#tab-mapa .mi-acum-sel:hover{color:var(--mi-text)}
+#tab-mapa .mi-acum-sel option{background:var(--mi-surface2);color:var(--mi-text)}
 #tab-mapa .mi-acum-nota{padding:9px 18px;border-top:1px solid var(--mi-border);background:var(--mi-surface2);font-size:.75rem;color:var(--mi-muted);line-height:1.5}
 
 /* ── Leyenda ── */
