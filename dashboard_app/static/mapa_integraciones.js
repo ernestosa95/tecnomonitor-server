@@ -14,6 +14,9 @@
   // --- Estado del módulo (se resetea en cargar()/destroy()) ---
   let ORIGENES = [], DESTINOS = [], CANALES = [], TL = [], UMBRALES = {}, META = {};
   let PASOS = 0;
+  // Hospitales con más de un Mirth: cada instancia se dibuja en su propia banda
+  // (rótulo + sus canales + sus orígenes/destinos), sin mezclarse con las otras.
+  let INSTANCIAS = [], MULTI = false, BANDAS = [];
   let modo = 'op', formato = 'mapa', paso = 0, tocando = null, playing = false, timer = null;
   let hospitalActualId = null, vmsCache = null;
   // Vista secundaria: flujo acumulado de los últimos ACUM_MIN minutos (el texto del botón
@@ -21,7 +24,7 @@
   const ACUM_MIN = 30;
   let acumulado = false, CADENCIA = 1;
 
-  const L = { oX: 34, oW: 158, cX: 404, cW: 330, dX: 966, dW: 180, y0: 64, paso: 46, alto: 34, nAlto: 42 };
+  const L = { oX: 34, oW: 158, cX: 404, cW: 330, dX: 966, dW: 180, y0: 64, paso: 46, alto: 34, nAlto: 42, banda: 44, bandaGap: 26 };
   const COLOR = { ok: 'var(--mi-green)', warn: 'var(--mi-amber)', bad: 'var(--mi-red)', idle: 'var(--mi-muted2)', nodata: 'var(--mi-muted2)' };
 
   function $(id) { return document.getElementById(id); }
@@ -91,7 +94,7 @@
       origen: c.origen || null, destino: c.destino || null, padre: c.padre || null,
       crit: c.crit || 'media', tipo_alerta: c.tipo_alerta || `MIRTH_${c.id}`,
       endpoint_origen: c.endpoint_origen, endpoint_destino: c.endpoint_destino,
-      clasificado: !!c.clasificado,
+      clasificado: !!c.clasificado, instancia: c.instancia || 'Default',
     }));
     TL = (json.tl || []).map(snap => ({ ts: new Date(snap.ts), ch: snap.ch || {} }));
     PASOS = TL.length;
@@ -104,31 +107,90 @@
     }
     _mostrarMapa();
 
-    CANALES.forEach((c, i) => { c.y = L.y0 + i * L.paso; c.cy = c.y + L.alto / 2; });
-    _ubicarLateral(ORIGENES, 'origen');
-    _ubicarLateral(DESTINOS, 'destino');
+    const orden = ((json.hospital || {}).instancias || []).filter(i => CANALES.some(c => c.instancia === i));
+    CANALES.forEach(c => { if (!orden.includes(c.instancia)) orden.push(c.instancia); });
+    INSTANCIAS = orden;
+    MULTI = INSTANCIAS.length > 1;
+    BANDAS = [];
+
+    let alto;
+    if (MULTI) {
+      alto = _ubicarPorInstancia() + 20;
+    } else {
+      CANALES.forEach((c, i) => { c.y = L.y0 + i * L.paso; c.cy = c.y + L.alto / 2; });
+      _ubicarLateral(ORIGENES, 'origen', CANALES);
+      _ubicarLateral(DESTINOS, 'destino', CANALES);
+      alto = L.y0 + CANALES.length * L.paso + 40;
+    }
 
     const scrubEl = $('mi-scrub');
     if (scrubEl) { scrubEl.max = String(Math.max(0, PASOS - 1)); scrubEl.value = String(paso); }
 
     const svg = $('mi-mapa');
-    if (svg) svg.setAttribute('viewBox', `0 0 1180 ${L.y0 + CANALES.length * L.paso + 40}`);
+    if (svg) svg.setAttribute('viewBox', `0 0 1180 ${alto}`);
 
     render();
   }
 
-  function _ubicarLateral(nodos, campoRef) {
+  // Ubica los nodos laterales a la altura media de sus canales. `yMin` (solo en bandas) evita
+  // que suban por encima del rótulo de su instancia. Devuelve el borde inferior del último nodo.
+  function _ubicarLateral(nodos, campoRef, canales, yMin) {
     nodos.forEach(n => {
-      const rel = CANALES.filter(c => c[campoRef] === n.id);
+      const rel = canales.filter(c => c[campoRef] === n.id);
       n.cy = rel.length ? rel.reduce((s, c) => s + c.cy, 0) / rel.length : L.y0 + 300;
       n.rel = rel.map(c => c.id);
     });
     nodos.sort((a, b) => a.cy - b.cy);
     const gap = L.nAlto + 18;
     for (let i = 1; i < nodos.length; i++) if (nodos[i].cy - nodos[i - 1].cy < gap) nodos[i].cy = nodos[i - 1].cy + gap;
-    if (!nodos.length) return;
-    const exceso = nodos[nodos.length - 1].cy - (L.y0 + Math.max(0, CANALES.length - 1) * L.paso + L.alto / 2);
+    if (!nodos.length) return 0;
+    const ultimoCanal = canales.length ? canales[canales.length - 1].cy : L.y0 + L.alto / 2;
+    const exceso = nodos[nodos.length - 1].cy - ultimoCanal;
     if (exceso > 0) nodos.forEach(n => n.cy -= exceso / 2);
+    if (yMin != null) {
+      const falta = yMin - (nodos[0].cy - L.nAlto / 2);
+      if (falta > 0) nodos.forEach(n => n.cy += falta);
+    }
+    return nodos[nodos.length - 1].cy + L.nAlto / 2;
+  }
+
+  // Una banda por instancia de Mirth, una debajo de la otra. Los orígenes/destinos se copian
+  // por instancia (id "<instancia>|<id>"): si dos Mirth apuntan al mismo endpoint, cada banda
+  // dibuja el suyo en vez de cruzar flechas entre bandas. Devuelve el alto total.
+  function _ubicarPorInstancia() {
+    const canales = [], origenes = [], destinos = [];
+    let y = L.y0;
+
+    const copiar = (base, campo, grupo, inst) => {
+      const ids = new Set(grupo.map(c => c[campo]).filter(id => id && base.some(n => n.id === id)));
+      grupo.forEach(c => { if (ids.has(c[campo])) c[campo] = inst + '|' + c[campo]; });
+      return base.filter(n => ids.has(n.id)).map(n => Object.assign({}, n, { id: inst + '|' + n.id, instancia: inst }));
+    };
+
+    INSTANCIAS.forEach(inst => {
+      const grupo = CANALES.filter(c => c.instancia === inst);
+      const banda = { inst, y, n: grupo.length };
+      y += L.banda;
+      const yMin = y;
+      // Sin topología, el nombre llega como "[INSTANCIA] canal": la banda ya dice la instancia.
+      const pref = '[' + inst + '] ';
+      grupo.forEach(c => {
+        if (c.nom.startsWith(pref)) c.nom = c.nom.slice(pref.length);
+        if (c.hum.startsWith(pref)) c.hum = c.hum.slice(pref.length);
+        c.y = y; c.cy = y + L.alto / 2; y += L.paso;
+      });
+      const ori = copiar(ORIGENES, 'origen', grupo, inst);
+      const des = copiar(DESTINOS, 'destino', grupo, inst);
+      const finO = _ubicarLateral(ori, 'origen', grupo, yMin);
+      const finD = _ubicarLateral(des, 'destino', grupo, yMin);
+      banda.fin = Math.max(y - L.paso + L.alto, finO, finD);
+      y = banda.fin + L.bandaGap;
+      BANDAS.push(banda);
+      canales.push(...grupo); origenes.push(...ori); destinos.push(...des);
+    });
+
+    CANALES = canales; ORIGENES = origenes; DESTINOS = destinos;
+    return y;
   }
 
   // ============================================================
@@ -249,6 +311,15 @@
       ? [[L.oX, 'Orígenes'], [L.cX, 'Canales de integración'], [L.dX, 'Destinos']]
       : [[L.oX, 'De dónde viene'], [L.cX, 'Flujos'], [L.dX, 'Hacia dónde va']];
     heads.forEach(([x, t]) => svg.appendChild(el('text', { x, y: 30, class: 'mi-col-head' }, t)));
+
+    // ── Rótulo y separador de cada instancia de Mirth (solo con más de una)
+    BANDAS.forEach(b => {
+      svg.appendChild(el('line', { x1: L.oX, x2: L.dX + L.dW, y1: b.y + 4, y2: b.y + 4, class: 'mi-inst-sep' }));
+      const t = el('text', { x: L.oX, y: b.y + 26 });
+      t.appendChild(el('tspan', { class: 'mi-inst-head' }, b.inst));
+      t.appendChild(el('tspan', { class: 'mi-nsub', dx: 10 }, b.n + (b.n === 1 ? ' canal' : ' canales')));
+      svg.appendChild(t);
+    });
 
     // ── Aristas
     CANALES.forEach(c => {
@@ -381,11 +452,14 @@
 
   // ── Vista lista ──
   function _pintarLista() {
-    const filas = CANALES.map(c => {
+    const cols = modo === 'op' ? 4 : 2;
+    const filas = CANALES.map((c, i) => {
       const d = datoDe(c.id), s = salud(c, d);
       const badge = s === 'bad' ? 'mi-status-critical' : s === 'warn' ? 'mi-status-warning' : s === 'nodata' ? 'mi-status-muted' : 'mi-status-online';
       const txt = s === 'bad' ? (d.fresco ? d.estado : 'Sin datos') : s === 'warn' ? 'Con demora' : s === 'nodata' ? 'Sin datos' : 'Operativo';
-      return `<tr data-id="${c.id}">
+      const rotulo = MULTI && (i === 0 || CANALES[i - 1].instancia !== c.instancia)
+        ? `<tr class="mi-inst-row"><td colspan="${cols}">${c.instancia}</td></tr>` : '';
+      return `${rotulo}<tr data-id="${c.id}">
         <td class="mi-cn">${modo === 'op' ? c.nom : c.hum}</td>
         <td><span class="mi-status-badge ${badge}">${txt}</span></td>
         ${modo === 'op' ? `<td class="mi-num" style="color:${d.cola ? COLOR[s] : 'var(--mi-muted)'}">${d.cola || '—'}</td><td class="mi-num" style="color:var(--mi-muted)">${d.fresco ? _fmtTrafico(d) : '—'}</td>` : ''}
@@ -397,7 +471,7 @@
       <th>${modo === 'op' ? 'Canal' : 'Flujo'}</th><th>Estado</th>
       ${modo === 'op' ? `<th class="mi-num">En cola</th><th class="mi-num">Tráfico${acumulado ? ' · ' + ACUM_MIN + ' min' : ''}</th>` : ''}
     </tr></thead><tbody>${filas}</tbody></table>`;
-    lv.querySelectorAll('tbody tr').forEach(tr => {
+    lv.querySelectorAll('tbody tr[data-id]').forEach(tr => {
       tr.onclick = () => abrirNodo('canal', tr.dataset.id);
     });
   }
@@ -425,7 +499,7 @@
       const c = CANALES.find(x => x.id === id);
       if (!c) return;
       const d = datoDe(c.id), s = salud(c, d);
-      eyebrow = modo === 'op' ? 'Canal de Mirth' : 'Flujo de información';
+      eyebrow = (modo === 'op' ? 'Canal de Mirth' : 'Flujo de información') + (MULTI ? ' · ' + c.instancia : '');
       titulo = modo === 'op' ? c.nom : c.hum;
       const badge = s === 'bad' ? 'mi-status-critical' : s === 'warn' ? 'mi-status-warning' : s === 'nodata' ? 'mi-status-muted' : 'mi-status-online';
       const txt = s === 'bad' ? (d.fresco ? d.estado : 'Sin datos') : s === 'warn' ? 'Con demora' : s === 'nodata' ? 'Sin datos frescos' : 'Operativo';
@@ -461,7 +535,7 @@
       const lista = tipo === 'origen' ? ORIGENES : DESTINOS;
       const n = lista.find(x => x.id === id);
       if (!n) return;
-      eyebrow = tipo === 'origen' ? 'Sistema de origen' : 'Sistema de destino';
+      eyebrow = (tipo === 'origen' ? 'Sistema de origen' : 'Sistema de destino') + (MULTI && n.instancia ? ' · ' + n.instancia : '');
       titulo = modo === 'op' ? n.label : (n.humano || n.label);
       const rel = CANALES.filter(c => c[tipo] === id);
       const malos = rel.filter(c => ['bad', 'warn'].includes(salud(c, datoDe(c.id))));

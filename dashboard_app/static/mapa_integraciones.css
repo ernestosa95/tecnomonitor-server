@@ -55,6 +55,9 @@
 #tab-mapa svg#mi-mapa{display:block;min-width:1120px;width:100%;height:auto}
 
 #tab-mapa .mi-col-head{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;fill:var(--mi-muted2)}
+#tab-mapa .mi-inst-head{font-size:13px;font-weight:700;fill:var(--mi-text)}
+#tab-mapa .mi-inst-sep{stroke:var(--mi-border2);stroke-width:1}
+#tab-mapa .mi-inst-row td{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mi-muted);background:var(--mi-surface2);cursor:default}
 
 #tab-mapa .mi-node{cursor:pointer}
 #tab-mapa .mi-node:focus{outline:none}
