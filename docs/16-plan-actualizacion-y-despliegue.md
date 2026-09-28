@@ -40,6 +40,7 @@ reproducirlo.
 | REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
+| REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | analizado; **decisiones tomadas (2026-09-28)**, sin implementar | release 4.5.3 del agente (no entra en 4.5.2) |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
 
@@ -848,6 +849,103 @@ decisiones, el diseño, el contrato y las fases. Resumen de lo que toca al servi
   pierde el dato.
 - El agente se entrega como **4.5.2** (no 4.6: `schema_version` "4.6" no lo reconoce este servidor y
   lo trataría como formato legacy).
+
+### REQ-06 — Último backup de las bases SQL Server
+
+**Pedido (2026-09-28):** monitorear cuándo se hizo el último backup de las bases de datos SQL
+Server, con los dos caminos que ya usa el agente: **SQL directo** y **Elastic**.
+
+#### Situación actual
+
+No se monitorea nada de backups: ni el agente, ni los pipelines de Logstash (`elk/`), ni el server
+tienen consulta, campo o alerta al respecto. Hoy una base puede pasar semanas sin backup sin que
+nadie se entere hasta que hace falta restaurarla.
+
+#### De dónde sale el dato
+
+SQL Server registra cada backup terminado en `msdb.dbo.backupset` (`database_name`, `type`,
+`backup_finish_date`, `is_copy_only`, `is_snapshot`). Cada hospital hace el backup con el propio
+SQL Server (decisión 1), así que esta tabla es fuente suficiente. La consulta es liviana (segundos,
+solo lee `msdb`), así que, a diferencia del CHECKDB de REQ-05, **puede correr cada hora** sin
+cuidados especiales. Borrador (solo backups completos, decisión 3):
+
+```sql
+SELECT d.name AS database_name,
+       MAX(b.backup_finish_date) AS ultimo_full
+FROM sys.databases d
+LEFT JOIN msdb.dbo.backupset b
+       ON b.database_name = d.name AND b.type = 'D' AND b.is_copy_only = 0
+WHERE d.name IN (/* las bases de sql.checkdb_databases */)
+GROUP BY d.name;
+```
+
+Arrancar desde `sys.databases` (y no desde `backupset`) importa: una base **que nunca tuvo backup**
+tiene que aparecer, con fechas nulas, en vez de faltar de la lista.
+
+Cuidados del dato (a confirmar en P03):
+
+- `backupset` solo registra backups **terminados bien**. Los fallidos quedan en el log de errores de
+  SQL / historial del SQL Agent, no acá. El monitoreo detecta "hace cuánto no hay backup bueno", que
+  es lo que importa, pero no el motivo.
+- Una copia de los archivos `.mdf`/`.ldf` o un snapshot de la VM que no pase por SQL **no** deja
+  rastro en `backupset`. Hoy no aplica (los hospitales hacen el backup con el propio SQL), pero si
+  algún hospital cambia de estrategia, el monitoreo marcaría "sin backup" aunque exista respaldo.
+- Si alguien purga el historial de `msdb` (`sp_delete_backuphistory`, planes de mantenimiento con
+  limpieza de historial), las fechas viejas desaparecen; lo reciente queda.
+- `backup_finish_date` está en hora local del servidor SQL. Mandarla con su zona o convertirla antes
+  de calcular antigüedades, para no repetir problemas de relojes cruzados.
+- `is_copy_only = 0` excluye los backups "solo copia" (los manuales que no rompen la cadena); si en
+  algún hospital el backup programado se hace como copy-only, habría que contarlos. Confirmar en P03.
+
+#### Los dos caminos (mismo criterio que REQ-05)
+
+- **Elastic (principal):** un `.conf` nuevo en `elk/` (ej. `ext_sql_backups.conf`), con la consulta
+  inline, que escribe en un índice propio (ej. `ext_sql_backups`) con `document_id` = nombre de la base,
+  así el índice guarda siempre el último estado por base y no crece. **Va en el cajón de 1 hora que ya
+  existe (`ext_kpis_negocio-all-sito.bat`, tarea programada de cada hora), sin tarea nueva** (decisión
+  del 2026-09-28). El agente lee el índice y lo reenvía.
+  Antes de desplegarlo en un hospital, copiar el host de conexión de un `.conf` que ya funcione ahí
+  (en P03 es `localhost`; el placeholder `SRVDB-ESTENSA` del repo rompió el despliegue de REQ-05).
+- **SQL directo (excepción, hospitales sin Elastic):** el agente corre la misma consulta con la
+  credencial `sql.user` que ya tiene. No hace falta trabajador aparte (a diferencia del CHECKDB).
+- Si ambos caminos están activos, gana Elastic.
+
+#### Contrato y server (propuesta)
+
+- Agente: clave nueva `software_monitoring.sql_backups`, una entrada por base con `database`,
+  `last_full` (nulo si nunca tuvo) y el origen (`elastic`/`sql`). `schema_version` sigue en "4.5" (un
+  server viejo descarta la clave sin error): sale como **4.5.3**, no 4.6.
+- Server: ingesta en `software_monitoring` (filas `app_name='sql_backup'`, una por base, sin cambios
+  de esquema), tarjeta en la pestaña Software junto a la de integridad, y detector de alertas por
+  antigüedad (umbral configurable, default 24 h), apagado por default como el de REQ-05 hasta
+  validarlo en P03.
+- Orden de despliegue: server primero.
+
+#### Decisiones tomadas (2026-09-28)
+
+1. **Estrategia de backup:** cada hospital lo hace con el propio SQL Server → `msdb.dbo.backupset`
+   alcanza como fuente.
+2. **Bases:** las mismas del CHECKDB (lista `sql.checkdb_databases`, 26 de Extensa por defecto).
+3. **Tipo:** solo backup **completo** (`type = 'D'`). Diferenciales y de log quedan fuera.
+4. **Umbral:** diario — si pasaron **más de 24 h sin backup completo, alerta**. Configurable en el
+   server. Una base que nunca tuvo backup también alerta.
+5. **Release:** agente **4.5.3**; Elastic va en la tarea y el `.bat` de cada una hora.
+
+Nota sobre el umbral: la medición llega con hasta ~1 h de atraso (cajón horario + ciclo del agente),
+y si el backup de un día termina unos minutos más tarde que el del anterior, la antigüedad supera
+24 h por ese rato y la alerta se abre y se cierra sola. Si pasa en P03, subir el umbral a 25–26 h
+desde la configuración, sin tocar código.
+
+Pendiente de detalle (no bloquea): severidad de la alerta (propuesta: CRITICAL, como REQ-05).
+
+#### Criterios de aceptación (borrador)
+
+- En P03, la tarjeta muestra por base la fecha del último backup y coincide con lo que muestra SQL
+  Server Management Studio (o con la consulta corrida a mano).
+- Una base sin backup aparece como tal, no falta de la lista.
+- Mismo resultado por el camino Elastic y por SQL directo.
+- Con el detector activado, una base con más de 24 h sin backup completo (o el umbral configurado)
+  abre alerta, y el siguiente backup completo la cierra.
 
 ---
 
