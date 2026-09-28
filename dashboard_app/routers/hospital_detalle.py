@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import alerts_engine
+from alerts_engine.software import sql_backups as sql_backups_detector
 import auth
 import database
 from core import get_db
@@ -332,6 +333,31 @@ def _ultimo_checkdb(db: Session, hospital_id: str):
     }
 
 
+# ============================================================
+# ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL (REQ-06, agente 4.5.3)
+# ------------------------------------------------------------
+# Igual que _ultimo_checkdb: es un estado actual, independiente del selector
+# de tiempo del panel. El criterio (umbral, "sin lecturas") es el mismo que
+# usa el detector de alertas: alerts_engine/software/sql_backups.py.
+# ============================================================
+def _ultimo_backup(db: Session, hospital_id: str):
+    max_horas = alerts_engine.cargar_config(db).get("sql_backup_max_hours", 24)
+    bases = sql_backups_detector.estado_backups(db, hospital_id, max_horas)
+    if not bases:
+        return None
+    con_fecha = [b["last_full"] for b in bases if b["last_full"]]
+    return {
+        "max_hours": max_horas,
+        "total": len(bases),
+        "vencidas": sum(1 for b in bases if b["status"] == sql_backups_detector.ESTADO_VENCIDO),
+        "nunca": sum(1 for b in bases if b["status"] == sql_backups_detector.ESTADO_NUNCA),
+        "sin_lectura": sum(1 for b in bases if b["status"] == sql_backups_detector.ESTADO_SIN_LECTURA),
+        "mas_antiguo": min(con_fecha) if con_fecha else None,
+        "last_seen": max((b["last_seen"] for b in bases if b["last_seen"]), default=None),
+        "databases": bases,
+    }
+
+
 @router.get("/api/hospital/{hospital_id}/software")
 def obtener_estado_software(hospital_id: str, minutos: int = 0,
                             db: Session = Depends(get_db),
@@ -618,6 +644,9 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
 
     # 7. 🆕 INTEGRIDAD DE BASES SQL (DBCC CHECKDB) — ver _ultimo_checkdb().
     software_data["sql_integrity"] = _ultimo_checkdb(db, hospital_id)
+
+    # 8. 🆕 ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL — ver _ultimo_backup().
+    software_data["sql_backups"] = _ultimo_backup(db, hospital_id)
 
     return software_data
 

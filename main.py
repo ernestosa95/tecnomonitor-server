@@ -90,6 +90,7 @@ def _validar_token_ingesta(request: Request, raw_body: dict, db: Session) -> Non
 
 _SQL_INTEGRITY_ESTADOS = {"OK", "ERROR", "NOT_ONLINE"}
 _SQL_INTEGRITY_MAX_BASES = 200
+_SQL_BACKUPS_MAX_BASES = 200
 
 
 def _ingerir_sql_integrity(db: Session, hospital_id: str, payload, ts: datetime) -> None:
@@ -159,6 +160,70 @@ def _ingerir_sql_integrity(db: Session, hospital_id: str, payload, ts: datetime)
             metric_value=errores,
             extra_data={"detail": _texto(item.get("detail"), 500), "duration_s": duracion, **comunes},
             timestamp=fecha,
+        ))
+
+
+def _ingerir_sql_backups(db: Session, hospital_id: str, payload, ts: datetime) -> None:
+    """
+    Guarda el último backup completo de cada base SQL Server que el agente (4.5.3+) manda en cada
+    ciclo en `software_monitoring.sql_backups` (REQ-06). Una fila por base y por backup
+    (`app_name='sql_backup'`, `component_id`=base, `timestamp`=fecha del backup, o la de la
+    lectura si la base nunca tuvo uno y entonces `status_value='NEVER'`). Mientras la fecha no
+    cambie, no se agregan filas: se actualiza `extra_data.last_seen` de la última, así el server
+    sabe que la lectura sigue viva sin guardar 26 filas cada 5 minutos.
+
+    La antigüedad y la alerta se calculan al leer (umbral configurable), no acá. Tolerante a un
+    payload mal formado, igual que `_ingerir_sql_integrity`. Ver docs/10-contrato-ingesta-agente.md §7.6.
+    """
+    if not isinstance(payload, dict):
+        return
+    bases = payload.get("databases")
+    if not isinstance(bases, list):
+        return
+
+    def _fecha(valor):
+        if isinstance(valor, str) and valor:
+            try:
+                return datetime.fromisoformat(valor.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                pass
+        return None
+
+    leido = _fecha(payload.get("collected_at")) or ts
+    origen = str(payload.get("source") or "")[:20]
+    vistos = set()
+    for item in bases[:_SQL_BACKUPS_MAX_BASES]:
+        if not isinstance(item, dict) or not item.get("db"):
+            continue
+        nombre = str(item.get("db"))[:128]
+        if nombre in vistos:
+            continue
+        vistos.add(nombre)
+        ultimo_full = _fecha(item.get("last_full"))
+        clave = ultimo_full.isoformat(timespec="seconds") if ultimo_full else None
+
+        fila = db.query(database.SoftwareMonitoring).filter_by(
+            hospital_id=hospital_id, app_name="sql_backup", component_id=nombre
+        ).order_by(database.SoftwareMonitoring.id.desc()).first()
+        extra = fila.extra_data if fila is not None else None
+        if isinstance(extra, str):
+            try:
+                extra = json.loads(extra)
+            except ValueError:
+                extra = None
+        if fila is not None and isinstance(extra, dict) and extra.get("last_full") == clave:
+            # Mismo backup que la última lectura: solo se renueva la marca de lectura.
+            fila.extra_data = {**extra, "last_seen": leido.isoformat(timespec="seconds"), "source": origen}
+            continue
+
+        db.add(database.SoftwareMonitoring(
+            hospital_id=hospital_id,
+            app_name="sql_backup",
+            component_id=nombre,
+            status_value="BACKUP" if ultimo_full else "NEVER",
+            metric_value=0,
+            extra_data={"last_full": clave, "last_seen": leido.isoformat(timespec="seconds"), "source": origen},
+            timestamp=ultimo_full or leido,
         ))
 
 
@@ -537,6 +602,9 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
 
             # --- 5. INTEGRIDAD DE BASES SQL TRAS UN REINICIO (DBCC CHECKDB) ---
             _ingerir_sql_integrity(db, h_id, soft_monitoring.get("sql_integrity"), ts)
+
+            # --- 6. ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL (agente 4.5.3+) ---
+            _ingerir_sql_backups(db, h_id, soft_monitoring.get("sql_backups"), ts)
 
             # Limpiamos el JSON antes de guardar la infraestructura
             del data_dict['software_monitoring']

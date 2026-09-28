@@ -148,6 +148,12 @@ def cargar_config(db):
         # Sin responsable propio a propósito: reusa 'global_alert_responsible_email'
         # (Infraestructura) -- es la misma gente que ya atiende un reinicio de SQL.
         "sql_integrity_alert_enabled": g("sql_integrity_alert_enabled", False, is_bool=True),
+
+        # --- ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL (REQ-06, agente 4.5.3) ---
+        # Alerta si una base pasa más de `sql_backup_max_hours` sin backup completo (o nunca tuvo).
+        # Mismos responsables que CHECKDB ('global_alert_responsible_email').
+        "sql_backup_alert_enabled": g("sql_backup_alert_enabled", False, is_bool=True),
+        "sql_backup_max_hours": g("sql_backup_max_hours", 24),
     }
 
 

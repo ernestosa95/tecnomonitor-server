@@ -40,7 +40,7 @@ reproducirlo.
 | REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
-| REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | analizado; **decisiones tomadas (2026-09-28)**, sin implementar | release 4.5.3 del agente (no entra en 4.5.2) |
+| REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; falta validar en un hospital real | release 4.5.3 del agente (no entra en 4.5.2) |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
 
@@ -937,6 +937,21 @@ y si el backup de un día termina unos minutos más tarde que el del anterior, l
 desde la configuración, sin tocar código.
 
 Pendiente de detalle (no bloquea): severidad de la alerta (propuesta: CRITICAL, como REQ-05).
+
+#### Implementación (2026-09-28)
+
+- **Agente 4.5.3:** `sql_backups.py` (dos caminos; si ambos están activos gana Elastic), sub-tarjetas
+  "Último backup" en SQL y en Elastic con botón de test, clave `software_monitoring.sql_backups` en
+  cada ciclo y `collection_meta.sql_backups`. Pipeline `elk/ext_sql_backups.conf` agregado al cajón
+  horario `ext_kpis_negocio-all-sito.bat`. 16 tests nuevos.
+- **Server:** ingesta `_ingerir_sql_backups` (`main.py`), tarjeta en la pestaña Software,
+  detector `alerts_engine/software/sql_backups.py` (CRITICAL, apagado por default) y en
+  Configuración → Alertas el interruptor y las horas máximas (24 por defecto). Contrato en
+  [10 §7.6](10-contrato-ingesta-agente.md).
+- Severidad elegida: **CRITICAL** (la propuesta; se cambia en el detector si hace falta).
+- Probado con SQL y Elastic simulados (agente) y con SQLite + `TestClient` + Playwright (server).
+  **No probado contra un SQL Server ni un Logstash reales**: es lo primero a revisar al instalarlo.
+- Orden de despliegue: server primero (un server viejo descarta la clave sin error).
 
 #### Criterios de aceptación (borrador)
 

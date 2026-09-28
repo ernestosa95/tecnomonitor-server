@@ -431,6 +431,12 @@ async function cargarConfigUI() {
         const chkSqlIntegrity = document.getElementById('sql-integrity-alert-enabled');
         if(chkSqlIntegrity) chkSqlIntegrity.checked = !!data.sql_integrity_alert_enabled;
 
+        // --- CAMPOS ÚLTIMO BACKUP DE LAS BASES (REQ-06) ---
+        const chkSqlBackup = document.getElementById('sql-backup-alert-enabled');
+        if(chkSqlBackup) chkSqlBackup.checked = !!data.sql_backup_alert_enabled;
+        const inpSqlBackupHoras = document.getElementById('sql-backup-max-hours');
+        if(inpSqlBackupHoras) inpSqlBackupHoras.value = data.sql_backup_max_hours || 24;
+
         cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email, data.dicom_responsible_email);
         
         renderKpiModsChips();
@@ -489,6 +495,10 @@ async function guardarConfig() {
 
         // --- CAMPO INTEGRIDAD DE BASES (CHECKDB) ---
         sql_integrity_alert_enabled: document.getElementById('sql-integrity-alert-enabled')?.checked || false,
+
+        // --- CAMPOS ÚLTIMO BACKUP DE LAS BASES (REQ-06) ---
+        sql_backup_alert_enabled: document.getElementById('sql-backup-alert-enabled')?.checked || false,
+        sql_backup_max_hours: parseInt(document.getElementById('sql-backup-max-hours')?.value) || 24,
     };
     
     try {
@@ -3766,8 +3776,9 @@ function renderizarSoftware(data) {
     const hasSSL = data.ssl_certificates && data.ssl_certificates.length > 0;
     const hasDicom = data.dicom_routing && data.dicom_routing.length > 0;
     const hasSqlIntegrity = data.sql_integrity && data.sql_integrity.total > 0;
+    const hasSqlBackups = data.sql_backups && data.sql_backups.total > 0;
 
-    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom && !hasSqlIntegrity) {
+    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom && !hasSqlIntegrity && !hasSqlBackups) {
         container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; color: var(--muted);">
                 <h3 style="margin-top: 20px; color: var(--text);">Sin Reportes</h3>
@@ -3883,6 +3894,50 @@ function renderizarSoftware(data) {
                     <h3 style="margin:0 0 2px 0; font-size:1.05em; color:var(--text); text-transform:none;">Integridad de bases (CHECKDB)</h3>
                     <span style="color: var(--muted);">Último chequeo: <b style="color:var(--text);">${fechaVisual}</b> — ${si.total} bases — </span>
                     <span style="color: ${estadoColor}; background: ${estadoBg}; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">${estadoTexto}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // ==========================================
+    // --- 1ter. ÚLTIMO BACKUP COMPLETO DE LAS BASES (REQ-06) ---
+    // Mismo formato de resumen que CHECKDB: el detalle por base va en el
+    // tooltip. El estado sale del server con el mismo criterio que la alerta.
+    // ==========================================
+    if (hasSqlBackups) {
+        const bk = data.sql_backups;
+        const problemas = bk.vencidas + bk.nunca;
+        let estadoTexto = 'OK', estadoColor = 'var(--green)', estadoBg = 'rgba(0, 229, 160, 0.12)';
+        if (problemas > 0) {
+            const partes = [];
+            if (bk.vencidas) partes.push(`${bk.vencidas} con más de ${bk.max_hours} h`);
+            if (bk.nunca) partes.push(`${bk.nunca} sin ningún backup`);
+            estadoTexto = partes.join(' · ');
+            estadoColor = 'var(--red)'; estadoBg = 'rgba(255, 92, 92, 0.12)';
+        } else if (bk.sin_lectura === bk.total) {
+            estadoTexto = 'Sin lecturas recientes';
+            estadoColor = 'var(--muted)'; estadoBg = 'rgba(128, 128, 128, 0.12)';
+        }
+
+        const fmt = (txt) => {
+            if (!txt) return '-';
+            const d = new Date(txt.replace(' ', 'T'));
+            return isNaN(d) ? txt : d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        };
+        const etiqueta = { OK: 'OK', VENCIDO: 'VENCIDO', NUNCA: 'SIN BACKUP', SIN_LECTURA: 'sin lecturas recientes' };
+        const listaBases = bk.databases
+            .map(b => `${b.db}: ${b.last_full ? fmt(b.last_full) + ` (hace ${Math.round(b.age_hours)} h)` : 'nunca'} — ${etiqueta[b.status] || b.status}`)
+            .join('\n')
+            .replace(/"/g, '&quot;');
+
+        html += `
+            <div class="detail-card" style="padding: 15px 20px; margin-bottom: 25px; border-top: 4px solid ${estadoColor}; display:flex; align-items:center; gap: 12px;" title="${listaBases}">
+                <span style="font-size: 1.5em;">💾</span>
+                <div>
+                    <h3 style="margin:0 0 2px 0; font-size:1.05em; color:var(--text); text-transform:none;">Último backup completo de las bases</h3>
+                    <span style="color: var(--muted);">Más antiguo: <b style="color:var(--text);">${fmt(bk.mas_antiguo)}</b> — ${bk.total} bases — umbral ${bk.max_hours} h — </span>
+                    <span style="color: ${estadoColor}; background: ${estadoBg}; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; font-weight: bold;">${estadoTexto}</span>
+                    <div style="color: var(--muted); font-size: 0.8em; margin-top: 2px;">Última lectura: ${fmt(bk.last_seen)}</div>
                 </div>
             </div>
         `;

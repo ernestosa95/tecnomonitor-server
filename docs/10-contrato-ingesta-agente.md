@@ -436,6 +436,45 @@ agente).
   `ERROR`** — `NOT_ONLINE` no alerta a propósito — y reusa los responsables de Infraestructura
   (`global_alert_responsible_email`), sin campo de responsable propio.
 
+### 7.6 `sql_backups` — último backup completo de las bases SQL Server
+
+Agregado `2026-09` (agente >= 4.5.3, REQ-06 de [docs/16](16-plan-actualizacion-y-despliegue.md)).
+Fecha del último backup **completo** de cada base (según `msdb.dbo.backupset`: `type = 'D'`, sin los
+"solo copia"). A diferencia de `sql_integrity`, **viaja en cada ciclo** con el estado actual.
+
+```json
+"sql_backups": {
+  "source": "elastic",
+  "collected_at": "2026-09-28T15:00:05",
+  "databases": [
+    { "db": "ExtensaRadio", "last_full": "2026-09-28T02:10:00" },
+    { "db": "support",      "last_full": null }
+  ]
+}
+```
+
+| Campo | Qué hace el servidor |
+|---|---|
+| `databases[].db` | `component_id` de la fila (obligatorio; un ítem sin `db` se descarta). Máx. 128 caracteres. |
+| `databases[].last_full` | `timestamp` de la fila y `extra_data.last_full`. `null` = la base nunca tuvo un backup completo (`status_value = 'NEVER'`, `timestamp` = la lectura). Hora local del SQL, sin zona. |
+| `collected_at` | `extra_data.last_seen`: cuándo se leyó (hora del SQL por el camino directo, o de la última corrida de Logstash). Si falta o es inválido, el `timestamp` del reporte. |
+| `source` | `"elastic"` o `"sql"`, en `extra_data`. |
+
+- **Una fila por base y por backup** en `software_monitoring` (`app_name = 'sql_backup'`). Mientras la
+  fecha del último backup no cambie, no se agregan filas: se renueva `extra_data.last_seen` de la
+  última (`_ingerir_sql_backups` en `main.py`). Así no se guardan 26 filas cada 5 minutos, y queda
+  el historial de backups.
+- **Tolerante a payloads mal formados**, igual que `sql_integrity`.
+- **Visualización:** `GET /api/hospital/{id}/software` expone `sql_backups` (resumen + detalle por
+  base con `status` `OK` / `VENCIDO` / `NUNCA` / `SIN_LECTURA`), que la pestaña Software pinta como
+  una tarjeta compacta con el detalle en el tooltip.
+- **Alerta:** `alerts_engine/software/sql_backups.py`, gateada por `sql_backup_alert_enabled`
+  (Configuración → Alertas, apagada por default) con umbral `sql_backup_max_hours` (24 h por
+  defecto). **CRITICAL** si una base supera el umbral o nunca tuvo backup; el siguiente backup
+  completo la cierra. Una base sin lecturas en las últimas 6 h no se evalúa (queda como estaba).
+  Reusa los responsables de Infraestructura. La tarjeta y la alerta usan el mismo criterio
+  (`estado_backups()`).
+
 ## 8. Payload mínimo que el servidor acepta
 
 Esto pasa la validación y se guarda, pero no genera ninguna alerta interesante (sirve para

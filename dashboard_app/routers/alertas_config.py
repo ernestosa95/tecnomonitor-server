@@ -90,6 +90,10 @@ class ConfigRequest(BaseModel):
     # Sin responsable propio: reusa global_alert_responsible_email.
     sql_integrity_alert_enabled: bool = False
 
+    # --- Último backup completo de las bases SQL (REQ-06) ---
+    sql_backup_alert_enabled: bool = False
+    sql_backup_max_hours: int = 24
+
 class ExclusionRequest(BaseModel):
     hospital_id: str = "*"
     patron: str
@@ -179,6 +183,10 @@ def obtener_configuracion(db: Session = Depends(get_db),
 
         # --- INTEGRIDAD DE BASES SQL (CHECKDB) ---
         "sql_integrity_alert_enabled": g("sql_integrity_alert_enabled", False, is_bool=True),
+
+        # --- ÚLTIMO BACKUP DE LAS BASES SQL ---
+        "sql_backup_alert_enabled": g("sql_backup_alert_enabled", False, is_bool=True),
+        "sql_backup_max_hours": g("sql_backup_max_hours", 24),
     }
 
 
@@ -236,6 +244,10 @@ def guardar_configuracion(cfg: ConfigRequest,
 
     # --- GUARDAR CONFIGURACIÓN DE INTEGRIDAD DE BASES (CHECKDB) ---
     s("sql_integrity_alert_enabled", cfg.sql_integrity_alert_enabled)
+
+    # --- GUARDAR CONFIGURACIÓN DE ÚLTIMO BACKUP (REQ-06) ---
+    s("sql_backup_alert_enabled", cfg.sql_backup_alert_enabled)
+    s("sql_backup_max_hours", max(1, cfg.sql_backup_max_hours))
 
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}
