@@ -37,7 +37,7 @@ reproducirlo.
 | REQ-01a | Alerta por reinicio de VM | server (motor de alertas) | definido, sin implementar | por definir |
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
 | REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas; **retiro de `/monitor` hecho (2026-09-21)** | baja (propuesta) |
-| REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | **etapa 1 implementada (2026-09-29)**, sin desplegar: bajas de módulos completos, baja manual, baja de hospital, vista previa con switch apagado. Ya en producción: cierre de alertas de canales Mirth sin lecturas (`1efb17f`) | por definir |
+| REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | **etapa 1 desplegada en producción (2026-09-29)** con el switch apagado: bajas de módulos completos, baja manual, baja de hospital, vista previa con switch apagado. Ya en producción: cierre de alertas de canales Mirth sin lecturas (`1efb17f`) | por definir |
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); criterio del asterisco corregido y **validado en producción (2026-09-29)** | por definir |
 | REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; **validado en un hospital real (2026-09-29)** | release 4.5.3 del agente (no entra en 4.5.2) |
@@ -705,7 +705,7 @@ caso por cada fila de arriba, más una prueba manual con un hospital real que ap
   tipos también se cierran al dar de baja la VM) y REQ-01b (distinguir "offline" de "desactivado"
   en la interfaz).
 
-#### Implementado: etapa 1 (2026-09-29, sin desplegar)
+#### Implementado: etapa 1 (2026-09-29, desplegada en producción el mismo día)
 
 **Qué hace**
 - **Estado** en la tabla nueva `monitoreo_modulos` (sin fila = activo; ver
@@ -766,6 +766,22 @@ datos reales.
 3. Si la lista es la esperada, prender el switch: en el siguiente tick se cierran esas alertas.
 4. Dar de baja a mano los KPIs de los hospitales que corresponda.
 Ojo: ocultar un hospital o apagarle las alertas ahora cierra sus tickets al instante.
+
+*Estado (2026-09-29):* paso 1 hecho (commits `12e4fa4` y `695bce4` en producción). Revisión en
+producción: 57 hospitales con módulos en gracia desde ~14:05 (casi todos, módulos que nunca tuvieron
+configurados: iDRAC, Mirth, SSL…); P03 no aparece y H05 no figura con `mirth`, como corresponde.
+Control hecho: ningún módulo declarado apagado sigue mandando datos a `software_monitoring`.
+Pendiente: vista previa después de ~20:10 y prender el switch.
+
+**KPIs (paso 4), hallazgo:** ninguno de los hospitales con RIS dejó de mandar KPIs, así que no hubo
+bajas manuales del módulo `sql`. Las 4 `KPI_INACT_RAD` abiertas son de configuración: PMMN (CT/MR/MG)
+y H25 (solo MG) no hacen DX/CR y la alerta nunca se cierra; H03 manda `ris: []` (solo PACS: CT, MG,
+XA) con `has_ris = 1`; H24 hace DX pero con días en cero (real, ruidosa). Además, la lista de
+modalidades por defecto (`DX,CR,MAMO`) no incluye MG: "MAMO" no matchea "MG", y mamografía ya tiene
+su propia alerta. **Corrección aplicada en el código (sin desplegar):** apagar una alerta de KPI en
+la configuración del hospital (`POST /api/hospital/{id}/kpi-settings`) o quitarle el RIS (`toggle-ris`
+o `PUT`) ahora cierra la `KPI_INACT_*` abierta con `[BAJA]` (`modulos.cerrar_kpis_apagados()`); antes
+el detector dejaba de mirarlo y la alerta quedaba abierta para siempre.
 
 #### Aplicado: cierre de alertas de canales Mirth sin lecturas (2026-09-29)
 

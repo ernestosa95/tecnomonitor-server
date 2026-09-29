@@ -736,5 +736,10 @@ def update_kpi_settings(hospital_id: str, payload: dict, db: Session = Depends(g
     # Guardamos en la base de datos (SQLAlchemy con tipo JSON lo maneja directamente)
     hosp.kpi_settings = payload
     db.commit()
-    
-    return {"status": "success", "message": "Configuración de alertas actualizada correctamente"}
+
+    # Apagar una alerta de KPI para el hospital cierra la que esté abierta: el detector deja de
+    # evaluarlo y, si no, quedaba abierta para siempre.
+    cerradas = modulos.cerrar_kpis_apagados(db, hosp)
+
+    return {"status": "success", "message": "Configuración de alertas actualizada correctamente",
+            "alertas_cerradas": cerradas}

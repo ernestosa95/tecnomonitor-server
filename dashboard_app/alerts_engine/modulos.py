@@ -243,6 +243,28 @@ def cerrar_alertas_hospital(db, hospital_id, motivo):
     return n
 
 
+def cerrar_kpis_apagados(db, hosp):
+    """
+    Cierra las alertas de inactividad (KPI_INACT_*) abiertas que dejaron de aplicar al hospital:
+    se le quitó el RIS (`has_ris`) o se apagó esa alerta en su configuración de KPIs. El detector
+    deja de evaluar esos hospitales, así que sin esto quedaban abiertas para siempre. Hace commit.
+    """
+    from .config import _kpi_habilitado
+
+    activas = db.query(database.AlertaModel).filter(
+        database.AlertaModel.hospital_id == hosp.hospital_id,
+        database.AlertaModel.is_active == 1,
+        database.AlertaModel.tipo.like("KPI\\_INACT\\_%", escape="\\"),
+    ).all()
+    apagadas = [a for a in activas if not hosp.has_ris or not _kpi_habilitado(hosp, a.tipo)]
+    n = cerrar_alertas(db, apagadas, "Alerta de KPI desactivada para el hospital")
+    db.commit()
+    if n:
+        print(f"🔕 [Módulos] {hosp.hospital_id}: {n} alerta(s) de KPI cerrada(s) por configuración.")
+        _avisar_ws()
+    return n
+
+
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------

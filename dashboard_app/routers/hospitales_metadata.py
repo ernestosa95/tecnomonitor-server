@@ -104,6 +104,7 @@ def editar_hospital_metadata(hid: str, dto: HospitalDTO,
 
     db.commit()
     cerradas = _cerrar_si_se_dio_de_baja(db, h, estaba_activo)
+    cerradas += modulos.cerrar_kpis_apagados(db, h)  # por si se le quitó el RIS
     return {"status": "ok", "msg": "Actualizado", "alertas_cerradas": cerradas}
 
 @router.patch("/api/hospitales-metadata/{hid}/toggle")
@@ -141,7 +142,9 @@ def toggle_ris(hid: str,
     # Invertimos el valor actual (asume False si es None)
     h.has_ris = not getattr(h, 'has_ris', False)
     db.commit()
-    return {"status": "ok", "has_ris": h.has_ris}
+    # Sin RIS, el detector de inactividad deja de mirarlo: se cierran sus KPI_INACT_* abiertas.
+    cerradas = modulos.cerrar_kpis_apagados(db, h)
+    return {"status": "ok", "has_ris": h.has_ris, "alertas_cerradas": cerradas}
 
 @router.post("/api/hospitales-metadata/{hid}/regenerar-token")
 def regenerar_ingest_token(hid: str,
