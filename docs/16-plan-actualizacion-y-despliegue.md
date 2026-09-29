@@ -37,10 +37,10 @@ reproducirlo.
 | REQ-01a | Alerta por reinicio de VM | server (motor de alertas) | definido, sin implementar | por definir |
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
 | REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas; **retiro de `/monitor` hecho (2026-09-21)** | baja (propuesta) |
-| REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas; **parte aplicada en producción (2026-09-29): el detector de Mirth cierra las alertas de canales sin lecturas** (commit `1efb17f`) | por definir |
+| REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | **etapa 1 implementada (2026-09-29)**, sin desplegar: bajas de módulos completos, baja manual, baja de hospital, vista previa con switch apagado. Ya en producción: cierre de alertas de canales Mirth sin lecturas (`1efb17f`) | por definir |
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
-| REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
-| REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; falta validar en un hospital real | release 4.5.3 del agente (no entra en 4.5.2) |
+| REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); criterio del asterisco corregido y **validado en producción (2026-09-29)** | por definir |
+| REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; **validado en un hospital real (2026-09-29)** | release 4.5.3 del agente (no entra en 4.5.2) |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
 
@@ -580,16 +580,14 @@ silencia.
 | 4 | Interfaz | **Lista de "dados de baja":** no aparecen en las vistas normales, pero queda una lista consultable. |
 | 5 | Período de gracia | **6 horas**, configurable. |
 
-**Todavía abiertas**
-6. ¿Reactivar un módulo cuenta como reincidencia dentro de los 15 días, o arranca de cero?
-   Propuesta: arranca de cero.
-7. ¿Dar de baja un hospital en el server (`is_visible` / `alerts_enabled`) cierra sus alertas
-   abiertas? Propuesta: sí.
-8. **KPIs:** ¿se libera un ajuste mínimo del agente, o la baja de KPIs es manual en la etapa 1?
-   Propuesta: manual ahora (ya existe `has_ris`); el ajuste del agente, con la próxima versión que
-   se libere. Ver el hallazgo de abajo.
-9. ¿Se hace una **vista previa** de lo que se cerraría antes de activar la regla por primera vez?
-   Recomendado: sí, porque el primer barrido puede cerrar muchos tickets de una vez.
+**Decididas el 2026-09-29** (las cuatro con la propuesta)
+
+| # | Tema | Decisión |
+|---|---|---|
+| 6 | Reactivar un módulo | **Arranca de cero:** las alertas cerradas por una baja no cuentan como reincidencia. |
+| 7 | Baja de un hospital en el server | **Cierra y oculta:** ocultarlo o apagarle las alertas cierra sus alertas abiertas y sus tickets, y `/api/alertas` deja de listarlas. |
+| 8 | KPIs | **Baja manual ahora**; el ajuste de `collection_meta.sql` en el agente, con la próxima versión que se libere. |
+| 9 | Vista previa | **Sí, con switch apagado:** la regla arranca apagada; la vista previa lista qué se cerraría y recién después se prende. |
 
 #### Alcance de la etapa 1: módulos y qué afecta cada uno
 
@@ -707,6 +705,68 @@ caso por cada fila de arriba, más una prueba manual con un hospital real que ap
   tipos también se cierran al dar de baja la VM) y REQ-01b (distinguir "offline" de "desactivado"
   en la interfaz).
 
+#### Implementado: etapa 1 (2026-09-29, sin desplegar)
+
+**Qué hace**
+- **Estado** en la tabla nueva `monitoreo_modulos` (sin fila = activo; ver
+  [02](02-modelo-de-datos.md)). La ingesta (`main.py`, después de guardar el reporte y sin poder
+  romperlo) llama a `alerts_engine/modulos.py:registrar_collection_meta()`: `enabled == false` abre
+  `pendiente_baja`; si la racha llega a `monitoreo_gracia_horas` (6 h), pasa a `desactivado`;
+  `enabled == true` borra la fila del agente (reactivación). Reportes sin `collection_meta` o sin
+  la clave del módulo no cambian nada. La gracia se mide con los timestamps de los reportes.
+- **Módulos y alertas que cierra cada uno:** `proxmox` → `HOST_*`; `idrac` → `TEMP_*`, `FAN_*`,
+  `PSU_*`, `RAID_*`; `wmi` → `VM_*`, `DISK_*`; `mirth` → `MIRTH_*`; `dicom_routing` →
+  `DICOM_ROUTE_*`; `sql_integrity` → `CHECKDB_*`; `sql_backups` → `SQLBACKUP_*`; `ssl_monitoring` y
+  `suitestensa_logs` → ninguna (no tienen detector), solo se ocultan; `sql` (KPIs) → `KPI_INACT_*`,
+  **solo por baja manual**. `NETWORK_LATENCY` y `OFFLINE` no pertenecen a ningún módulo.
+- **Switch `monitoreo_bajas_enabled` (apagado por defecto)**, en Configuración → "Módulos dados de
+  baja", con las horas de gracia y el botón **Ver vista previa** (`GET
+  /api/monitoreo-modulos/preview`). Apagado, las bajas del agente solo se registran. Prendido, en
+  el siguiente tick se cierran sus alertas (una sola vez por baja) y el módulo deja de mostrarse.
+- **Baja manual** desde la pestaña Software del hospital (sección "Monitoreo desactivado",
+  Admin/Ingeniería): pasa directo a `desactivado`, se aplica aunque el switch esté apagado, cierra
+  ya las alertas y se puede revertir. Las bajas del agente no se revierten a mano (409). Visor y
+  Comercial ven la lista sin acciones.
+- **Motor de alertas:** `procesar_offline()` refresca el cache de bajas y ejecuta las pendientes
+  (`aplicar_bajas()`). `actualizar_estado_alerta()` no abre ni reabre alertas de un módulo dado de
+  baja (si encuentra una abierta, la cierra). El detector de Mirth saltea el hospital y los KPIs de
+  inactividad también (tenían su propio camino para crear alertas).
+- **Cierre con motivo `[BAJA]`:** el mensaje queda `[BAJA] Monitoreo desactivado (<módulo>): …` y el
+  ticket de Asana se cierra. Una alerta cerrada con `[BAJA]` no cuenta como reincidencia (decisión
+  6). El cierre de canales Mirth sin lecturas (apartado siguiente) ahora también usa `[BAJA]`.
+- **Baja de hospital (decisión 7):** `PUT /api/hospitales-metadata/{hid}`, `toggle` y
+  `toggle-alerts` cierran las alertas abiertas del hospital cuando pasa de activo a oculto o sin
+  alertas; el panel avisa cuántas cerró. `/api/alertas` no lista hospitales ocultos o sin alertas.
+  **Cambio de comportamiento:** el detector de infraestructura y el de OFFLINE ahora también saltean
+  los hospitales ocultos (`is_visible` NULL cuenta como visible), como ya hacía el de software; si
+  no, las alertas cerradas se reabrían en el tick siguiente.
+- **Interfaz:** la pestaña Software no muestra los componentes de un módulo dado de baja
+  (`modulos_baja` en la respuesta) y el mapa de integraciones muestra "El monitoreo de Mirth de este
+  hospital está dado de baja". Las tarjetas de VMs y del host físico ya desaparecían solas (el agente
+  manda `virtual_layer: []` y el front oculta el host si `proxmox`/`idrac` están apagados).
+
+**Qué no cubre (etapa 2 u otros requerimientos):** elementos sueltos (una VM quitada de `vms[]`, un
+servidor de `mirth_servers`, una URL de SSL; salvo los canales de Mirth, que ya cubre el apartado
+siguiente), el ajuste de `collection_meta.sql` en el agente, y el histórico, que no se toca.
+
+**Prueba:** SQLite sintético sobre una copia del código, ingesta real vía `TestClient` contra
+`/v1/hospital-status` y las funciones de los routers llamadas directo. Casos: agente sin
+`collection_meta` → sin cambios; Mirth y DICOM apagados → `pendiente_baja`, 5 h → nada cambia, 6 h
+→ `desactivado`; switch apagado → DICOM sigue abierta y la vista previa la lista; switch prendido →
+se cierra con `[BAJA]`, no se reabre y otras alertas no se tocan; reactivación → la fila se borra y
+la alerta nueva arranca con `reaperturas = 0`; baja manual de KPIs → cierra `KPI_INACT_RAD`, el
+agente no la pisa, 409 al repetir, se revierte; baja del agente → 409 al revertir; Software y mapa
+ocultan Mirth dado de baja; ocultar un hospital y apagarle las alertas → cierra sus alertas y
+`/api/alertas` no las lista. Frontend probado con Playwright y respuestas simuladas. Sin probar con
+datos reales.
+
+**Despliegue:** solo server (`git pull` + reinicio; la tabla se crea sola). Pasos sugeridos:
+1. Desplegar con el switch apagado (default).
+2. Esperar al menos la gracia (6 h) y revisar **Ver vista previa**.
+3. Si la lista es la esperada, prender el switch: en el siguiente tick se cierran esas alertas.
+4. Dar de baja a mano los KPIs de los hospitales que corresponda.
+Ojo: ocultar un hospital o apagarle las alertas ahora cierra sus tickets al instante.
+
 #### Aplicado: cierre de alertas de canales Mirth sin lecturas (2026-09-29)
 
 **Caso real que lo disparó:** un hospital con agente anterior a 4.5.x al que se le apagó
@@ -716,7 +776,8 @@ antigüedad: el último `STOPPED` quedaba congelado y la alerta nunca se cerraba
 un canal borrado o desactivado en Mirth (deja de aparecer en `/api/channels/statuses`) y con un
 servidor quitado de `mirth_servers`. No depende de la versión del agente.
 
-**Qué hace ahora** (`alerts_engine/software/mirth.py`, commit `1efb17f`, solo server):
+**Qué hace ahora** (`alerts_engine/software/mirth.py`, commit `1efb17f`, solo server; desde la
+etapa 1 de REQ-03 el cierre usa el prefijo `[BAJA]`):
 - Por hospital toma el último reporte (`reportes_historicos.timestamp`). Un canal cuya última lectura
   quedó más de **`mirth_alert_gracia_horas`** (6 h por defecto, la gracia decidida para REQ-03) detrás
   de ese reporte es un **canal fantasma**: no se evalúa.

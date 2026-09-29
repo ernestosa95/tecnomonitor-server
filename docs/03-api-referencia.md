@@ -37,8 +37,9 @@ el detalle del RBAC).
 | GET | `/api/resumen-hospitales` | Resumen agregado por hospital (cacheado 30s en memoria). | `bloquear_cliente()` (cualquier rol interno) |
 | GET | `/api/provincias` | Resumen agregado por provincia (cacheado 60s en memoria). | `bloquear_cliente()` |
 | GET | `/api/mapa-data` | Datos para el mapa nacional. | `bloquear_cliente()` |
-| GET | `/api/alertas` | Alertas activas/históricas. | `Admin`, `Ingenieria` |
-| GET / POST | `/api/config` | Configuración global de umbrales. | `Admin`, `Ingenieria` |
+| GET | `/api/alertas` | Alertas activas/históricas. Las activas de hospitales ocultos (`is_visible`) o con alertas apagadas no se listan (REQ-03). | `Admin`, `Ingenieria` |
+| GET / POST | `/api/config` | Configuración global de umbrales. Incluye `monitoreo_bajas_enabled` y `monitoreo_gracia_horas` (REQ-03). | `Admin`, `Ingenieria` |
+| GET | `/api/monitoreo-modulos/preview` | Vista previa de las bajas de módulos (REQ-03): todas las filas de `monitoreo_modulos`, si la baja es efectiva y qué alertas activas se cerrarían. Se revisa antes de prender `monitoreo_bajas_enabled`. | `Admin`, `Ingenieria` |
 | GET | `/api/v1/nodos-hospitalarios` | ⚠️ **Rota** — llama a `obtener_nodos_desde_db()`, función inexistente en el repo, devuelve 500 siempre (bug preexistente, ver [08-plan-refactor-dashboard.md](08-plan-refactor-dashboard.md)). | logueado |
 | GET | `/api/users/responsables` | Usuarios que pueden ser responsables de tareas Asana. | `Admin`, `Ingenieria` |
 
@@ -49,7 +50,10 @@ el detalle del RBAC).
 | GET | `/api/hospital/{hospital_id}` | Último reporte completo de infraestructura. | pestaña `infra` |
 | GET | `/api/hospital/{hospital_id}/history` | Serie histórica (CPU, temperaturas, red, VMs). `LIMIT 15000` en SQL + downsampling a ~600 puntos antes de responder. | pestaña `infra` |
 | GET | `/api/hospital/{hospital_id}/kpi-history` | Histórico de KPIs de uso. | pestaña `kpis` |
-| GET | `/api/hospital/{hospital_id}/software` | Estado de Mirth / logs / SSL / colas DICOM. Cada canal de Mirth trae `stale` y `sin_datos_min`: `stale` es true si su última lectura quedó más de `mirth_stale_minutes` (15 por defecto) detrás de la más reciente de Mirth del hospital, igual que el mapa de integraciones; `sin_datos_min` es ese atraso en minutos. | pestaña `software` |
+| GET | `/api/hospital/{hospital_id}/software` | Estado de Mirth / logs / SSL / colas DICOM. Cada canal de Mirth trae `stale` y `sin_datos_min`: `stale` es true si su última lectura quedó más de `mirth_stale_minutes` (15 por defecto) detrás de la más reciente de Mirth del hospital, igual que el mapa de integraciones; `sin_datos_min` es ese atraso en minutos. Los módulos dados de baja (REQ-03) no se devuelven; `modulos_baja` lista cuáles son. | pestaña `software` |
+| GET | `/api/hospital/{hospital_id}/monitoreo-modulos` | Lista de "dados de baja" del hospital (`modulos`), el estado del switch y los módulos que se pueden dar de baja a mano (`disponibles`). | `Admin`, `Ingenieria`, `Visor`, `Comercial` |
+| POST | `/api/hospital/{hospital_id}/monitoreo-modulos/{modulo}/baja` | Baja manual (body `{motivo}`): sin gracia, efectiva aunque el switch esté apagado; cierra ya las alertas del módulo y sus tickets. 409 si ya hay una baja manual. | `Admin`, `Ingenieria` |
+| DELETE | `/api/hospital/{hospital_id}/monitoreo-modulos/{modulo}` | Revierte una baja manual. 409 si la declaró el agente (se revierte reactivando el módulo en el agente). | `Admin`, `Ingenieria` |
 | GET / POST | `/api/hospital/{hospital_id}/kpi-settings` | Config de KPIs granulares (activa/desactiva alertas de inactividad RAD/MAMO, etc.). | GET: `Admin/Ingenieria/Comercial`; POST: `Admin/Ingenieria` |
 | GET | `/api/logs-dictionary/{event_id}` | Detalle de un evento del diccionario de logs. | logueado |
 | GET | `/api/cliente/casos/{hospital_id}` | Casos/incidentes vistos por un Cliente. | logueado + chequeo manual de `hospitales_de_cliente()` inline (equivalente a `require_hospital_access`, pero duplicando la lógica en vez de reusar el helper) |
@@ -58,7 +62,7 @@ el detalle del RBAC).
 
 | Método | Ruta | Auth |
 |---|---|---|
-| GET/POST/PUT/DELETE `/api/hospitales-metadata[/…]` (+ 4 rutas `toggle*`) | `Admin`+`Ingenieria` (DELETE: solo `Admin`) |
+| GET/POST/PUT/DELETE `/api/hospitales-metadata[/…]` (+ 4 rutas `toggle*`). Ocultar un hospital o apagarle las alertas (PUT, `toggle`, `toggle-alerts`) cierra sus alertas abiertas y sus tickets y devuelve `alertas_cerradas` (REQ-03). | `Admin`+`Ingenieria` (DELETE: solo `Admin`) |
 | GET/PUT `/api/hospitales-metadata/{hid}/manual-kpi` | `Admin`, `Ingenieria` |
 | GET/POST `/api/admin/usuarios`, PUT/PATCH/POST `.../{user_id}[/toggle-active\|reset-password]` | `Admin` |
 | GET/POST `/api/admin/clientes`, y accesos/activación/reset por cliente | `Admin` |
