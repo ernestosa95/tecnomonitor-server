@@ -37,6 +37,13 @@ canales vía "Channel Writer").
   `titulo_visible` sí usa el nombre humano curado cuando existe. Configurable desde el panel
   (`/api/config`, tarjeta "Integración Mirth Connect").
 
+- **Canales fantasma** (2026-09-29, aplicado en producción): un canal cuya última lectura quedó más
+  de `mirth_alert_gracia_horas` (6 h) detrás del último reporte del hospital
+  (`reportes_historicos`) no se evalúa, y las alertas `MIRTH_*` abiertas de canales sin lecturas
+  recientes o sin filas se cierran con OK. Cubre Mirth apagado en el agente, servidor quitado de
+  `mirth_servers` y canal borrado o desactivado en Mirth. Un hospital offline no cierra nada.
+  Detalle en REQ-03 de [16-plan-actualizacion-y-despliegue.md](16-plan-actualizacion-y-despliegue.md).
+
 - **Router de administración** (`routers/mirth_topologia.py`): CRUD de nodos curados
   (sistemas origen/destino) y de metadata de canal (criticidad, nombre humano, asignación a
   nodos), más inventario unificado (`/mirth/canales`) que cruza topología técnica + curación

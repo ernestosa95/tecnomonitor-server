@@ -37,7 +37,7 @@ reproducirlo.
 | REQ-01a | Alerta por reinicio de VM | server (motor de alertas) | definido, sin implementar | por definir |
 | REQ-01b | Estado de las VMs cuando el hospital está offline | server (API) + frontend | definido, sin implementar | por definir |
 | REQ-02 | Dividir los archivos monolíticos del frontend (viabilidad y plan) | server (frontend) | analizado; decisiones parciales tomadas; **retiro de `/monitor` hecho (2026-09-21)** | baja (propuesta) |
-| REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas | por definir |
+| REQ-03 | Reflejar en el server lo que se deja de monitorear en el agente | server + agente (ajuste mínimo, solo KPIs) | analizado; decisiones tomadas; **parte aplicada en producción (2026-09-29): el detector de Mirth cierra las alertas de canales sin lecturas** (commit `1efb17f`) | por definir |
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); el criterio del asterisco se corrigió tras la primera prueba en producción; falta validar la corrección | por definir |
 | REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; falta validar en un hospital real | release 4.5.3 del agente (no entra en 4.5.2) |
@@ -479,11 +479,8 @@ responda (con `state: "Offline"`), así que "presente" equivale a "configurada".
    `STOPPED`/`ERROR` sostenido o una cola alta, emite CRITICAL en cada tick para siempre.
    *(Inferido, no reproducido)* si se cierra a mano, el siguiente tick la reabre como
    "reincidencia" (`estado.py`, caso B3).
-   *(Resuelto el 2026-09-29, solo el detector de Mirth: un canal cuya última lectura quedó más de
-   `mirth_alert_gracia_horas` (6 h) detrás del último reporte del hospital no se evalúa, y las
-   alertas `MIRTH_*` abiertas de canales sin lecturas recientes o sin filas se cierran con OK y
-   motivo "monitoreo desactivado o canal quitado". Hospital offline no cierra nada. Caso real: un
-   hospital con agente viejo y `enabled_mirth` apagado seguía con CRITICAL de un canal STOPPED.)*
+   *(Resuelto y **aplicado en producción el 2026-09-29**, solo para el detector de Mirth; ver
+   "Aplicado: cierre de alertas de canales Mirth sin lecturas" más abajo.)*
 5. **El detector de DICOM hace lo contrario.** Solo mira una ventana (`win_crit × 1,5`, 180 min por
    defecto), y una regla que deja de llegar se saltea **sin emitir OK a propósito**
    (`dicom_autoenrute.py:230-246`, `288-293`: "ni alerta, ni OK, que cerraría un incidente real
@@ -501,8 +498,9 @@ responda (con `state: "Offline"`), así que "presente" equivale a "configurada".
    se contradicen. *(Parcialmente resuelto el 2026-09-21, solo lectura: `GET /api/hospital/{id}/software`
    ahora devuelve `stale` y `sin_datos_min` por canal de Mirth, con el mismo umbral que el mapa
    (`mirth_stale_minutes`, medido contra la última lectura de Mirth del hospital), y la pestaña
-   Software muestra esos canales en gris como "Sin datos hace N min". Sigue pendiente lo demás de
-   REQ-03: el detector de alertas, el cierre de tickets y SSL/Elastic/DICOM, que tienen otra cadencia.)*
+   Software muestra esos canales en gris como "Sin datos hace N min". El 2026-09-29 se sumó el
+   detector de alertas de Mirth y el cierre de sus tickets (ver el punto 4). Sigue pendiente lo demás
+   de REQ-03: SSL/Elastic/DICOM, que tienen otra cadencia.)*
 9. **Una alerta abierta solo se cierra** por un hallazgo OK, por una regla de exclusión o a mano.
    La limpieza de "huérfanas" solo sincroniza con Asana (tickets completados o borrados), y los
    15 días de `DIAS_CADUCIDAD` solo deciden si un incidente se reabre como reincidencia
@@ -709,10 +707,57 @@ caso por cada fila de arriba, más una prueba manual con un hospital real que ap
   tipos también se cierran al dar de baja la VM) y REQ-01b (distinguir "offline" de "desactivado"
   en la interfaz).
 
+#### Aplicado: cierre de alertas de canales Mirth sin lecturas (2026-09-29)
+
+**Caso real que lo disparó:** un hospital con agente anterior a 4.5.x al que se le apagó
+`enabled_mirth` seguía generando la alerta CRITICAL de un canal desactivado. El agente dejó de mandar
+`software_monitoring.mirth`, pero el detector leía las 2 últimas filas de cada canal sin mirar su
+antigüedad: el último `STOPPED` quedaba congelado y la alerta nunca se cerraba. Lo mismo pasa con
+un canal borrado o desactivado en Mirth (deja de aparecer en `/api/channels/statuses`) y con un
+servidor quitado de `mirth_servers`. No depende de la versión del agente.
+
+**Qué hace ahora** (`alerts_engine/software/mirth.py`, commit `1efb17f`, solo server):
+- Por hospital toma el último reporte (`reportes_historicos.timestamp`). Un canal cuya última lectura
+  quedó más de **`mirth_alert_gracia_horas`** (6 h por defecto, la gracia decidida para REQ-03) detrás
+  de ese reporte es un **canal fantasma**: no se evalúa.
+- Las alertas `MIRTH_*` activas del hospital cuyo canal no se evaluó en el tick (fantasma o sin
+  ninguna fila en `software_monitoring`) se cierran con `nivel="OK"` por `actualizar_estado_alerta`,
+  con el mensaje *"Canal sin lecturas de Mirth hace N h (última: …): monitoreo desactivado o canal
+  quitado."* (o sin las horas si no hay filas). El ticket de Asana se cierra por el camino de siempre.
+- **Hospital offline no cierra nada:** la antigüedad se mide contra el último reporte del hospital,
+  no contra el reloj del server; si no llegan reportes, la referencia no avanza. Eso lo cubre la
+  alerta `OFFLINE`.
+- Si el canal vuelve a reportar, se evalúa de nuevo normalmente (una alerta nueva sigue la regla de
+  reincidencia de `estado.py`).
+- De paso: `extra_data` con JSON `null` rompía el detector (`'NoneType' object has no attribute
+  'get'`); ahora se trata como vacío.
+- **Configuración:** clave `mirth_alert_gracia_horas` en `alerts_engine/config.py` (mínimo 1 h). No
+  está en el panel de alertas: se cambia en la tabla de configuración.
+
+**Qué no cubre (sigue pendiente de REQ-03):** la pestaña Software sigue mostrando esos canales (en
+gris, "Sin datos hace N min"); no se usa `collection_meta`; no hay tabla `monitoreo_modulos` ni lista
+de "dados de baja"; DICOM, infra (VMs quitadas) y KPIs siguen igual; no hubo vista previa del primer
+cierre masivo.
+
+**Prueba:** SQLite sintético sobre una copia del código (canal a 10 h → se cierra; alerta de canal
+sin filas → se cierra; alerta no Mirth → intacta; segundo tick → no se reabre; hospital offline → la
+alerta real sigue abierta; 5 h → sigue abierta; 7 h → se cierra).
+
+**Despliegue:** push y `git pull` en producción + reinicio del servicio el 2026-09-29. En el primer
+ciclo se cerró la alerta del hospital afectado (y las `MIRTH_*` fantasma que hubiera en otros).
+
+**Observado en producción:** al cerrar una de esas alertas, Asana respondió
+`400 Bad Request — target: Unknown object: <gid>` porque la tarea ya no existía (borrada a mano o
+fuera del alcance del token). Es inofensivo: `cerrar_tarea_asana` (`dashboard_app/asana_conector.py`)
+atrapa la excepción y solo la loguea, y `estado.py` cierra la alerta en la base igual, así que no se
+reintenta. Si el mismo `gid` apareciera en cada tick, sería otro problema. *(Opcional, no hecho:
+loguear ese caso en una línea en vez del volcado de headers HTTP.)*
+
 #### Hallazgos relacionados (no pedidos, para decidir)
 
 1. **Los detectores tratan distinto el dato viejo:** Mirth lo re-evalúa sin límite, DICOM lo ignora y
    el de infra por hospital lo lee sin mirar su antigüedad. Conviene un criterio único.
+   *(2026-09-29: Mirth ya no lo re-evalúa sin límite; ver el apartado anterior.)*
 2. **`/api/alertas` lista alertas de hospitales ocultos o con alertas desactivadas.**
 3. *(No medido)* La consulta "última fila por componente" recorre todo el histórico del hospital;
    agregar un límite de antigüedad, además de corregir lo funcional, achica lo que se escanea
