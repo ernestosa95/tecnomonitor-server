@@ -479,6 +479,11 @@ responda (con `state: "Offline"`), así que "presente" equivale a "configurada".
    `STOPPED`/`ERROR` sostenido o una cola alta, emite CRITICAL en cada tick para siempre.
    *(Inferido, no reproducido)* si se cierra a mano, el siguiente tick la reabre como
    "reincidencia" (`estado.py`, caso B3).
+   *(Resuelto el 2026-09-29, solo el detector de Mirth: un canal cuya última lectura quedó más de
+   `mirth_alert_gracia_horas` (6 h) detrás del último reporte del hospital no se evalúa, y las
+   alertas `MIRTH_*` abiertas de canales sin lecturas recientes o sin filas se cierran con OK y
+   motivo "monitoreo desactivado o canal quitado". Hospital offline no cierra nada. Caso real: un
+   hospital con agente viejo y `enabled_mirth` apagado seguía con CRITICAL de un canal STOPPED.)*
 5. **El detector de DICOM hace lo contrario.** Solo mira una ventana (`win_crit × 1,5`, 180 min por
    defecto), y una regla que deja de llegar se saltea **sin emitir OK a propósito**
    (`dicom_autoenrute.py:230-246`, `288-293`: "ni alerta, ni OK, que cerraría un incidente real

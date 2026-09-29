@@ -116,6 +116,10 @@ def cargar_config(db):
         # Minutos sin una fila nueva de un canal para considerarlo "sin
         # datos frescos" en el mapa (no dispara alerta, es solo visual).
         "mirth_stale_minutes": g("mirth_stale_minutes", 15),
+        # Horas sin lecturas de un canal (medidas contra el último reporte
+        # del hospital) para dejar de evaluarlo y cerrar su alerta abierta:
+        # monitoreo de Mirth apagado en el agente o canal quitado (REQ-03).
+        "mirth_alert_gracia_horas": g("mirth_alert_gracia_horas", 6),
         # Apagado por default: si se prende, cruzar el umbral `warn` (no solo
         # `crit`) también genera un ticket de Asana en WARNING.
         "mirth_queue_warning_alert_enabled": g("mirth_queue_warning_alert_enabled", False, is_bool=True),

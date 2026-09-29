@@ -5,16 +5,24 @@ mapa de integraciones, el umbral de cola ya no es único: depende de la
 criticidad curada de cada canal (alta/media/baja), con un umbral por
 defecto para canales todavía sin clasificar.
 
+Un canal sin lecturas en las últimas `mirth_alert_gracia_horas` (6 h por
+defecto) no se evalúa y su alerta abierta se cierra: es un canal fantasma
+(monitoreo de Mirth apagado en el agente, servidor quitado, canal borrado o
+desactivado en Mirth). La antigüedad se mide contra el último reporte *del
+hospital*, no contra el reloj: un hospital offline no cierra nada (eso lo
+cubre la alerta OFFLINE). Ver docs/16 (REQ-03).
+
 Ver docs/09-plan-refactor-alertas.md y docs/13-contrato-topologia-mirth.md.
 """
 import json
+from datetime import timedelta
 
 from sqlalchemy import text
 
 import database
 
 from ..config import _followers_de
-from ..estado import actualizar_estado_alerta
+from ..estado import _parsear_timestamp, actualizar_estado_alerta
 
 
 def _umbrales(config):
@@ -49,24 +57,62 @@ def _crit_por_hospital(db, hid):
     return mapa_crit, mapa_hum, mapa_component_a_channel
 
 
+def _ultimo_reporte(db, hid):
+    fila = db.execute(
+        text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1"),
+        {"hid": hid},
+    ).fetchone()
+    return _parsear_timestamp(fila.timestamp) if fila else None
+
+
+def _cerrar_fantasmas(db, hosp, vigentes, motivos, asana_followers):
+    """
+    Cierra las alertas MIRTH_* abiertas del hospital cuyo canal no se
+    evaluó este tick (sin lecturas recientes o sin filas). `motivos` trae el
+    mensaje por tipo_unico cuando se conoce la última lectura.
+    """
+    abiertas = db.query(database.AlertaModel).filter(
+        database.AlertaModel.hospital_id == hosp.hospital_id,
+        database.AlertaModel.is_active == 1,
+        database.AlertaModel.tipo.like("MIRTH\\_%", escape="\\"),
+    ).all()
+    for tipo in {a.tipo for a in abiertas} - vigentes:
+        actualizar_estado_alerta(
+            db=db,
+            hid=hosp.hospital_id,
+            tipo_unico=tipo,
+            nivel="OK",
+            mensaje=motivos.get(tipo, "Canal sin lecturas de Mirth: monitoreo desactivado o canal quitado."),
+            asana_proj_id=hosp.asana_project_id,
+            asana_followers=asana_followers,
+        )
+
+
 def verificar_mirth(db, config, hospitales_activos):
     umbrales = _umbrales(config)
     crit_default = config.get("mirth_crit_default", "media")
     warning_alert_enabled = config.get("mirth_queue_warning_alert_enabled", False)
     asana_followers = _followers_de(db, config, 'mirth_responsible_email')
+    try:
+        gracia = timedelta(hours=max(1, float(config.get("mirth_alert_gracia_horas", 6) or 6)))
+    except (TypeError, ValueError):
+        gracia = timedelta(hours=6)
 
     for hosp in hospitales_activos:
         mapa_crit, mapa_hum, mapa_component_a_channel = _crit_por_hospital(db, hosp.hospital_id)
+        ultimo_reporte = _ultimo_reporte(db, hosp.hospital_id)
+        vigentes = set()
+        motivos = {}
 
         # CORRECCIÓN 1 y 2: LIKE insensible a mayúsculas y ORDER BY explícito
         query = text("""
             WITH RankedData AS (
-                SELECT component_id, status_value, metric_value, extra_data,
+                SELECT component_id, status_value, metric_value, extra_data, timestamp,
                        ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
                 FROM software_monitoring
                 WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%'
             )
-            SELECT component_id, status_value, metric_value, extra_data, rn
+            SELECT component_id, status_value, metric_value, extra_data, timestamp, rn
             FROM RankedData
             WHERE rn <= 2
             ORDER BY component_id, rn ASC
@@ -85,6 +131,21 @@ def verificar_mirth(db, config, hospitales_activos):
             historia.sort(key=lambda x: x.rn)
 
             actual = historia[0]
+            tipo_alerta = f"MIRTH_{cid[:35]}"
+
+            # Canal fantasma: su última lectura quedó más de `gracia` detrás
+            # del último reporte del hospital. No se evalúa; _cerrar_fantasmas
+            # cierra su alerta si quedó abierta.
+            ts_canal = _parsear_timestamp(actual.timestamp)
+            if ultimo_reporte and ts_canal and ultimo_reporte - ts_canal > gracia:
+                horas = (ultimo_reporte - ts_canal).total_seconds() / 3600
+                motivos[tipo_alerta] = (
+                    f"Canal sin lecturas de Mirth hace {horas:.0f} h (última: "
+                    f"{ts_canal:%Y-%m-%d %H:%M}): monitoreo desactivado o canal quitado."
+                )
+                continue
+            vigentes.add(tipo_alerta)
+
             estado_canal = (actual.status_value or '').upper()
 
             # CORRECCIÓN 4: Parseo seguro a número entero para evitar el TypeError
@@ -101,6 +162,8 @@ def verificar_mirth(db, config, hospitales_activos):
             try:
                 extra = json.loads(actual.extra_data) if actual.extra_data else {}
             except (TypeError, ValueError):
+                extra = {}
+            if not isinstance(extra, dict):  # JSON 'null' en la columna
                 extra = {}
             channel_id = extra.get("channel_id") or mapa_component_a_channel.get(cid)
             crit = mapa_crit.get(channel_id, crit_default) if channel_id else crit_default
@@ -133,7 +196,6 @@ def verificar_mirth(db, config, hospitales_activos):
             # channel_id): cambiarlo dejaría huérfanas las alertas MIRTH_*
             # que ya estén abiertas -- se cierran por match exacto de
             # tipo_unico, y el detector dejaría de emitir el viejo.
-            tipo_alerta = f"MIRTH_{cid[:35]}"
             titulo_visible = mapa_hum.get(channel_id) if channel_id else None
 
             actualizar_estado_alerta(
@@ -146,3 +208,5 @@ def verificar_mirth(db, config, hospitales_activos):
                 asana_followers=asana_followers,
                 titulo_visible=titulo_visible,
             )
+
+        _cerrar_fantasmas(db, hosp, vigentes, motivos, asana_followers)
