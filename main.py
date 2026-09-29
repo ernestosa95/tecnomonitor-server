@@ -15,6 +15,12 @@ import transformer
 import database
 import auth
 
+# Módulos dados de baja (REQ-03). server.py pone dashboard_app/ en sys.path antes de importar main.
+try:
+    from alerts_engine import modulos as monitoreo_modulos
+except ImportError:
+    from dashboard_app.alerts_engine import modulos as monitoreo_modulos
+
 app = FastAPI(title="TecnoXaas Monitor V4")
 
 # Configurar Logger básico
@@ -624,6 +630,15 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         # 5. COMMIT (Guarda ambas tablas al mismo tiempo)
         db.add(nuevo_registro)
         db.commit()
+
+        # 6. MÓDULOS DADOS DE BAJA (REQ-03): registra lo que declara collection_meta. Best-effort y
+        # después del commit del reporte: si falla, el reporte ya quedó guardado.
+        try:
+            monitoreo_modulos.registrar_collection_meta(db, env.get('hospital_id'), data_dict.get('collection_meta'), ts)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"⚠️ [Módulos] No se pudo registrar collection_meta de {env.get('hospital_id')}: {e}")
         
         logger.info(f"✅ Reporte guardado: {env.get('hospital_id')} (Versión: {schema_version} | Legacy: {is_legacy})")
         return {"status": "ok", "id": nuevo_registro.id, "v3_conversion": is_legacy, "version": schema_version}

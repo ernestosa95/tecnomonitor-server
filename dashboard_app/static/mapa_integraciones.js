@@ -259,7 +259,9 @@
   function _mostrarCargando() { _estadoVacio('Cargando mapa de integraciones…'); const s = $('mi-summary'); if (s) s.innerHTML = ''; }
   function _mostrarError() { _estadoVacio('No se pudo cargar el mapa de integraciones. Probá de nuevo en unos segundos.'); }
   function _mostrarSinDatos() {
-    _estadoVacio('Este hospital no tiene canales de Mirth monitoreados todavía.');
+    _estadoVacio(META && META.monitoreo_desactivado
+      ? 'El monitoreo de Mirth de este hospital está dado de baja (ver "Monitoreo desactivado" en la pestaña Software).'
+      : 'Este hospital no tiene canales de Mirth monitoreados todavía.');
     const s = $('mi-summary'); if (s) s.innerHTML = '';
   }
   function _mostrarMapa() {

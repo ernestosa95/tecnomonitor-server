@@ -12,7 +12,7 @@ from datetime import datetime
 import database
 
 from . import exclusiones as _exclusiones_mod
-from . import infra
+from . import infra, modulos
 from .config import _followers_de, cargar_config
 from .exclusiones import cargar_exclusiones
 from .kpis_negocio import mamo as kpi_mamo
@@ -27,6 +27,17 @@ ultima_ejecucion_kpis = None
 def procesar_offline(db):
     config = cargar_config(db)
     cargar_exclusiones(db)
+
+    # --- Módulos dados de baja (REQ-03): cache del tick + cierre de alertas de bajas nuevas ---
+    modulos.cargar_bajas(db)
+    try:
+        modulos.aplicar_bajas(db)
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        print(f"⚠️ [Módulos] Falló la aplicación de bajas: {repr(e)}")
 
     # --- IDs de Asana Globales (Infraestructura) ---
     global_asana_followers = _followers_de(db, config, 'global_alert_responsible_email')

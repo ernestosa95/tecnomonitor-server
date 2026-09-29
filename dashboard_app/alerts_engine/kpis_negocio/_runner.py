@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 import database
 
+from .. import modulos
 from ..config import _followers_de, _kpi_habilitado
 from ..estado import actualizar_estado_alerta
 from ..estado import asana_conector  # misma instancia que ya resolvió estado.py
@@ -51,6 +52,9 @@ def verificar_kpi_inactividad(db, *, tipo_unico, kpi_settings_key,
 
     for hosp in hospitales_ris:
         if not _kpi_habilitado(hosp, kpi_settings_key):
+            continue
+        # KPIs dados de baja a mano (REQ-03): ni se evalúan ni abren alerta.
+        if modulos.baja_para(hosp.hospital_id, tipo_unico):
             continue
 
         reportes = db.query(database.ReporteUso).filter(

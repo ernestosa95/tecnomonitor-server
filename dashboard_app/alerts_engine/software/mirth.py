@@ -21,6 +21,7 @@ from sqlalchemy import text
 
 import database
 
+from .. import modulos
 from ..config import _followers_de
 from ..estado import _parsear_timestamp, actualizar_estado_alerta
 
@@ -65,27 +66,29 @@ def _ultimo_reporte(db, hid):
     return _parsear_timestamp(fila.timestamp) if fila else None
 
 
-def _cerrar_fantasmas(db, hosp, vigentes, motivos, asana_followers):
+def _cerrar_fantasmas(db, hosp, vigentes, motivos):
     """
     Cierra las alertas MIRTH_* abiertas del hospital cuyo canal no se
     evaluó este tick (sin lecturas recientes o sin filas). `motivos` trae el
-    mensaje por tipo_unico cuando se conoce la última lectura.
+    mensaje por tipo_unico cuando se conoce la última lectura. Se cierran con
+    [BAJA] (modulos.cerrar_alertas): si el canal vuelve, su alerta arranca de
+    cero en vez de contar como reincidencia (REQ-03, decisión 6).
     """
     abiertas = db.query(database.AlertaModel).filter(
         database.AlertaModel.hospital_id == hosp.hospital_id,
         database.AlertaModel.is_active == 1,
         database.AlertaModel.tipo.like("MIRTH\\_%", escape="\\"),
     ).all()
-    for tipo in {a.tipo for a in abiertas} - vigentes:
-        actualizar_estado_alerta(
-            db=db,
-            hid=hosp.hospital_id,
-            tipo_unico=tipo,
-            nivel="OK",
-            mensaje=motivos.get(tipo, "Canal sin lecturas de Mirth: monitoreo desactivado o canal quitado."),
-            asana_proj_id=hosp.asana_project_id,
-            asana_followers=asana_followers,
-        )
+    n = 0
+    for a in abiertas:
+        if a.tipo in vigentes:
+            continue
+        motivo = motivos.get(a.tipo, "Canal sin lecturas de Mirth: monitoreo desactivado o canal quitado")
+        print(f"✅ NORMALIZADO (canal sin lecturas): {hosp.hospital_id} -> {a.tipo}")
+        n += modulos.cerrar_alertas(db, [a], motivo)
+    if n:
+        db.commit()
+        modulos._avisar_ws()
 
 
 def verificar_mirth(db, config, hospitales_activos):
@@ -99,6 +102,8 @@ def verificar_mirth(db, config, hospitales_activos):
         gracia = timedelta(hours=6)
 
     for hosp in hospitales_activos:
+        if modulos.baja_para(hosp.hospital_id, modulo="mirth"):
+            continue  # módulo dado de baja (REQ-03): sus alertas ya se cerraron en aplicar_bajas()
         mapa_crit, mapa_hum, mapa_component_a_channel = _crit_por_hospital(db, hosp.hospital_id)
         ultimo_reporte = _ultimo_reporte(db, hosp.hospital_id)
         vigentes = set()
@@ -141,7 +146,7 @@ def verificar_mirth(db, config, hospitales_activos):
                 horas = (ultimo_reporte - ts_canal).total_seconds() / 3600
                 motivos[tipo_alerta] = (
                     f"Canal sin lecturas de Mirth hace {horas:.0f} h (última: "
-                    f"{ts_canal:%Y-%m-%d %H:%M}): monitoreo desactivado o canal quitado."
+                    f"{ts_canal:%Y-%m-%d %H:%M}): monitoreo desactivado o canal quitado"
                 )
                 continue
             vigentes.add(tipo_alerta)
@@ -209,4 +214,4 @@ def verificar_mirth(db, config, hospitales_activos):
                 titulo_visible=titulo_visible,
             )
 
-        _cerrar_fantasmas(db, hosp, vigentes, motivos, asana_followers)
+        _cerrar_fantasmas(db, hosp, vigentes, motivos)

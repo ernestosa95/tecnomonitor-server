@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 import auth
 import database
+from alerts_engine import modulos
 from alerts_engine.config import cargar_config
 from alerts_engine.software.mirth import _umbrales
 from core import get_db
@@ -139,6 +140,17 @@ def obtener_mapa_mirth(hospital_id: str, minutos: int = 180, paso: int = 5, incl
     t0 = ahora - timedelta(minutes=paso * pasos)
 
     hosp = db.query(database.HospitalMetadata).filter_by(hospital_id=hospital_id).first()
+
+    # Mirth dado de baja (REQ-03): el mapa no muestra canales; el front lo explica.
+    if "mirth" in modulos.bajas_efectivas_hospital(db, hospital_id):
+        return {
+            "hospital": {"id": hospital_id, "nombre": hosp.nombre if hosp else hospital_id, "instancias": ["Default"]},
+            "umbrales": umbrales,
+            "meta": {"minutos": minutos, "paso_min": paso, "pasos": 0, "t0": t0.isoformat(),
+                     "generado_en": ahora.isoformat(), "stale_min": stale_min,
+                     "monitoreo_desactivado": True, "topologia_disponible": False, "sin_clasificar": 0},
+            "origenes": [], "destinos": [], "canales": [], "tl": [],
+        }
 
     # --- Tablas de curación + snapshot técnico (pocas filas, todo el hospital) ---
     nodos_curados = db.query(database.MirthNodo).filter_by(hospital_id=hospital_id, activo=True).order_by(

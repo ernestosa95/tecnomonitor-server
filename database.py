@@ -420,5 +420,36 @@ class MirthCanalMeta(Base):
     )
 
 
+class MonitoreoModulo(Base):
+    """
+    Módulos de monitoreo dados de baja por hospital (REQ-03, docs/16). Sin fila = activo.
+
+    Una fila nace `pendiente_baja` cuando el agente declara `collection_meta.<modulo>.enabled ==
+    false`, y pasa a `desactivado` cuando esa racha cumple la gracia (`monitoreo_gracia_horas`,
+    medida con los timestamps de los reportes del hospital). Con `enabled == true` la fila de origen
+    `agente` se borra (reactivación). Las bajas manuales (`origen = 'manual'`) nacen `desactivado`
+    y solo se revierten a mano. Ver dashboard_app/alerts_engine/modulos.py.
+    """
+    __tablename__ = "monitoreo_modulos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hospital_id = Column(String, nullable=False, index=True)
+    modulo = Column(String, nullable=False)          # clave de collection_meta: mirth, wmi, idrac...
+    estado = Column(String, nullable=False)          # 'pendiente_baja' | 'desactivado'
+    origen = Column(String, default="agente")        # 'agente' | 'manual'
+    declarado_off_desde = Column(DateTime, nullable=True)  # 1er reporte con enabled == false de la racha
+    ultimo_reporte_off = Column(DateTime, nullable=True)   # último reporte con enabled == false
+    desactivado_desde = Column(DateTime, nullable=True)    # cuándo se cumplió la gracia (o baja manual)
+    acciones_aplicadas_en = Column(DateTime, nullable=True)  # cierre de alertas ya ejecutado
+    alertas_cerradas = Column(Integer, default=0)
+    motivo = Column(String, nullable=True)
+    actualizado_en = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    actualizado_por = Column(String, nullable=True)  # email (baja manual) o 'agente'
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "modulo", name="uq_monitoreo_modulo"),
+    )
+
+
 # --- FINAL DEL ARCHIVO: SE CREAN TODAS LAS TABLAS REGISTRADAS EN 'Base' ---
 Base.metadata.create_all(bind=engine)

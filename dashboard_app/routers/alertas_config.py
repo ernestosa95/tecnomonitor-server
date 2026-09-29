@@ -94,6 +94,10 @@ class ConfigRequest(BaseModel):
     sql_backup_alert_enabled: bool = False
     sql_backup_max_hours: int = 24
 
+    # --- Módulos dados de baja (REQ-03) ---
+    monitoreo_bajas_enabled: bool = False
+    monitoreo_gracia_horas: int = 6
+
 class ExclusionRequest(BaseModel):
     hospital_id: str = "*"
     patron: str
@@ -110,7 +114,12 @@ class ExclusionRequest(BaseModel):
 def obtener_alertas(db: Session = Depends(get_db),
                     # CORRECCIÓN: Solo roles autorizados pueden ver alertas
                     current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
-    activas = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1).order_by(database.AlertaModel.start_time.desc()).all()
+    # Hospitales ocultos o con alertas apagadas no se listan (REQ-03, decisión 7). Una alerta de un
+    # hospital sin fila de metadata se sigue listando.
+    dados_de_baja = {h.hospital_id for h in db.query(database.HospitalMetadata).all()
+                     if h.is_visible is False or h.alerts_enabled is False}
+    activas = [a for a in db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 1).order_by(database.AlertaModel.start_time.desc()).all()
+               if a.hospital_id not in dados_de_baja]
     historial = db.query(database.AlertaModel).filter(database.AlertaModel.is_active == 0).order_by(database.AlertaModel.end_time.desc()).limit(50).all()
     return {"activas": activas, "historial": historial}
 
@@ -187,6 +196,10 @@ def obtener_configuracion(db: Session = Depends(get_db),
         # --- ÚLTIMO BACKUP DE LAS BASES SQL ---
         "sql_backup_alert_enabled": g("sql_backup_alert_enabled", False, is_bool=True),
         "sql_backup_max_hours": g("sql_backup_max_hours", 24),
+
+        # --- MÓDULOS DADOS DE BAJA (REQ-03) ---
+        "monitoreo_bajas_enabled": g("monitoreo_bajas_enabled", False, is_bool=True),
+        "monitoreo_gracia_horas": g("monitoreo_gracia_horas", 6),
     }
 
 
@@ -248,6 +261,10 @@ def guardar_configuracion(cfg: ConfigRequest,
     # --- GUARDAR CONFIGURACIÓN DE ÚLTIMO BACKUP (REQ-06) ---
     s("sql_backup_alert_enabled", cfg.sql_backup_alert_enabled)
     s("sql_backup_max_hours", max(1, cfg.sql_backup_max_hours))
+
+    # --- GUARDAR MÓDULOS DADOS DE BAJA (REQ-03) ---
+    s("monitoreo_bajas_enabled", cfg.monitoreo_bajas_enabled)
+    s("monitoreo_gracia_horas", max(1, cfg.monitoreo_gracia_horas))
 
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}

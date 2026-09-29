@@ -2074,7 +2074,8 @@ canvas{color-scheme:dark}
         <div id="tab-logs" class="tab-content" style="padding:20px">
             <!-- Contenedor oculto para evitar errores nulos en script.js -->
             <div id="software-legend" style="display:none;"></div>
-            
+
+            <div id="monitoreo-bajas"></div>
             <div id="logs-container"></div>
             <div style="height:40px"></div>
         </div>
@@ -2745,6 +2746,20 @@ canvas{color-scheme:dark}
                             <input type="checkbox" id="sql-backup-alert-enabled" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
                         </div>
                         <div class="input-group" style="margin-top:10px"><label>Horas máximas sin backup completo</label><input type="number" id="sql-backup-max-hours" min="1" placeholder="24"></div>
+                    </div>
+
+                    <div class="conf-section-block">
+                        <div class="conf-section-title">Módulos dados de baja</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div>
+                                <strong style="font-size:.9em">Aplicar las bajas que declara el agente</strong>
+                                <div style="font-size:.82em;color:var(--muted);margin-top:2px">Cuando un hospital apaga un módulo en el agente (Mirth, VMs, iDRAC, DICOM, SSL…) y pasan las horas de gracia, se cierran sus alertas y tickets y el módulo deja de mostrarse. Apagado, las bajas solo se registran: revisá la vista previa antes de prenderlo. Las bajas manuales (desde la pestaña Software del hospital) se aplican siempre.</div>
+                            </div>
+                            <input type="checkbox" id="monitoreo-bajas-enabled" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+                        </div>
+                        <div class="input-group" style="margin-top:10px"><label>Horas de gracia (medidas con los reportes del hospital)</label><input type="number" id="monitoreo-gracia-horas" min="1" placeholder="6"></div>
+                        <button type="button" class="btn-small" onclick="previewBajasMonitoreo()" style="margin:10px 0 0 0;background:var(--surface3);border:1px solid var(--border2);color:var(--text)">Ver vista previa</button>
+                        <div id="monitoreo-preview" style="margin-top:10px"></div>
                     </div>
 
                     <button class="btn-action" onclick="guardarConfig()" style="width:auto;border-radius:50px;padding:10px 32px;font-size:.9em">

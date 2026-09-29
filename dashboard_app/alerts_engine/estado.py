@@ -12,6 +12,7 @@ import requests
 
 import database
 
+from . import modulos
 from .exclusiones import evaluar_exclusion, _registrar_hit
 from .runbooks import runbook_url_para
 
@@ -107,6 +108,14 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             db.commit()
         return
 
+    # --- CASO 0b: MÓDULO DADO DE BAJA (REQ-03) ---
+    # Ni abre ni reabre. Si quedó una abierta (baja recién aplicada en otro camino), se cierra.
+    if modulos.baja_para(hid, tipo_unico):
+        if alerta and alerta.is_active == 1:
+            modulos.cerrar_alertas(db, [alerta], "Monitoreo desactivado")
+            db.commit()
+        return
+
     # CASO A: PARAMETRO NORMALIZADO (OK)
     if nivel == "OK":
         if alerta and alerta.is_active == 1:
@@ -163,8 +172,10 @@ def actualizar_estado_alerta(db, hid, tipo_unico, nivel, mensaje, asana_proj_id=
             db.commit()
 
     elif alerta.is_active == 0:
-        # B3: Estaba cerrada. Amnesia de 15 días
-        if alerta.end_time and (ahora - alerta.end_time).days <= DIAS_CADUCIDAD:
+        # B3: Estaba cerrada. Amnesia de 15 días. Una alerta cerrada por baja de monitoreo
+        # ([BAJA], REQ-03) no cuenta como reincidencia: al reactivar, arranca de cero.
+        cerrada_por_baja = str(alerta.mensaje or "").startswith(modulos.PREFIJO_BAJA)
+        if alerta.end_time and not cerrada_por_baja and (ahora - alerta.end_time).days <= DIAS_CADUCIDAD:
             alerta.reaperturas = (alerta.reaperturas or 0) + 1
             print(f"♻️ REINCIDENCIA (Reabriendo, van {alerta.reaperturas}): {hid} -> {tipo_unico} ({nivel})")
 

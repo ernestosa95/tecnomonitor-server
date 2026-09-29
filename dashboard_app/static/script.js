@@ -437,6 +437,12 @@ async function cargarConfigUI() {
         const inpSqlBackupHoras = document.getElementById('sql-backup-max-hours');
         if(inpSqlBackupHoras) inpSqlBackupHoras.value = data.sql_backup_max_hours || 24;
 
+        // --- MÓDULOS DADOS DE BAJA (REQ-03) ---
+        const chkBajas = document.getElementById('monitoreo-bajas-enabled');
+        if(chkBajas) chkBajas.checked = !!data.monitoreo_bajas_enabled;
+        const inpGracia = document.getElementById('monitoreo-gracia-horas');
+        if(inpGracia) inpGracia.value = data.monitoreo_gracia_horas || 6;
+
         cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email, data.dicom_responsible_email);
         
         renderKpiModsChips();
@@ -499,6 +505,10 @@ async function guardarConfig() {
         // --- CAMPOS ÚLTIMO BACKUP DE LAS BASES (REQ-06) ---
         sql_backup_alert_enabled: document.getElementById('sql-backup-alert-enabled')?.checked || false,
         sql_backup_max_hours: parseInt(document.getElementById('sql-backup-max-hours')?.value) || 24,
+
+        // --- MÓDULOS DADOS DE BAJA (REQ-03) ---
+        monitoreo_bajas_enabled: document.getElementById('monitoreo-bajas-enabled')?.checked || false,
+        monitoreo_gracia_horas: parseInt(document.getElementById('monitoreo-gracia-horas')?.value) || 6,
     };
     
     try {
@@ -1556,7 +1566,10 @@ async function toggleAlertas(id) {
     try {
         const res = await authFetch(`/api/hospitales-metadata/${id}/toggle-alerts`, { method: 'PATCH' });
         if (res.ok) {
-            listarHospitalesConfig(); 
+            // Ocultar un hospital o apagarle las alertas cierra sus alertas abiertas (REQ-03).
+            const r = await res.clone().json().catch(() => ({}));
+            if (r.alertas_cerradas) alert(`Se cerraron ${r.alertas_cerradas} alerta(s) abierta(s) del hospital y sus tickets.`);
+            listarHospitalesConfig();
         } else {
             alert("Error al cambiar estado de alertas");
         }
@@ -1583,6 +1596,9 @@ async function toggleVisibilidad(id) {
     try {
         const res = await authFetch(`/api/hospitales-metadata/${id}/toggle`, { method: 'PATCH' });
         if (res.ok) {
+            // Ocultar un hospital o apagarle las alertas cierra sus alertas abiertas (REQ-03).
+            const r = await res.clone().json().catch(() => ({}));
+            if (r.alertas_cerradas) alert(`Se cerraron ${r.alertas_cerradas} alerta(s) abierta(s) del hospital y sus tickets.`);
             listarHospitalesConfig();
         } else {
             alert("Error al cambiar visibilidad");
@@ -3726,6 +3742,7 @@ async function cargarEstadoSoftware(idSolicitado) {
     const container = document.getElementById('logs-container');
     const legend = document.getElementById('software-legend');
     
+    cargarMonitoreoBajas(idSolicitado);
     if (legend) legend.innerText = 'Sincronizando información de integraciones...';
     if (container) container.innerHTML = '<div style="text-align:center; padding: 40px; color:#7f8c8d;">Cargando estado de canales...</div>';
     
@@ -5268,4 +5285,133 @@ async function borrarExclusion(id) {
     if (!confirm('¿Eliminar esta regla? Las alertas que suprimía volverán a generarse en el próximo ciclo.')) return;
     await authFetch(`/api/exclusiones/${id}`, { method: 'DELETE' });
     listarExclusiones();
+}
+
+
+// =====================================================================
+// MÓDULOS DADOS DE BAJA (REQ-03, docs/16)
+// Sección "Monitoreo desactivado" de la pestaña Software y vista previa
+// del panel de configuración. Ver dashboard_app/alerts_engine/modulos.py.
+// =====================================================================
+function _rolActual() {
+    try { return (JSON.parse(sessionStorage.getItem('tecnomonitor_user') || '{}').role) || ''; }
+    catch (e) { return ''; }
+}
+
+function _bajaEstadoTexto(m) {
+    if (m.estado === 'pendiente_baja') return `En gracia desde ${escapeHtml(m.declarado_off_desde || '—')}`;
+    if (!m.efectiva) return `Desactivado desde ${escapeHtml(m.desactivado_desde || '—')} (sin aplicar: switch apagado)`;
+    return `Desactivado desde ${escapeHtml(m.desactivado_desde || '—')}`;
+}
+
+async function cargarMonitoreoBajas(hid) {
+    const box = document.getElementById('monitoreo-bajas');
+    if (!box) return;
+    box.innerHTML = '';
+    let data;
+    try {
+        const res = await authFetch(`/api/hospital/${hid}/monitoreo-modulos`);
+        if (!res.ok) return;  // rol sin acceso: la sección no se muestra
+        data = await res.json();
+    } catch (e) { return; }
+    if (currentHospitalId !== hid) return;
+
+    const puedeEditar = ['Admin', 'Ingenieria'].includes(_rolActual());
+    const mods = data.modulos || [];
+    if (!mods.length && !puedeEditar) return;
+
+    const filas = mods.map(m => `
+        <tr>
+            <td style="padding:6px 8px">${escapeHtml(m.label)}</td>
+            <td style="padding:6px 8px;color:var(--muted)">${_bajaEstadoTexto(m)}</td>
+            <td style="padding:6px 8px;color:var(--muted)">${m.origen === 'manual' ? 'Manual' : 'Agente'}${m.actualizado_por && m.origen === 'manual' ? ' · ' + escapeHtml(m.actualizado_por) : ''}</td>
+            <td style="padding:6px 8px;color:var(--muted)">${escapeHtml(m.motivo || '')}</td>
+            <td style="padding:6px 8px;text-align:right">${m.alertas_cerradas || 0}</td>
+            <td style="padding:6px 8px;text-align:right">${puedeEditar && m.origen === 'manual'
+                ? `<button class="btn-small" style="background:var(--surface3);border:1px solid var(--border2);color:var(--text)" onclick="revertirBajaModulo('${escapeHtml(hid)}','${escapeHtml(m.modulo)}')">Revertir</button>` : ''}</td>
+        </tr>`).join('');
+
+    const opciones = (data.disponibles || []).map(d => `<option value="${escapeHtml(d.modulo)}">${escapeHtml(d.label)}</option>`).join('');
+    const alta = puedeEditar && opciones ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+            <select id="baja-modulo-sel" style="padding:6px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius)">${opciones}</select>
+            <input id="baja-modulo-motivo" placeholder="Motivo (opcional)" style="flex:1;min-width:160px;padding:6px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius)">
+            <button class="btn-small" style="background:var(--red);margin:0" onclick="darDeBajaModulo('${escapeHtml(hid)}')">Dar de baja</button>
+        </div>` : '';
+
+    box.innerHTML = `
+        <div style="border:1px solid var(--border2);border-radius:var(--radius2);padding:14px 16px;margin-bottom:16px;background:var(--surface)">
+            <div style="font-weight:600;margin-bottom:4px">Monitoreo desactivado</div>
+            <div style="font-size:.82em;color:var(--muted);margin-bottom:8px">Módulos que se dejaron de monitorear: no se muestran ni alertan. El histórico sigue disponible.${data.switch ? '' : ' Las bajas que declara el agente todavía no se aplican (switch apagado en Configuración).'}</div>
+            ${mods.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85em">
+                <thead><tr style="color:var(--muted);text-align:left">
+                    <th style="padding:6px 8px">Módulo</th><th style="padding:6px 8px">Estado</th><th style="padding:6px 8px">Origen</th>
+                    <th style="padding:6px 8px">Motivo</th><th style="padding:6px 8px;text-align:right">Alertas cerradas</th><th></th>
+                </tr></thead><tbody>${filas}</tbody></table></div>`
+              : '<div style="font-size:.85em;color:var(--muted)">Ningún módulo dado de baja.</div>'}
+            ${alta}
+        </div>`;
+}
+
+async function darDeBajaModulo(hid) {
+    const sel = document.getElementById('baja-modulo-sel');
+    const motivo = document.getElementById('baja-modulo-motivo')?.value || '';
+    if (!sel || !sel.value) return;
+    const label = sel.options[sel.selectedIndex].text;
+    if (!confirm(`¿Dar de baja "${label}" en ${hid}? Se cierran sus alertas abiertas y sus tickets de Asana, y deja de mostrarse.`)) return;
+    try {
+        const res = await authFetch(`/api/hospital/${hid}/monitoreo-modulos/${sel.value}/baja`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ motivo })
+        });
+        const r = await res.json();
+        if (!res.ok) { alert(r.detail || 'No se pudo dar de baja'); return; }
+        alert(`Módulo dado de baja. Alertas cerradas: ${r.alertas_cerradas}.`);
+        cargarEstadoSoftware(hid);
+    } catch (e) { alert('Error de conexión'); }
+}
+
+async function revertirBajaModulo(hid, modulo) {
+    if (!confirm('¿Revertir la baja? El módulo vuelve a mostrarse y a alertar desde cero.')) return;
+    try {
+        const res = await authFetch(`/api/hospital/${hid}/monitoreo-modulos/${modulo}`, { method: 'DELETE' });
+        const r = await res.json();
+        if (!res.ok) { alert(r.detail || 'No se pudo revertir'); return; }
+        cargarEstadoSoftware(hid);
+    } catch (e) { alert('Error de conexión'); }
+}
+
+async function previewBajasMonitoreo() {
+    const box = document.getElementById('monitoreo-preview');
+    if (!box) return;
+    box.innerHTML = '<div style="font-size:.85em;color:var(--muted)">Cargando…</div>';
+    try {
+        const res = await authFetch('/api/monitoreo-modulos/preview');
+        const d = await res.json();
+        if (!res.ok) { box.innerHTML = `<div style="color:var(--red)">${escapeHtml(d.detail || 'Error')}</div>`; return; }
+        if (!d.modulos.length) {
+            box.innerHTML = '<div style="font-size:.85em;color:var(--muted)">Ningún hospital declaró módulos apagados todavía.</div>';
+            return;
+        }
+        const filas = d.modulos.map(m => {
+            const alertas = (m.alertas_a_cerrar || []);
+            const detalle = m.acciones_aplicadas_en
+                ? `ya aplicada (${m.alertas_cerradas} cerradas)`
+                : (m.estado === 'desactivado'
+                    ? (alertas.length ? alertas.map(a => escapeHtml(a.tipo)).join(', ') : 'ninguna abierta')
+                    : `se evaluará al cumplir la gracia${alertas.length ? ' (hoy: ' + alertas.map(a => escapeHtml(a.tipo)).join(', ') + ')' : ''}`);
+            return `<tr>
+                <td style="padding:5px 8px">${escapeHtml(m.hospital_id)}</td>
+                <td style="padding:5px 8px">${escapeHtml(m.label)}</td>
+                <td style="padding:5px 8px;color:var(--muted)">${_bajaEstadoTexto(m)} · ${m.origen === 'manual' ? 'manual' : 'agente'}</td>
+                <td style="padding:5px 8px;color:var(--muted)">${detalle}</td>
+            </tr>`;
+        }).join('');
+        box.innerHTML = `
+            <div style="font-size:.85em;margin-bottom:6px">Switch <b>${d.switch ? 'prendido' : 'apagado'}</b> · gracia ${d.gracia_horas} h · <b>${d.alertas_a_cerrar}</b> alerta(s) se cerrarían ahora con las bajas pendientes de aplicar.</div>
+            <div style="overflow-x:auto;max-height:320px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:.82em">
+                <thead><tr style="color:var(--muted);text-align:left"><th style="padding:5px 8px">Hospital</th><th style="padding:5px 8px">Módulo</th><th style="padding:5px 8px">Estado</th><th style="padding:5px 8px">Alertas que se cierran</th></tr></thead>
+                <tbody>${filas}</tbody></table></div>`;
+    } catch (e) {
+        box.innerHTML = '<div style="color:var(--red)">Error de conexión</div>';
+    }
 }

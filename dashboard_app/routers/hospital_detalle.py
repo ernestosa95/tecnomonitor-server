@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import alerts_engine
+from alerts_engine import modulos
 from alerts_engine.software import sql_backups as sql_backups_detector
 import auth
 import database
@@ -412,6 +413,11 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         else:
             is_historical = True
 
+    # Módulos dados de baja (REQ-03): sus componentes no se muestran.
+    bajas = modulos.bajas_efectivas_hospital(db, hospital_id)
+    apps_ocultas = {app for m in bajas for app in modulos.MODULOS[m]["apps"]}
+    resultados = [r for r in resultados if r.app_name not in apps_ocultas]
+
     # 2. AGRUPAMOS por aplicación y luego por canal/id
     canales_mirth = {}
     certificados_ssl = {}
@@ -430,6 +436,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
 
     software_data = {
         "metadata": {"minutos": minutos, "is_historical": is_historical},
+        "modulos_baja": sorted(bajas),
         "mirth": {},
         "ssl_certificates": [],
         "elasticsearch": [],
@@ -643,10 +650,12 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         })
 
     # 7. 🆕 INTEGRIDAD DE BASES SQL (DBCC CHECKDB) — ver _ultimo_checkdb().
-    software_data["sql_integrity"] = _ultimo_checkdb(db, hospital_id)
+    software_data["sql_integrity"] = (_ultimo_checkdb(db, hospital_id) if "sql_integrity" not in bajas
+                                      else None)
 
     # 8. 🆕 ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL — ver _ultimo_backup().
-    software_data["sql_backups"] = _ultimo_backup(db, hospital_id)
+    software_data["sql_backups"] = (_ultimo_backup(db, hospital_id) if "sql_backups" not in bajas
+                                    else None)
 
     return software_data
 

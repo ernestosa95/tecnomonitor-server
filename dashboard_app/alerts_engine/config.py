@@ -120,6 +120,12 @@ def cargar_config(db):
         # del hospital) para dejar de evaluarlo y cerrar su alerta abierta:
         # monitoreo de Mirth apagado en el agente o canal quitado (REQ-03).
         "mirth_alert_gracia_horas": g("mirth_alert_gracia_horas", 6),
+
+        # --- MÓDULOS DADOS DE BAJA (REQ-03, ver alerts_engine/modulos.py) ---
+        # Apagado: las bajas que declara el agente solo se registran (vista previa). Prendido: se
+        # cierran sus alertas y el módulo deja de mostrarse. Las bajas manuales aplican siempre.
+        "monitoreo_bajas_enabled": g("monitoreo_bajas_enabled", False, is_bool=True),
+        "monitoreo_gracia_horas": g("monitoreo_gracia_horas", 6),
         # Apagado por default: si se prende, cruzar el umbral `warn` (no solo
         # `crit`) también genera un ticket de Asana en WARNING.
         "mirth_queue_warning_alert_enabled": g("mirth_queue_warning_alert_enabled", False, is_bool=True),

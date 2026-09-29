@@ -81,7 +81,7 @@ def verificar_infra_hospitales(db, config, global_asana_followers):
     for row in reportes:
         meta = meta_dict.get(row.hospital_id)
 
-        if not (meta and meta.alerts_enabled and row.full_json_data):
+        if not (meta and meta.alerts_enabled and meta.is_visible is not False and row.full_json_data):
             omitidos += 1
             continue
 
@@ -309,7 +309,11 @@ def _verificar_conectividad(db, config, asana_followers):
     limit_delta = timedelta(minutes=limit_min)
     ahora = datetime.now()
 
-    hospitales_meta = db.query(database.HospitalMetadata).filter_by(alerts_enabled=True).all()
+    # Un hospital oculto (is_visible) cuenta como dado de baja, igual que en el tick de software:
+    # sus alertas se cerraron al ocultarlo y no deben reabrirse (REQ-03, decisión 7).
+    # is_visible NULL (filas viejas) cuenta como visible.
+    hospitales_meta = [m for m in db.query(database.HospitalMetadata).filter_by(alerts_enabled=True).all()
+                       if m.is_visible is not False]
 
     for meta in hospitales_meta:
         last_report = db.execute(

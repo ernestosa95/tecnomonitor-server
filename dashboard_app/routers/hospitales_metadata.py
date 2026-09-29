@@ -13,10 +13,27 @@ from sqlalchemy.orm import Session
 
 import auth
 import database
+from alerts_engine import modulos
 from core import generar_ingest_token, get_db, hash_ingest_token
 from database import HospitalMetadata
 
 router = APIRouter()
+
+
+def _activo(h):
+    """Visible y con alertas. NULL cuenta como encendido (filas viejas)."""
+    return h.is_visible is not False and h.alerts_enabled is not False
+
+
+def _cerrar_si_se_dio_de_baja(db, h, estaba_activo):
+    """
+    Dar de baja un hospital desde el server (ocultarlo o apagarle las alertas) cierra sus alertas
+    abiertas y sus tickets (REQ-03, decisión 7). Se cierran con [BAJA]: si se lo vuelve a activar,
+    arrancan de cero. Devuelve cuántas cerró.
+    """
+    if estaba_activo and not _activo(h):
+        return modulos.cerrar_alertas_hospital(db, h.hospital_id, "Hospital dado de baja en el server")
+    return 0
 
 
 class HospitalDTO(BaseModel):
@@ -72,6 +89,8 @@ def editar_hospital_metadata(hid: str, dto: HospitalDTO,
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
 
+    estaba_activo = _activo(h)
+
     # Actualizamos campos
     h.nombre = dto.nombre
     h.provincia = dto.provincia
@@ -84,7 +103,8 @@ def editar_hospital_metadata(hid: str, dto: HospitalDTO,
     h.datos_manuales = dto.datos_manuales
 
     db.commit()
-    return {"status": "ok", "msg": "Actualizado"}
+    cerradas = _cerrar_si_se_dio_de_baja(db, h, estaba_activo)
+    return {"status": "ok", "msg": "Actualizado", "alertas_cerradas": cerradas}
 
 @router.patch("/api/hospitales-metadata/{hid}/toggle")
 def toggle_visibilidad(hid: str,
@@ -92,9 +112,11 @@ def toggle_visibilidad(hid: str,
                        current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
+    estaba_activo = _activo(h)
     h.is_visible = not h.is_visible
     db.commit()
-    return {"status": "ok", "new_state": h.is_visible}
+    cerradas = _cerrar_si_se_dio_de_baja(db, h, estaba_activo)
+    return {"status": "ok", "new_state": h.is_visible, "alertas_cerradas": cerradas}
 
 # Nueva ruta para togglear alertas (Punto 2)
 @router.patch("/api/hospitales-metadata/{hid}/toggle-alerts")
@@ -103,9 +125,11 @@ def toggle_alertas(hid: str,
                    current_user: dict = Depends(auth.require_roles("Admin", "Ingenieria"))):
     h = db.query(HospitalMetadata).filter_by(hospital_id=hid).first()
     if not h: raise HTTPException(status_code=404, detail="No encontrado")
+    estaba_activo = _activo(h)
     h.alerts_enabled = not h.alerts_enabled
     db.commit()
-    return {"status": "ok", "alerts_enabled": h.alerts_enabled}
+    cerradas = _cerrar_si_se_dio_de_baja(db, h, estaba_activo)
+    return {"status": "ok", "alerts_enabled": h.alerts_enabled, "alertas_cerradas": cerradas}
 
 @router.patch("/api/hospitales-metadata/{hid}/toggle-ris")
 def toggle_ris(hid: str,
