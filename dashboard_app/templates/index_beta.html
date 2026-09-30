@@ -516,6 +516,18 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
 .card-chevron{transition:transform .3s ease}
 .detail-card.collapsed .card-chevron,.vm-card.collapsed .card-chevron{transform:rotate(-90deg)}
 
+/* Pestaña Software: tarjetas en dos columnas; la que se abre (con gráfico o tabla) ocupa todo el
+   ancho. `dense` rellena el hueco que deja una tarjeta abierta con las cerradas que siguen. */
+#logs-container{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;grid-auto-flow:row dense;align-items:stretch}
+#logs-container > *{grid-column:1/-1}
+#logs-container > .detail-card{grid-column:auto;margin:0 !important;height:auto}
+/* Las dos tarjetas de una fila quedan de la misma altura: la cerrada estira su encabezado (sin la
+   línea inferior, que quedaría pegada al borde de la tarjeta). */
+#logs-container > .detail-card.collapsed{display:flex;flex-direction:column}
+#logs-container > .detail-card.collapsed > .detail-card-header{flex:1;border-bottom-color:transparent !important}
+#logs-container > .detail-card:has(> .detail-card-body):not(.collapsed){grid-column:1/-1}
+@media (max-width:1100px){ #logs-container{grid-template-columns:minmax(0,1fr)} }
+
 /* ── HOME: FONDO ANIMADO (imágenes locales) ── */
 .home-bg{
     position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;overflow:hidden;
