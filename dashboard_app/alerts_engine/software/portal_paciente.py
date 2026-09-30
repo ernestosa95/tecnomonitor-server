@@ -33,11 +33,14 @@ LECTURA_VIGENTE_HORAS = 3      # el pipeline corre cada 5 min (o cada 1 h si se 
 
 PENDIENTE, ERROR, FINAL, NO_LISTO, OTRO = "pendiente", "error", "final", "no_listo", "otro"
 
-# Clasificación confirmada con los datos reales (captura del 2026-09-30). Un código que no está acá
+# Clasificación confirmada con los datos reales (capturas del 2026-09-30). Un código que no está acá
 # se clasifica por su descripción (_POR_PALABRA) y, si tampoco, queda como OTRO (se grafica, no alerta).
 _POR_CODIGO = {
     ("RIS", "1"): FINAL,         # Published
+    ("RIS", "2"): FINAL,         # Not published (sin acción pendiente)
+    ("RIS", "3"): FINAL,         # Revoked (retirado del portal)
     ("RIS", "4"): PENDIENTE,     # To be published
+    ("RIS", "5"): PENDIENTE,     # To be withdrawn (espera que lo retiren)
     ("RIS", "NULL"): NO_LISTO,   # el informe todavía no es definitivo: flujo normal
     ("MPS", "1"): PENDIENTE,     # IDLE: en cola, esperando la generación de la ISO
     ("MPS", "2"): PENDIENTE,
@@ -47,7 +50,7 @@ _POR_CODIGO = {
 }
 _POR_PALABRA = (
     (ERROR, ("ERROR", "FAIL", "BLOCK", "ABORT", "CANCEL")),
-    (FINAL, ("PUBLISHED", "BURNER", "DONE", "COMPLETE", "SENT")),
+    (FINAL, ("PUBLISHED", "BURNER", "DONE", "COMPLETE", "SENT", "REVOKED")),
     (PENDIENTE, ("IDLE", "CREAT", "WAIT", "PEND", "QUEUE", "TO BE", "PROGRESS", "SENDING")),
 )
 

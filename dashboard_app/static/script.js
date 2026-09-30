@@ -5115,7 +5115,7 @@ function dibujarGraficoPortal(data) {
             borderDash: s.origin === 'RIS' ? [6, 4] : [],
             borderWidth: 2,
             cubicInterpolationMode: 'monotone',   // sin picos inventados entre lecturas
-            pointRadius: 0,
+            pointRadius: labels.length < 3 ? 3 : 0, // con 1-2 lecturas, sin puntos no se vería nada
             spanGaps: false,
             fill: false
         };
