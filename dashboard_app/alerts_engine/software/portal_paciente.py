@@ -43,9 +43,12 @@ _POR_CODIGO = {
     ("RIS", "5"): PENDIENTE,     # To be withdrawn (espera que lo retiren)
     ("RIS", "NULL"): NO_LISTO,   # el informe todavía no es definitivo: flujo normal
     ("MPS", "1"): PENDIENTE,     # IDLE: en cola, esperando la generación de la ISO
-    ("MPS", "2"): PENDIENTE,
+    ("MPS", "2"): PENDIENTE,     # PENDING
     ("MPS", "3"): PENDIENTE,     # CREATING: generando la ISO
+    ("MPS", "4"): FINAL,         # DONE
+    ("MPS", "5"): ERROR,         # FAILED
     ("MPS", "6"): ERROR,         # BLOCKED
+    ("MPS", "7"): ERROR,         # ABORTED
     ("MPS", "9"): FINAL,         # BURNER: ISO generada y entregada
 }
 _POR_PALABRA = (
@@ -244,13 +247,14 @@ def verificar_portal_paciente(db, config, hospitales_activos):
 
         if ESTADO_BLOQUEOS in est["problemas"]:
             nivel = "WARNING"
-            mensaje = (f"Portal paciente: {est['bloqueados_24h']} estudio(s) bloqueado(s) en la cola del MPS "
-                       f"en las últimas 24 h ({est['bloqueados']} bloqueados en total en los últimos 30 días).")
+            mensaje = (f"Portal paciente: {est['bloqueados_24h']} estudio(s) con error en la cola del MPS "
+                       f"(bloqueado, fallido o abortado) en las últimas 24 h ({est['bloqueados']} con error "
+                       f"en total en los últimos 30 días).")
         else:
             nivel = "OK"
-            mensaje = "Portal paciente: sin bloqueos nuevos en la cola del MPS en las últimas 24 h."
+            mensaje = "Portal paciente: sin errores nuevos en la cola del MPS en las últimas 24 h."
         actualizar_estado_alerta(
             db=db, hid=hosp.hospital_id, tipo_unico="PORTAL_BLOQUEOS", nivel=nivel, mensaje=mensaje,
             asana_proj_id=hosp.asana_project_id, asana_followers=asana_followers,
-            titulo_visible="Portal paciente: estudios bloqueados",
+            titulo_visible="Portal paciente: estudios con error",
         )

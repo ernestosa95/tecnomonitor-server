@@ -4243,7 +4243,7 @@ function renderizarSoftware(data) {
         } else if (pp.problemas && pp.problemas.length) {
             const partes = [];
             if (pp.problemas.includes('DEMORADO')) partes.push(`Cola demorada (más de ${pp.max_hours} h)`);
-            if (pp.problemas.includes('BLOQUEOS')) partes.push(`${n(pp.bloqueados_24h)} bloqueados en 24 h`);
+            if (pp.problemas.includes('BLOQUEOS')) partes.push(`${n(pp.bloqueados_24h)} con error en 24 h`);
             estadoTexto = partes.join(' · ');
             estadoColor = 'var(--amber)'; estadoBg = 'rgba(255, 169, 64, 0.12)';
         }
@@ -4258,9 +4258,10 @@ function renderizarSoftware(data) {
             const c = colorClase[e.clase] || 'var(--muted)';
             const extraIso = e.origin === 'MPS' && (e.pending_iso || e.with_iso)
                 ? ` · sin ISO ${n(e.pending_iso)} / con ISO ${n(e.with_iso)}` : '';
-            const tip = `${e.origin} código ${e.code} (${nombreClase[e.clase] || e.clase})\nMás antiguo: ${fmt(e.oldest)}\nÚltimas 24 h: ${n(e.last_24h)}${extraIso}`.replace(/"/g, '&quot;');
+            const tip = `${e.state}\n${e.origin} código ${e.code} (${nombreClase[e.clase] || e.clase})\nMás antiguo: ${fmt(e.oldest)}\nÚltimas 24 h: ${n(e.last_24h)}${extraIso}`.replace(/"/g, '&quot;');
+            const vacio = !e.total;   // los estados en 0 van atenuados: resaltan los que tienen estudios
             return `
-                <div class="mirth-pill" title="${tip}" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius2);">
+                <div class="mirth-pill" title="${tip}" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius2); width:auto; min-width:0; opacity:${vacio ? 0.5 : 1};">
                     <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
                         <div class="mirth-dot" style="background:${c}; flex-shrink:0;"></div>
                         <span style="font-weight:600; color:var(--text); font-size:0.85em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.state}</span>
@@ -4274,8 +4275,8 @@ function renderizarSoftware(data) {
             if (!items.length) return '';
             return `
                 <div>
-                    <div style="color:var(--muted); font-size:0.75em; font-weight:700; text-transform:uppercase; margin-bottom:6px;">${titulo}</div>
-                    <div style="display:flex; flex-direction:column; gap:6px;">${items.map(pill).join('')}</div>
+                    <div style="color:var(--muted); font-size:0.75em; font-weight:700; text-transform:uppercase; margin-bottom:8px;">${titulo}</div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:8px;">${items.map(pill).join('')}</div>
                 </div>`;
         };
 
@@ -4302,7 +4303,7 @@ function renderizarSoftware(data) {
                     <div style="display:flex; flex-wrap:wrap; gap:20px; padding: 14px 20px; border-bottom: 1px solid var(--border); font-size:0.9em; color:var(--muted);">
                         <span>Pendientes en el MPS: <b style="color:var(--text);">${n(pp.mps_pendientes)}</b> (sin ISO: ${n(pp.mps_sin_iso)})</span>
                         <span>Más antiguo en la cola: <b style="color:var(--text);">${fmt(pp.mas_antiguo)}</b>${edad}</span>
-                        <span>Bloqueados: <b style="color:${pp.bloqueados_24h ? 'var(--red)' : 'var(--text)'};">${n(pp.bloqueados)}</b> (nuevos en 24 h: ${n(pp.bloqueados_24h)})</span>
+                        <span title="Estados de error del MPS: bloqueados, fallidos, abortados">Con error: <b style="color:${pp.bloqueados_24h ? 'var(--red)' : 'var(--text)'};">${n(pp.bloqueados)}</b> (nuevos en 24 h: ${n(pp.bloqueados_24h)})</span>
                         <span>Por publicar en el RIS: <b style="color:var(--text);">${n(pp.ris_pendientes)}</b></span>
                         <span style="font-size:0.85em;">Última lectura: ${fmt(pp.last_seen)} — umbral ${pp.max_hours} h — últimos 30 días</span>
                     </div>
@@ -4312,7 +4313,7 @@ function renderizarSoftware(data) {
                             <canvas id="portalChart"></canvas>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 16px; background: var(--bg);">
+                    <div style="display:flex; flex-direction:column; gap: 18px; padding: 16px 20px; background: var(--bg);">
                         ${columna('RIS', 'RIS — estado de publicación')}
                         ${columna('MPS', 'MPS — cola de generación de ISO')}
                     </div>
@@ -5103,7 +5104,10 @@ function dibujarGraficoPortal(data) {
     const pendientes = ['#e67e22', '#f1c40f', '#16a085', '#9b59b6', '#3498db', '#1abc9c'];
     const errores = ['#e74c3c', '#c0392b', '#ff7979'];
     let iPend = 0, iErr = 0;
-    const datasets = (pp.history.series || []).map(s => {
+    // Solo los estados que tuvieron estudios en el rango (como el autoenrute DICOM): una línea
+    // plana en 0 no dice nada y llena la leyenda.
+    const conDatos = (pp.history.series || []).filter(s => (s.points || []).some(v => v));
+    const datasets = conDatos.map(s => {
         const color = s.clase === 'error' ? errores[iErr++ % errores.length]
                     : s.clase === 'otro' ? '#7f8c8d'
                     : pendientes[iPend++ % pendientes.length];
