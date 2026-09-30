@@ -1136,8 +1136,11 @@ decir: una cola que no avanza hace días, sin que nada lo avisara.
   1 hora para no demorar el autoenrute.
 - **Hora de cada punto = hora de la lectura en SQL** (`collected_at`), no la del reporte; una lectura
   ya guardada se descarta (el agente cicla cada 5 min y puede reenviar lo mismo).
-- **Clasificación en el server** (`alerts_engine/software/portal_paciente.py`): RIS `1` final, `4`
-  pendiente, `NULL` no listo; MPS `1`, `2`, `3` pendiente, `6` error, `9` final. Un código que no
+- **Clasificación en el server** (`alerts_engine/software/portal_paciente.py`), confirmada con los
+  catálogos de H05 (2026-09-30): RIS `1` Published, `2` Not published y `3` Revoked final, `4` To be
+  published y `5` To be withdrawn pendiente, `NULL` no listo; MPS `1` IDLE, `2` PENDING y `3` CREATING
+  pendiente, `4` DONE y `9` BURNER final, `5` FAILED, `6` BLOCKED y `7` ABORTED error (el resumen y la
+  alerta los cuentan como "con error"). `8` WAITING cae en pendiente por palabra. Un código que no
   está en la tabla se clasifica por palabras de su descripción y, si tampoco, queda "sin clasificar"
   (se grafica, no alerta).
 - **Tarjeta en la pestaña Software:** resumen de la última lectura (pendientes en el MPS y sin ISO,
@@ -1161,8 +1164,8 @@ decir: una cola que no avanza hace días, sin que nada lo avisara.
 
 Estas quedaron abiertas en el plan y se implementaron con un valor por defecto:
 
-1. **Significado de los códigos** de `LS_STATUS_CODES`: solo se conocen 1, 3, 6 y 9 (captura). Falta
-   la tabla completa; se ajusta en `_POR_CODIGO` del server.
+1. ~~**Significado de los códigos**~~: resuelto con los catálogos de H05 (ver "Diseño"). Si otro
+   hospital trae códigos distintos, se ajustan en `_POR_CODIGO` del server.
 2. **Severidad WARNING** y umbral de 6 h para la demora.
 3. **Sin "última publicación"** (hace cuánto no sale nada): hace falta una columna con la hora de fin
    en `QUEUE` o `JOBS`. Si existe, se agrega a la consulta y a la tarjeta.
