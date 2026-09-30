@@ -46,6 +46,7 @@ MODULOS = {
     "suitestensa_logs": {"label": "Logs de SuiteEstensa", "prefijos": (), "apps": ("elasticsearch",), "agente": True},
     "sql_integrity": {"label": "Integridad de bases (CHECKDB)", "prefijos": ("CHECKDB_",), "apps": ("sql_integrity",), "agente": True},
     "sql_backups": {"label": "Último backup de las bases", "prefijos": ("SQLBACKUP_",), "apps": ("sql_backup",), "agente": True},
+    "patient_portal": {"label": "Portal paciente", "prefijos": ("PORTAL_",), "apps": ("patient_portal",), "agente": True},
     "sql": {"label": "KPIs de uso (RIS/PACS)", "prefijos": ("KPI_INACT_",), "apps": (), "agente": False},
 }
 

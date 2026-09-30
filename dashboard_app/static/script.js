@@ -15,6 +15,7 @@ let mirthChartInstance = null;
 let currentMirthDataCache = null;
 let elasticChartInstance = null;
 let dicomChartInstance = null;
+let portalChartInstance = null;
 
 // --- FUNCIÓN DE PETICIONES AUTENTICADAS (V2 - Cookies HttpOnly) ---
 async function authFetch(url, options = {}) {
@@ -437,6 +438,12 @@ async function cargarConfigUI() {
         const inpSqlBackupHoras = document.getElementById('sql-backup-max-hours');
         if(inpSqlBackupHoras) inpSqlBackupHoras.value = data.sql_backup_max_hours || 24;
 
+        // --- CAMPOS PORTAL PACIENTE (REQ-07) ---
+        const chkPortal = document.getElementById('portal-alert-enabled');
+        if(chkPortal) chkPortal.checked = !!data.portal_alert_enabled;
+        const inpPortalHoras = document.getElementById('portal-max-hours');
+        if(inpPortalHoras) inpPortalHoras.value = data.portal_max_hours || 6;
+
         // --- MÓDULOS DADOS DE BAJA (REQ-03) ---
         const chkBajas = document.getElementById('monitoreo-bajas-enabled');
         if(chkBajas) chkBajas.checked = !!data.monitoreo_bajas_enabled;
@@ -505,6 +512,10 @@ async function guardarConfig() {
         // --- CAMPOS ÚLTIMO BACKUP DE LAS BASES (REQ-06) ---
         sql_backup_alert_enabled: document.getElementById('sql-backup-alert-enabled')?.checked || false,
         sql_backup_max_hours: parseInt(document.getElementById('sql-backup-max-hours')?.value) || 24,
+
+        // --- CAMPOS PORTAL PACIENTE (REQ-07) ---
+        portal_alert_enabled: document.getElementById('portal-alert-enabled')?.checked || false,
+        portal_max_hours: parseInt(document.getElementById('portal-max-hours')?.value) || 6,
 
         // --- MÓDULOS DADOS DE BAJA (REQ-03) ---
         monitoreo_bajas_enabled: document.getElementById('monitoreo-bajas-enabled')?.checked || false,
@@ -3794,8 +3805,9 @@ function renderizarSoftware(data) {
     const hasDicom = data.dicom_routing && data.dicom_routing.length > 0;
     const hasSqlIntegrity = data.sql_integrity && data.sql_integrity.total > 0;
     const hasSqlBackups = data.sql_backups && data.sql_backups.total > 0;
+    const hasPortal = !!data.patient_portal;
 
-    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom && !hasSqlIntegrity && !hasSqlBackups) {
+    if (!hasMirth && !hasSSL && !hasElastic && !hasDicom && !hasSqlIntegrity && !hasSqlBackups && !hasPortal) {
         container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; color: var(--muted);">
                 <h3 style="margin-top: 20px; color: var(--text);">Sin Reportes</h3>
@@ -4208,9 +4220,109 @@ function renderizarSoftware(data) {
         dicomHtml += `</div></div></div>`;
         html += dicomHtml;
     }
-    
+
+    // ==========================================
+    // --- 5. 🆕 PORTAL PACIENTE: COLA DE PUBLICACIÓN RIS + MPS (REQ-07) ---
+    // El resumen (estado, pendientes, más antiguo) es la última lectura, con el
+    // mismo criterio que la alerta. La línea de tiempo respeta el selector de
+    // tiempo, como el autoenrute DICOM: una línea por estado pendiente o de error.
+    // ==========================================
+    if (hasPortal) {
+        const pp = data.patient_portal;
+        const fmt = (txt) => {
+            if (!txt) return '-';
+            const d = new Date(txt.replace(' ', 'T'));
+            return isNaN(d) ? txt : d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        };
+        const n = (v) => (v || 0).toLocaleString('es-AR');
+
+        let estadoTexto = 'OK', estadoColor = 'var(--green)', estadoBg = 'rgba(0, 229, 160, 0.12)';
+        if (pp.status === 'SIN_LECTURA') {
+            estadoTexto = 'Sin lecturas recientes';
+            estadoColor = 'var(--muted)'; estadoBg = 'rgba(128, 128, 128, 0.12)';
+        } else if (pp.problemas && pp.problemas.length) {
+            const partes = [];
+            if (pp.problemas.includes('DEMORADO')) partes.push(`Cola demorada (más de ${pp.max_hours} h)`);
+            if (pp.problemas.includes('BLOQUEOS')) partes.push(`${n(pp.bloqueados_24h)} bloqueados en 24 h`);
+            estadoTexto = partes.join(' · ');
+            estadoColor = 'var(--amber)'; estadoBg = 'rgba(255, 169, 64, 0.12)';
+        }
+        const edad = pp.age_hours !== null && pp.age_hours !== undefined
+            ? ` (hace ${pp.age_hours >= 48 ? Math.round(pp.age_hours / 24) + ' días'
+                       : pp.age_hours >= 1 ? Math.round(pp.age_hours) + ' h'
+                       : Math.round(pp.age_hours * 60) + ' min'})` : '';
+
+        const colorClase = { pendiente: 'var(--amber)', error: 'var(--red)', final: 'var(--green)', no_listo: 'var(--muted)', otro: 'var(--blue)' };
+        const nombreClase = { pendiente: 'pendiente', error: 'error', final: 'final', no_listo: 'no listo', otro: 'sin clasificar' };
+        const pill = (e) => {
+            const c = colorClase[e.clase] || 'var(--muted)';
+            const extraIso = e.origin === 'MPS' && (e.pending_iso || e.with_iso)
+                ? ` · sin ISO ${n(e.pending_iso)} / con ISO ${n(e.with_iso)}` : '';
+            const tip = `${e.origin} código ${e.code} (${nombreClase[e.clase] || e.clase})\nMás antiguo: ${fmt(e.oldest)}\nÚltimas 24 h: ${n(e.last_24h)}${extraIso}`.replace(/"/g, '&quot;');
+            return `
+                <div class="mirth-pill" title="${tip}" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius2);">
+                    <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                        <div class="mirth-dot" style="background:${c}; flex-shrink:0;"></div>
+                        <span style="font-weight:600; color:var(--text); font-size:0.85em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.state}</span>
+                        <span style="font-family:monospace; color:var(--muted); font-size:0.75em;">#${e.code}</span>
+                    </div>
+                    <span style="color:${c}; font-weight:800; font-size:0.85em; white-space:nowrap;">${n(e.total)}</span>
+                </div>`;
+        };
+        const columna = (origen, titulo) => {
+            const items = (pp.states || []).filter(e => e.origin === origen);
+            if (!items.length) return '';
+            return `
+                <div>
+                    <div style="color:var(--muted); font-size:0.75em; font-weight:700; text-transform:uppercase; margin-bottom:6px;">${titulo}</div>
+                    <div style="display:flex; flex-direction:column; gap:6px;">${items.map(pill).join('')}</div>
+                </div>`;
+        };
+
+        html += `
+            <div class="detail-card collapsed" style="padding: 0; overflow: hidden; margin-bottom: 25px; border-top: 4px solid ${estadoColor};">
+                <div style="padding: 15px 20px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px; cursor: pointer;" class="detail-card-header" onclick="toggleCard(this.parentElement)">
+                    <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
+                        <span style="font-size: 1.5em;">🧾</span>
+                        <h3 style="margin:0; font-size:1.1em; color:var(--text); text-transform:none;">Portal paciente <span style="color:var(--green);">(Cola de publicación)</span></h3>
+                        <span style="color: ${estadoColor}; background: ${estadoBg}; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: bold;">${estadoTexto}</span>
+                    </div>
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
+                        <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
+                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
+                        </div>
+                        ${chevronSvg}
+                    </div>
+                </div>
+
+                <div class="detail-card-body" style="padding: 0;">
+                    <div style="display:flex; flex-wrap:wrap; gap:20px; padding: 14px 20px; border-bottom: 1px solid var(--border); font-size:0.9em; color:var(--muted);">
+                        <span>Pendientes en el MPS: <b style="color:var(--text);">${n(pp.mps_pendientes)}</b> (sin ISO: ${n(pp.mps_sin_iso)})</span>
+                        <span>Más antiguo en la cola: <b style="color:var(--text);">${fmt(pp.mas_antiguo)}</b>${edad}</span>
+                        <span>Bloqueados: <b style="color:${pp.bloqueados_24h ? 'var(--red)' : 'var(--text)'};">${n(pp.bloqueados)}</b> (nuevos en 24 h: ${n(pp.bloqueados_24h)})</span>
+                        <span>Por publicar en el RIS: <b style="color:var(--text);">${n(pp.ris_pendientes)}</b></span>
+                        <span style="font-size:0.85em;">Última lectura: ${fmt(pp.last_seen)} — umbral ${pp.max_hours} h — últimos 30 días</span>
+                    </div>
+                    <div style="padding: 20px; border-bottom: 1px solid var(--border);">
+                        <div style="height: 260px; width: 100%; position: relative;">
+                            ${data.metadata.minutos === 0 ? '<div style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); z-index:10; color:var(--text); font-weight:bold; text-align:center; padding:0 20px;">Seleccione un rango de tiempo para ver la evolución de los estados.</div>' : ''}
+                            <canvas id="portalChart"></canvas>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 16px; background: var(--bg);">
+                        ${columna('RIS', 'RIS — estado de publicación')}
+                        ${columna('MPS', 'MPS — cola de generación de ISO')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     container.innerHTML += html;
-    
+
     if (hasMirth) {
         Object.keys(data.mirth).forEach(instancia => {
             dibujarGraficoMirth(instancia);
@@ -4223,6 +4335,10 @@ function renderizarSoftware(data) {
 
     if (hasDicom) {
         dibujarGraficoDicom(data);
+    }
+
+    if (hasPortal) {
+        dibujarGraficoPortal(data);
     }
 }
 
@@ -4969,6 +5085,67 @@ function dibujarGraficoElastic(data) {
 }
 
 // --- GRÁFICO DE LÍNEAS PARA COLAS DE AUTO-ENRUTADO DICOM ---
+function dibujarGraficoPortal(data) {
+    const pp = data.patient_portal;
+    if (!pp || !pp.history) return;
+    const canvas = document.getElementById('portalChart');
+    if (!canvas) return;
+
+    const labels = pp.history.labels || [];
+    const displayLabels = labels.map(ts => {
+        const d = new Date(ts.replace(' ', 'T'));
+        return currentSoftwareMinutes > 1440
+            ? `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}:00`
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+
+    // Colores fijos por clase: los de error siempre en rojo; el RIS con línea punteada.
+    const pendientes = ['#e67e22', '#f1c40f', '#16a085', '#9b59b6', '#3498db', '#1abc9c'];
+    const errores = ['#e74c3c', '#c0392b', '#ff7979'];
+    let iPend = 0, iErr = 0;
+    const datasets = (pp.history.series || []).map(s => {
+        const color = s.clase === 'error' ? errores[iErr++ % errores.length]
+                    : s.clase === 'otro' ? '#7f8c8d'
+                    : pendientes[iPend++ % pendientes.length];
+        return {
+            label: `${s.origin} · ${s.state}`,
+            data: s.points,                      // null = hueco (sin lectura de ese estado), no 0
+            borderColor: color,
+            backgroundColor: color + '20',
+            borderDash: s.origin === 'RIS' ? [6, 4] : [],
+            borderWidth: 2,
+            cubicInterpolationMode: 'monotone',   // sin picos inventados entre lecturas
+            pointRadius: 0,
+            spanGaps: false,
+            fill: false
+        };
+    });
+
+    if (portalChartInstance) portalChartInstance.destroy();
+
+    portalChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels: displayLabels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { grid: { display: false } },
+                y: { beginAtZero: true, title: { display: true, text: 'Estudios' } }
+            },
+            plugins: {
+                legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } },
+                tooltip: {
+                    callbacks: {
+                        label: (c) => `${c.dataset.label}: ${c.parsed.y !== null ? c.parsed.y.toLocaleString('es-AR') : 's/d'} estudios`
+                    }
+                }
+            }
+        }
+    });
+}
+
 function dibujarGraficoDicom(data) {
     if (!data.dicom_routing || data.dicom_routing.length === 0) return;
 

@@ -41,6 +41,7 @@ reproducirlo.
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); criterio del asterisco corregido y **validado en producción (2026-09-29)** | por definir |
 | REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; **validado en un hospital real (2026-09-29)** | release 4.5.3 del agente (no entra en 4.5.2) |
+| REQ-07 | Portal paciente: cola de publicación RIS → MPS (ISO) con línea de tiempo por estado | agente 4.5.4 + Logstash + server (ingesta, tarjeta con gráfico, alertas) | **implementado (2026-09-30)** en agente y server; probado con datos simulados; **falta validar contra un SQL/Logstash reales** | release 4.5.4 del agente |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
 
@@ -1092,6 +1093,105 @@ Pendiente de detalle (no bloquea): severidad de la alerta (propuesta: CRITICAL, 
 - Mismo resultado por el camino Elastic y por SQL directo.
 - Con el detector activado, una base con más de 24 h sin backup completo (o el umbral configurado)
   abre alerta, y el siguiente backup completo la cierra.
+
+### REQ-07 — Portal paciente: cola de publicación RIS → MPS
+
+**Pedido (2026-09-30):** en las instalaciones con portal paciente, monitorear el circuito de
+publicación. El RIS marca el examen para publicar cuando el informe pasa a definitivo
+(`tbExamination.PublicationState`), el MPS lo toma en su cola (`ExtMPS.QUEUE`), genera una ISO
+(`JOBS.MEDIA_ACTUAL_SIZE` deja de ser nulo) y la manda por FTP a otra VM, que la publica. Punto de
+partida: una consulta del usuario (RIS por `PublicationState` + cola del MPS por `STATUS_ID`, últimos
+7 días). Pedido adicional: en el server, **una línea de tiempo con la evolución de la cantidad de
+estudios en cada estado**, como la de las reglas de autoenrute.
+
+#### Situación de partida (captura del 2026-09-30)
+
+MPS: IDLE 114 (111 sin ISO, el más antiguo del 24/09), CREATING 2, BLOCKED 5, BURNER 102. RIS: "To be
+published" 280 (el más antiguo del 24/09), Published 101, sin estado (informe no definitivo) 114. Es
+decir: una cola que no avanza hace días, sin que nada lo avisara.
+
+#### Cambios respecto de la consulta original (para que sirva como monitoreo)
+
+1. **Ventana de 30 días, sin cortar por estado** (la original usaba 7): con 7, un estudio trabado
+   más de una semana desaparecía del conteo, que es justo el peor caso. Cada punto de la serie es
+   el tamaño real de la cola en ese momento, no un acumulado móvil que baja solo.
+2. **Los estados del catálogo sin estudios salen con 0** (`FULL OUTER JOIN` contra `dsPublicationState`
+   y `LS_STATUS_CODES`): si no, el último valor de Elastic quedaba congelado y la línea no bajaba.
+3. **Dos consultas separadas, no un `UNION`**: si `ExtensaMPS` no existe, el RIS igual se informa.
+4. **El significado de cada código lo decide el server**, no la consulta (la original tenía
+   `STATUS_ID IN (1, 2, 3)` fijo). La consulta manda `pending_iso` / `with_iso` por estado y
+   `last_24h` (el subconjunto de las últimas 24 h, para distinguir bloqueos nuevos de viejos).
+5. **Fechas como texto** (`CONVERT ... 126`) para que Logstash no las pase a UTC; sin `--` ni `:` en
+   la consulta (reglas de Logstash).
+
+#### Diseño
+
+- **Dos caminos, mismo criterio que REQ-06:** Elastic principal (`elk/ext_portal_paciente.conf`, índice
+  `ext_portal_paciente`, un documento por estado) y SQL directo la excepción; si ambos están activos
+  gana Elastic. Sub-tarjetas "Portal paciente" en SQL y en Elastic con botón de test. Clave
+  `software_monitoring.patient_portal` en cada ciclo ([contrato §7.7](10-contrato-ingesta-agente.md)).
+- **Cadencia: cajón de 5 minutos** (`ext_tiempo_real-all-sito.bat`, junto al autoenrute). Con el de
+  1 hora, las vistas de 30 min y 1 h del gráfico tendrían un solo punto. **Condición:** medir en el
+  hospital cuánto tardan las dos consultas; si tardan más de uno o dos segundos, pasarlo al cajón de
+  1 hora para no demorar el autoenrute.
+- **Hora de cada punto = hora de la lectura en SQL** (`collected_at`), no la del reporte; una lectura
+  ya guardada se descarta (el agente cicla cada 5 min y puede reenviar lo mismo).
+- **Clasificación en el server** (`alerts_engine/software/portal_paciente.py`): RIS `1` final, `4`
+  pendiente, `NULL` no listo; MPS `1`, `2`, `3` pendiente, `6` error, `9` final. Un código que no
+  está en la tabla se clasifica por palabras de su descripción y, si tampoco, queda "sin clasificar"
+  (se grafica, no alerta).
+- **Tarjeta en la pestaña Software:** resumen de la última lectura (pendientes en el MPS y sin ISO,
+  más antiguo en la cola, bloqueados, por publicar en el RIS), **línea de tiempo por estado**
+  pendiente o de error con el selector 30 min / 1 h / 24 h / 7 días (BLOCKED en rojo, RIS punteado,
+  huecos sin rellenar con 0) y el detalle de cada estado de RIS y MPS.
+- **Alertas** (apagadas por default, `portal_alert_enabled` en Configuración → Alertas, umbral
+  `portal_max_hours` = 6 h):
+  - `PORTAL_DEMORA` (WARNING): el pendiente más antiguo del MPS lleva más del umbral en la cola. Solo
+    el MPS: en el RIS la única fecha es la de admisión, no la del pedido de publicación, y
+    exageraría la espera.
+  - `PORTAL_BLOQUEOS` (WARNING): hay estudios en estado de error del MPS que entraron a la cola en las
+    últimas 24 h. Los bloqueados viejos se ven en la tarjeta pero no alertan (si no, alertarían para
+    siempre).
+  - Se cierran solas. Una lectura de más de 3 h no se evalúa. Reusan los responsables de
+    Infraestructura. El módulo se puede dar de baja como los demás (REQ-03, prefijo `PORTAL_`).
+- **Release:** agente **4.5.4** (`schema_version` sigue en "4.5"). Orden de despliegue: server primero
+  (uno viejo descarta la clave sin error).
+
+#### Decisiones tomadas por defecto (a confirmar; se cambian sin tocar el agente)
+
+Estas quedaron abiertas en el plan y se implementaron con un valor por defecto:
+
+1. **Significado de los códigos** de `LS_STATUS_CODES`: solo se conocen 1, 3, 6 y 9 (captura). Falta
+   la tabla completa; se ajusta en `_POR_CODIGO` del server.
+2. **Severidad WARNING** y umbral de 6 h para la demora.
+3. **Sin "última publicación"** (hace cuánto no sale nada): hace falta una columna con la hora de fin
+   en `QUEUE` o `JOBS`. Si existe, se agrega a la consulta y a la tarjeta.
+4. **El tramo FTP → VM publicadora no se ve** salvo que el RIS pase a "Published" cuando la VM
+   confirma. A confirmar.
+5. **Sin cruce RIS ↔ MPS** (definitivos que nunca llegaron a la cola): necesita una clave entre `JOBS`
+   y el examen del RIS.
+
+#### Implementación (2026-09-30)
+
+- **Agente 4.5.4:** `portal_paciente.py`, `elk/ext_portal_paciente.conf` (en el cajón de 5 min),
+  sub-tarjetas en la GUI, `collection_meta.patient_portal`. 19 tests nuevos (incluido uno que
+  verifica que las consultas del agente y del `.conf` sean las mismas y respeten las reglas de
+  Logstash).
+- **Server:** ingesta `_ingerir_patient_portal` (`main.py`), `alerts_engine/software/portal_paciente.py`
+  (clasificación, resumen, serie y detector), tarjeta con gráfico en la pestaña Software, switch y
+  umbral en Configuración → Alertas, módulo `patient_portal` en `modulos.py`.
+- Probado con reportes simulados sobre una copia de la base (`TestClient`): ingesta, descarte de
+  lecturas repetidas y de payloads mal formados, resumen, serie, apertura y cierre de las dos
+  alertas; y la tarjeta con Playwright. **No probado contra un SQL Server ni un Logstash reales**:
+  las consultas no se corrieron nunca (T-SQL sin validar), es lo primero a revisar en el piloto.
+
+#### Criterios de aceptación (borrador)
+
+- En el hospital piloto, las consultas corren (a mano en SSMS y por Logstash) y tardan poco.
+- Los totales de la tarjeta coinciden con la consulta original corrida a mano (con ventana de 30 días).
+- La línea de tiempo muestra la evolución por estado en 24 h, y un estado que se vacía baja a 0.
+- Con el detector activado, una cola con el pendiente más viejo por encima del umbral abre
+  `PORTAL_DEMORA`, y se cierra cuando la cola avanza; un bloqueo nuevo abre `PORTAL_BLOQUEOS`.
 
 ---
 

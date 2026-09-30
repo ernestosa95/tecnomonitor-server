@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 import alerts_engine
 from alerts_engine import modulos
+from alerts_engine.software import portal_paciente as portal_detector
 from alerts_engine.software import sql_backups as sql_backups_detector
 import auth
 import database
@@ -359,6 +360,22 @@ def _ultimo_backup(db: Session, hospital_id: str):
     }
 
 
+# ============================================================
+# PORTAL PACIENTE: COLA DE PUBLICACIÓN RIS + MPS (REQ-07, agente 4.5.4)
+# ------------------------------------------------------------
+# El resumen (estado, pendientes, más antiguo) es el de la última lectura,
+# con el mismo criterio que la alerta (alerts_engine/software/portal_paciente.py).
+# La línea de tiempo sí respeta el selector de tiempo, como el autoenrute DICOM.
+# ============================================================
+def _portal_paciente(db: Session, hospital_id: str, minutos: int):
+    max_horas = alerts_engine.cargar_config(db).get("portal_max_hours", 6)
+    resumen = portal_detector.estado_portal(db, hospital_id, max_horas)
+    if resumen is None:
+        return None
+    resumen["history"] = portal_detector.serie_portal(db, hospital_id, minutos)
+    return resumen
+
+
 @router.get("/api/hospital/{hospital_id}/software")
 def obtener_estado_software(hospital_id: str, minutos: int = 0,
                             db: Session = Depends(get_db),
@@ -656,6 +673,10 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
     # 8. 🆕 ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL — ver _ultimo_backup().
     software_data["sql_backups"] = (_ultimo_backup(db, hospital_id) if "sql_backups" not in bajas
                                     else None)
+
+    # 9. 🆕 PORTAL PACIENTE (cola de publicación RIS + MPS) — ver _portal_paciente().
+    software_data["patient_portal"] = (_portal_paciente(db, hospital_id, minutos) if "patient_portal" not in bajas
+                                       else None)
 
     return software_data
 

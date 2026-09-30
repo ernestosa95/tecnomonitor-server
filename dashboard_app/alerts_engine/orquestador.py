@@ -17,7 +17,7 @@ from .config import _followers_de, cargar_config
 from .exclusiones import cargar_exclusiones
 from .kpis_negocio import mamo as kpi_mamo
 from .kpis_negocio import ris as kpi_ris
-from .software import dicom_autoenrute, mirth, sql_backups, sql_integrity
+from .software import dicom_autoenrute, mirth, portal_paciente, sql_backups, sql_integrity
 
 # Variable global para registrar la última ejecución de KPIs (el chequeo
 # diario no debe repetirse dos veces el mismo día).
@@ -158,3 +158,13 @@ def verificar_estado_software(db):
             except Exception:
                 pass
             print(f"❌ [Software] Falló la verificación del último backup de las bases: {repr(e)}")
+
+    if config.get('portal_alert_enabled'):
+        try:
+            portal_paciente.verificar_portal_paciente(db, config, hospitales_activos)
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            print(f"❌ [Software] Falló la verificación del portal paciente: {repr(e)}")

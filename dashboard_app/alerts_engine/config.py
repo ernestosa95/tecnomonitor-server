@@ -164,6 +164,12 @@ def cargar_config(db):
         # Mismos responsables que CHECKDB ('global_alert_responsible_email').
         "sql_backup_alert_enabled": g("sql_backup_alert_enabled", False, is_bool=True),
         "sql_backup_max_hours": g("sql_backup_max_hours", 24),
+
+        # --- PORTAL PACIENTE: COLA DE PUBLICACIÓN RIS + MPS (REQ-07, agente 4.5.4) ---
+        # Alerta si el pendiente más viejo del MPS supera `portal_max_hours` o hay bloqueos nuevos
+        # (últimas 24 h). Mismos responsables que CHECKDB ('global_alert_responsible_email').
+        "portal_alert_enabled": g("portal_alert_enabled", False, is_bool=True),
+        "portal_max_hours": g("portal_max_hours", 6),
     }
 
 

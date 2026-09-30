@@ -2749,6 +2749,18 @@ canvas{color-scheme:dark}
                     </div>
 
                     <div class="conf-section-block">
+                        <div class="conf-section-title">Portal paciente</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div>
+                                <strong style="font-size:.9em">Alertar por la cola de publicación del portal</strong>
+                                <div style="font-size:.82em;color:var(--muted);margin-top:2px">Crea un ticket (WARNING) si el estudio más antiguo pendiente en la cola del MPS supera las horas indicadas, y otro si aparecen estudios bloqueados en las últimas 24 h. Se cierran solos. Requiere el agente 4.5.4 con "Portal paciente" activo. Usa los mismos responsables de Infraestructura.</div>
+                            </div>
+                            <input type="checkbox" id="portal-alert-enabled" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+                        </div>
+                        <div class="input-group" style="margin-top:10px"><label>Horas máximas del pendiente más antiguo en la cola del MPS</label><input type="number" id="portal-max-hours" min="1" placeholder="6"></div>
+                    </div>
+
+                    <div class="conf-section-block">
                         <div class="conf-section-title">Módulos dados de baja</div>
                         <div style="display:flex;justify-content:space-between;align-items:center">
                             <div>

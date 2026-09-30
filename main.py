@@ -97,6 +97,7 @@ def _validar_token_ingesta(request: Request, raw_body: dict, db: Session) -> Non
 _SQL_INTEGRITY_ESTADOS = {"OK", "ERROR", "NOT_ONLINE"}
 _SQL_INTEGRITY_MAX_BASES = 200
 _SQL_BACKUPS_MAX_BASES = 200
+_PORTAL_MAX_ESTADOS = 100
 
 
 def _ingerir_sql_integrity(db: Session, hospital_id: str, payload, ts: datetime) -> None:
@@ -230,6 +231,77 @@ def _ingerir_sql_backups(db: Session, hospital_id: str, payload, ts: datetime) -
             metric_value=0,
             extra_data={"last_full": clave, "last_seen": leido.isoformat(timespec="seconds"), "source": origen},
             timestamp=ultimo_full or leido,
+        ))
+
+
+def _ingerir_patient_portal(db: Session, hospital_id: str, payload, ts: datetime) -> None:
+    """
+    Guarda la cola de publicación del portal paciente que el agente (4.5.4+) manda en cada ciclo en
+    `software_monitoring.patient_portal` (REQ-07): una fila por estado (`app_name='patient_portal'`,
+    `component_id`='RIS:4' / 'MPS:1'..., `metric_value`=total, `timestamp`=hora de la lectura en SQL).
+    Es una serie temporal, como las colas DICOM, pero la hora de cada punto es `collected_at` (la
+    lectura en SQL), no la del reporte: si Logstash corre más lento que el agente, el agente reenvía
+    la misma lectura y acá se descarta entera (ya hay filas con ese timestamp), así no se repiten puntos.
+
+    La clasificación de los estados (pendiente / error / final) se hace al leer
+    (alerts_engine/software/portal_paciente.py). Tolerante a un payload mal formado, igual que
+    `_ingerir_sql_backups`. Ver docs/10-contrato-ingesta-agente.md §7.7.
+    """
+    if not isinstance(payload, dict):
+        return
+    estados = payload.get("states")
+    if not isinstance(estados, list):
+        return
+
+    def _entero(valor):
+        try:
+            return max(0, int(valor or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    leido = None
+    if isinstance(payload.get("collected_at"), str):
+        try:
+            leido = datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            leido = None
+    leido = (leido or ts).replace(microsecond=0)
+
+    ya_guardada = db.query(database.SoftwareMonitoring.id).filter_by(
+        hospital_id=hospital_id, app_name="patient_portal", timestamp=leido
+    ).first()
+    if ya_guardada is not None:
+        return
+
+    origen_lectura = str(payload.get("source") or "")[:20]
+    vistos = set()
+    for item in estados[:_PORTAL_MAX_ESTADOS]:
+        if not isinstance(item, dict):
+            continue
+        origen = str(item.get("origin") or "").upper()
+        if origen not in ("RIS", "MPS"):
+            continue
+        codigo = str(item.get("code") if item.get("code") is not None else "NULL")[:20]
+        clave = f"{origen}:{codigo}"
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        descripcion = str(item.get("state") or "UNKNOWN")[:100]
+        db.add(database.SoftwareMonitoring(
+            hospital_id=hospital_id,
+            app_name="patient_portal",
+            component_id=clave,
+            status_value=descripcion,
+            metric_value=_entero(item.get("total")),
+            extra_data={
+                "origin": origen, "code": codigo, "state": descripcion,
+                "last_24h": _entero(item.get("last_24h")),
+                "pending_iso": _entero(item.get("pending_iso")),
+                "with_iso": _entero(item.get("with_iso")),
+                "oldest": str(item.get("oldest"))[:19] if item.get("oldest") else None,
+                "source": origen_lectura,
+            },
+            timestamp=leido,
         ))
 
 
@@ -611,6 +683,9 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
 
             # --- 6. ÚLTIMO BACKUP COMPLETO DE LAS BASES SQL (agente 4.5.3+) ---
             _ingerir_sql_backups(db, h_id, soft_monitoring.get("sql_backups"), ts)
+
+            # --- 7. PORTAL PACIENTE: COLA DE PUBLICACIÓN RIS + MPS (agente 4.5.4+) ---
+            _ingerir_patient_portal(db, h_id, soft_monitoring.get("patient_portal"), ts)
 
             # Limpiamos el JSON antes de guardar la infraestructura
             del data_dict['software_monitoring']

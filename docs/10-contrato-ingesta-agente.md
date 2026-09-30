@@ -475,6 +475,53 @@ Fecha del último backup **completo** de cada base (según `msdb.dbo.backupset`:
   Reusa los responsables de Infraestructura. La tarjeta y la alerta usan el mismo criterio
   (`estado_backups()`).
 
+### 7.7 `patient_portal` — cola de publicación del portal paciente (RIS + MPS)
+
+Agregado `2026-09` (agente >= 4.5.4, REQ-07 de [docs/16](16-plan-actualizacion-y-despliegue.md)). Solo
+en las instalaciones con portal paciente. Por estado, cuántos estudios hay en el RIS
+(`tbExamination.PublicationState`) y en la cola de generación de ISO del MPS (`ExtMPS.QUEUE` + `JOBS`),
+contados sobre los últimos `window_days` días (30). **Viaja en cada ciclo.**
+
+```json
+"patient_portal": {
+  "source": "elastic",
+  "collected_at": "2026-09-30T10:00:05",
+  "window_days": 30,
+  "states": [
+    { "origin": "RIS", "code": "4", "state": "To be published", "total": 280, "last_24h": 12,
+      "pending_iso": 0, "with_iso": 0, "oldest": "2026-09-24T08:03:00" },
+    { "origin": "MPS", "code": "1", "state": "IDLE", "total": 114, "last_24h": 5,
+      "pending_iso": 111, "with_iso": 3, "oldest": "2026-09-24T12:56:11" }
+  ]
+}
+```
+
+| Campo | Qué hace el servidor |
+|---|---|
+| `states[].origin` + `code` | `component_id` de la fila (`"MPS:1"`). Solo `RIS` o `MPS`; un ítem con otro origen se descarta. `code` puede ser `"NULL"` (en el RIS: informe todavía no definitivo). |
+| `states[].state` | `status_value` (descripción del catálogo del RIS / `LS_STATUS_CODES` del MPS). |
+| `states[].total` | `metric_value`: estudios en ese estado dentro de la ventana. |
+| `last_24h`, `pending_iso`, `with_iso`, `oldest` | `extra_data`. `oldest` es la admisión más antigua (RIS) o la entrada a la cola más antigua (MPS), hora local del SQL, sin zona. |
+| `collected_at` | `timestamp` de todas las filas de la lectura (hora de la consulta en SQL). |
+
+- **Serie temporal**, como las colas DICOM: una fila por estado y por lectura. Si llega una lectura
+  con un `collected_at` ya guardado (el agente reenvía lo último que hay en Elastic si Logstash no
+  volvió a correr), se descarta entera: no se repiten puntos.
+- **El agente no clasifica los estados.** El server decide cuál es pendiente, error, final o "no
+  listo" (`clasificar()` en `alerts_engine/software/portal_paciente.py`: tabla por código y, si el
+  código no está, por palabras de la descripción). Un código nuevo del MPS se resuelve ahí sin
+  tocar el agente.
+- **Tolerante a payloads mal formados**, igual que `sql_backups`.
+- **Visualización:** `GET /api/hospital/{id}/software` expone `patient_portal` con el resumen de la
+  última lectura (pendientes, más antiguo, bloqueados, estado) y `history` con una línea por estado
+  pendiente o de error dentro del rango elegido. La pestaña Software lo pinta como una tarjeta con
+  línea de tiempo, como el autoenrute DICOM.
+- **Alertas:** gateadas por `portal_alert_enabled` (Configuración → Alertas, apagadas por default).
+  `PORTAL_DEMORA` (WARNING) si el pendiente más antiguo del MPS lleva más de `portal_max_hours`
+  (6 h por defecto) en la cola; `PORTAL_BLOQUEOS` (WARNING) si hay estudios en estado de error del
+  MPS que entraron en las últimas 24 h. Se cierran solas. Una lectura de más de 3 h no se evalúa.
+  Reusan los responsables de Infraestructura.
+
 ## 8. Payload mínimo que el servidor acepta
 
 Esto pasa la validación y se guarda, pero no genera ninguna alerta interesante (sirve para
@@ -504,6 +551,7 @@ probar conectividad):
 | Producción RIS/PACS | `application_metrics` | KPIs de inactividad RIS/Mamografía (switches `kpi_rad_alert_enabled`/`kpi_mamo_alert_enabled`) |
 | Mirth Connect | `software_monitoring.mirth` | Alerta de Mirth (switch `mirth_alert_enabled`) |
 | Auto-enrutado DICOM | `software_monitoring.dicom_routing_queues`, **en cada reporte** | Alerta de cola trabada (switch `dicom_alert_enabled`) |
+| Portal paciente (cola RIS + MPS) | `software_monitoring.patient_portal`, **en cada reporte** | Alertas de cola demorada y bloqueos (switch `portal_alert_enabled`) |
 | Certificados SSL | `software_monitoring.ssl_certificates` | Nada todavía (dato guardado, sin alerta — ver §7.3) |
 | Logs de Suitestensa | `software_monitoring.suitestensa_logs` | Se guarda enriquecido contra el diccionario; en construcción |
 

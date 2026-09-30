@@ -94,6 +94,10 @@ class ConfigRequest(BaseModel):
     sql_backup_alert_enabled: bool = False
     sql_backup_max_hours: int = 24
 
+    # --- Portal paciente: cola de publicación RIS + MPS (REQ-07) ---
+    portal_alert_enabled: bool = False
+    portal_max_hours: int = 6
+
     # --- Módulos dados de baja (REQ-03) ---
     monitoreo_bajas_enabled: bool = False
     monitoreo_gracia_horas: int = 6
@@ -197,6 +201,10 @@ def obtener_configuracion(db: Session = Depends(get_db),
         "sql_backup_alert_enabled": g("sql_backup_alert_enabled", False, is_bool=True),
         "sql_backup_max_hours": g("sql_backup_max_hours", 24),
 
+        # --- PORTAL PACIENTE ---
+        "portal_alert_enabled": g("portal_alert_enabled", False, is_bool=True),
+        "portal_max_hours": g("portal_max_hours", 6),
+
         # --- MÓDULOS DADOS DE BAJA (REQ-03) ---
         "monitoreo_bajas_enabled": g("monitoreo_bajas_enabled", False, is_bool=True),
         "monitoreo_gracia_horas": g("monitoreo_gracia_horas", 6),
@@ -261,6 +269,10 @@ def guardar_configuracion(cfg: ConfigRequest,
     # --- GUARDAR CONFIGURACIÓN DE ÚLTIMO BACKUP (REQ-06) ---
     s("sql_backup_alert_enabled", cfg.sql_backup_alert_enabled)
     s("sql_backup_max_hours", max(1, cfg.sql_backup_max_hours))
+
+    # --- GUARDAR CONFIGURACIÓN DEL PORTAL PACIENTE (REQ-07) ---
+    s("portal_alert_enabled", cfg.portal_alert_enabled)
+    s("portal_max_hours", max(1, cfg.portal_max_hours))
 
     # --- GUARDAR MÓDULOS DADOS DE BAJA (REQ-03) ---
     s("monitoreo_bajas_enabled", cfg.monitoreo_bajas_enabled)
