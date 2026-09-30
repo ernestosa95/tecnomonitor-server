@@ -699,6 +699,9 @@ async function verDetalle(hospitalId) {
     currentRangeHours = 24; 
     currentKpiRangeHours = 24; // Reset del rango global de software a 24H
 
+    // "Monitoreo desactivado" arranca oculto en cada hospital (se abre con el engranaje).
+    _mostrarMonitoreoBajas(false);
+
     // Resetear Software a 30 Minutos al entrar a un nuevo hospital
     currentSoftwareMinutes = 30;
     document.querySelectorAll('.sw-time-btn').forEach(b => b.classList.remove('active'));
@@ -5485,10 +5488,33 @@ function _bajaEstadoTexto(m) {
     return `Desactivado desde ${escapeHtml(m.desactivado_desde || '—')}`;
 }
 
-async function cargarMonitoreoBajas(hid) {
+// La sección se abre y se cierra con el engranaje de la tarjeta del hospital (barra superior del
+// detalle). Vive en la pestaña Software: si se toca desde otra pestaña, se cambia a Software.
+function _mostrarMonitoreoBajas(visible) {
+    const box = document.getElementById('monitoreo-bajas');
+    const btn = document.getElementById('btn-monitoreo-bajas');
+    if (box) box.style.display = visible ? '' : 'none';
+    if (btn) btn.classList.toggle('on', visible);
+}
+
+function toggleMonitoreoBajas() {
     const box = document.getElementById('monitoreo-bajas');
     if (!box) return;
+    const abrir = box.style.display === 'none';
+    if (abrir && !document.getElementById('tab-logs')?.classList.contains('active')) {
+        const tabBtn = [...document.querySelectorAll('#view-detalle .tab-btn')].find(b => (b.getAttribute('onclick') || '').includes("'logs'"));
+        if (tabBtn) tabBtn.click();
+    }
+    _mostrarMonitoreoBajas(abrir);
+    if (abrir) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function cargarMonitoreoBajas(hid) {
+    const box = document.getElementById('monitoreo-bajas');
+    const btn = document.getElementById('btn-monitoreo-bajas');
+    if (!box) return;
     box.innerHTML = '';
+    if (btn) btn.style.display = 'none';   // se muestra solo si el rol puede ver la sección
     let data;
     try {
         const res = await authFetch(`/api/hospital/${hid}/monitoreo-modulos`);
@@ -5520,9 +5546,19 @@ async function cargarMonitoreoBajas(hid) {
             <button class="btn-small" style="background:var(--red);margin:0" onclick="darDeBajaModulo('${escapeHtml(hid)}')">Dar de baja</button>
         </div>` : '';
 
+    if (btn) {
+        btn.style.display = '';
+        btn.title = mods.length ? `Monitoreo desactivado (${mods.length} módulo${mods.length > 1 ? 's' : ''})` : 'Monitoreo desactivado';
+        btn.querySelector('.n')?.remove();
+        if (mods.length) btn.insertAdjacentHTML('beforeend', `<span class="n">${mods.length}</span>`);
+    }
+
     box.innerHTML = `
         <div style="border:1px solid var(--border2);border-radius:var(--radius2);padding:14px 16px;margin-bottom:16px;background:var(--surface)">
-            <div style="font-weight:600;margin-bottom:4px">Monitoreo desactivado</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <div style="font-weight:600">Monitoreo desactivado</div>
+                <button onclick="_mostrarMonitoreoBajas(false)" title="Cerrar" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1">×</button>
+            </div>
             <div style="font-size:.82em;color:var(--muted);margin-bottom:8px">Módulos que se dejaron de monitorear: no se muestran ni alertan. El histórico sigue disponible.${data.switch ? '' : ' Las bajas que declara el agente todavía no se aplican (switch apagado en Configuración).'}</div>
             ${mods.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85em">
                 <thead><tr style="color:var(--muted);text-align:left">

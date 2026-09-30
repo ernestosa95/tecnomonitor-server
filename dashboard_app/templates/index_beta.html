@@ -1079,7 +1079,13 @@ tr:hover .chevron-icon{color:var(--blue);transform:translateX(3px)}
     background:var(--green-dim);border:1px solid rgba(0,229,160,.2);
     padding:5px 14px;border-radius:var(--radius);color:var(--text);
 }
+.hosp-card-badge{display:flex;align-items:center;gap:12px}
 .hosp-card-badge .row-1{font-weight:700;font-size:1em}
+.btn-monitoreo-bajas{border:none;background:transparent;color:var(--muted);width:28px;height:28px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;position:relative;flex-shrink:0}
+.btn-monitoreo-bajas:hover,.btn-monitoreo-bajas.on{background:rgba(0,229,160,.18);color:var(--green)}
+.btn-monitoreo-bajas .n{position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;
+    background:var(--amber);color:#000;font-size:10px;font-weight:800;line-height:15px;text-align:center}
 .hosp-card-badge .row-2{font-size:.78em;color:var(--muted)}
 .btn-datos-nuevos{
     display:flex;align-items:center;gap:7px;background:var(--blue-dim);border:1px solid rgba(74,143,255,.35);
@@ -2034,8 +2040,16 @@ canvas{color-scheme:dark}
                 <span>Datos nuevos</span>
             </button>
             <div class="hosp-card-badge">
-                <div id="hosp-card-row1" class="row-1">-- | Cargando...</div>
-                <div id="hosp-card-row2" class="row-2">--/--/-- --:--</div>
+                <div>
+                    <div id="hosp-card-row1" class="row-1">-- | Cargando...</div>
+                    <div id="hosp-card-row2" class="row-2">--/--/-- --:--</div>
+                </div>
+                <!-- Monitoreo desactivado (REQ-03): la sección vive en la pestaña Software, oculta
+                     hasta que se toca el engranaje. Solo aparece si el rol puede verla. -->
+                <button id="btn-monitoreo-bajas" class="btn-monitoreo-bajas" style="display:none"
+                        onclick="toggleMonitoreoBajas()" title="Monitoreo desactivado">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
             </div>
         </div>
 
@@ -2075,7 +2089,7 @@ canvas{color-scheme:dark}
             <!-- Contenedor oculto para evitar errores nulos en script.js -->
             <div id="software-legend" style="display:none;"></div>
 
-            <div id="monitoreo-bajas"></div>
+            <div id="monitoreo-bajas" style="display:none"></div>
             <div id="logs-container"></div>
             <div style="height:40px"></div>
         </div>
