@@ -1,9 +1,10 @@
 # Plan — migración a PostgreSQL y rediseño del almacenamiento
 
-**Estado — 2026-09-30: plan v2, NO ejecutado. Sin código.** La v1 (2026-09-18) decidió *a qué
-motor* ir; esta versión agrega *cómo guardar los datos* una vez allá, con foco en performance y en
-bajar el almacenamiento. Las mediciones de producción son las del 2026-09-18 (§2); todo lo que dice
-"estimado" es hipótesis a validar en la Fase 0 (§9) antes de comprometer el diseño.
+**Estado — 2026-10-01: plan v2, NO ejecutado. Fase 0 hecha** (resultados en §9.2). La v1
+(2026-09-18) decidió *a qué motor* ir; esta versión agrega *cómo guardar los datos* una vez allá, con
+foco en performance y en bajar el almacenamiento. Las hipótesis de §2.3 y §5 quedaron medidas sobre
+una foto de producción del 2026-10-01: el diseño se confirma y el almacenamiento resulta menor que
+lo estimado.
 
 ---
 
@@ -34,12 +35,15 @@ bajar el almacenamiento. Las mediciones de producción son las del 2026-09-18 (�
 minutos por hospital (~57 hospitales × 288 reportes/día).
 
 **Medición del 2026-09-30:** la base pesa **20,5 GB** (+1,8 GB en 12 días: ~150 MB/día, ~4,5
-GB/mes, con el resumen de `maintenance.py` todavía andando). Disco del server: 85,3 GB, **35,1 GB
-libres**. Con el resumen pausado (decisión 2) el archivo crece más rápido, porque SQLite no achica
-el archivo al borrar y el resumen liberaba páginas que se reusaban: estimado **~7–8 GB/mes, unos 4
-meses de margen**. Umbral propuesto: si el libre baja de ~15 GB, volver a prender el resumen
-mientras tanto. Un `VACUUM` para recuperar espacio no es opción (server detenido y el doble de
-disco).
+GB/mes). Disco del server: 85,3 GB, **35,1 GB libres** (33 GB el 2026-10-01).
+
+**Corrección con la Fase 0 (2026-10-01):** se estimaba que con el resumen pausado el archivo crecería
+a ~7–8 GB/mes. No es así: el resumen procesa un lote por día y en seis meses solo llegó a ~14 mil
+filas resumidas (menos del 1 % de cada mes, §9.2 B), así que liberaba muy poco. El ritmo sigue siendo
+**~4–4,5 GB/mes** y sube con los hospitales (62 en abril, 77 en septiembre). Con 33 GB libres:
+**~4 meses hasta el umbral de 15 GB** (principios de 2027) y ~7 hasta llenar el disco. Volver a
+prender el resumen no cambia ese plazo de forma apreciable. Un `VACUUM` para recuperar espacio no es
+opción (server detenido y el doble de disco).
 
 ### 2.2 Qué cambió desde la v1
 
@@ -59,8 +63,9 @@ disco).
 Cada reporte repite el **inventario** del hospital, que casi nunca cambia: modelo y serie del host,
 nombres y configuración de cada VM, discos con su tamaño total, lista de sensores y fuentes,
 versiones, `collection_meta`. Lo que cambia cada 5 minutos son unos pocos números (CPU, RAM,
-temperaturas, uso de cada disco, latencia). **Estimado: más del 80 % de cada JSON es información
-repetida del reporte anterior.** Guardarlo entero cada 5 minutos es lo que lleva a 6 KB por fila.
+temperaturas, uso de cada disco, latencia). **Medido (Fase 0): el 89,5 % de cada JSON es igual al
+reporte anterior del mismo hospital** (88,9 % de los bytes); de 132 campos distintos, 97 cambian en
+menos del 1 % de los reportes. Guardarlo entero cada 5 minutos es lo que lleva a 6 KB por fila.
 
 ### 2.4 Por qué es lento (lecturas calientes, verificadas en el código del 2026-09-30)
 
@@ -106,6 +111,19 @@ repetida del reporte anterior.** Guardarlo entero cada 5 minutos es lo que lleva
 | `estado_actual_hospital` | Último reporte normalizado de cada hospital (y su JSON) | En la ingesta (upsert) | Detalle, OFFLINE, motor de alertas, resumen de red |
 | `reporte_crudo` | El JSON del agente tal cual llegó | Cada reporte, por el período caliente (§6) | Auditoría, depuración |
 
+Ajustes que surgen de la Fase 0 (§9.2 D):
+
+- **`uptime_seconds`** (host y VM) cambia en todos los reportes: se guarda la **hora de arranque**
+  (`boot_time = timestamp − uptime`), que solo cambia al reiniciar; el uptime se calcula al leer.
+- **`network_health.last_check`** repite la hora del reporte: no se guarda aparte.
+- **`physical_layer.storage_layer.error`** cambia en el 88 % de los reportes que lo traen porque el
+  agente manda el texto entero de la excepción de Redfish (H07 y H37 al 2026-10-01). Va a
+  `sensores` / inventario como estado + motivo corto; conviene que el agente lo normalice.
+- Las métricas tipadas son unas **35 rutas, ~73 valores por reporte**: CPU/RAM de host y VM,
+  ventiladores, temperaturas, potencia, latencia y uso de red, y los signos vitales de los servicios
+  (handles, threads, RAM, CPU). Dimensión real: 2,1 VMs por reporte (máx. 4), 5,5 discos y 3,4
+  servicios por VM.
+
 ### 4.2 Software (reemplaza a la tabla genérica `software_monitoring`)
 
 Hoy todo convive en una tabla con `app_name` + `component_id` + `extra_data` JSON. Se propone
@@ -143,22 +161,24 @@ días o más al diario. Los gráficos dejan de submuestrear en Python.
 forma está bien. Se migran tal cual (con tipos de fecha y claves foráneas reales, que SQLite no
 hacía cumplir).
 
-## 5. Estimación de almacenamiento (a validar en la Fase 0)
+## 5. Estimación de almacenamiento (medida en la Fase 0, 2026-10-01)
 
-Supuestos: 57 hospitales, 1 reporte cada 5 minutos, 5 VMs y 10 discos promedio por hospital.
+Base: 77 hospitales, ~18.500 reportes/día (~108 MB/día de JSON), 2,1 VMs y ~12 discos por reporte.
+Compresión del crudo **medida** sobre un día real; la columnar de TimescaleDB sigue siendo un
+supuesto (10x) hasta probarla en la Fase 3.
 
-| Dato | Hoy | Con el rediseño, sin comprimir | Comprimido (columnar, ~10x) |
+| Dato | Hoy | Con el rediseño, sin comprimir | Comprimido |
 |---|---|---|---|
-| Métricas de infraestructura | 98 MB/día (JSON) | ~20 MB/día | **~2 MB/día ≈ 0,7 GB/año** |
+| Métricas de infraestructura | ~108 MB/día (JSON) | ~23 MB/día (1,28 KB por reporte) | **~0,8 GB/año** (columnar 10x, supuesto) |
 | Inventario | (dentro del JSON) | KB/día (solo cambios) | Despreciable |
-| `software_monitoring` | ~3 MB/día, en crecimiento | ~2 MB/día | **~0,2 MB/día** |
-| JSON crudo caliente (30 días en la base) | — | 98 MB/día | ~1 GB en total (compresión nativa ~3x) |
-| JSON crudo archivado (fuera de la base) | — | — | **~2,5 GB/año** (zstd por hospital y día, ~15x) |
+| `software_monitoring` | ~4,7 MB/día de `extra_data` (~28 mil filas/día) | ~2 MB/día | **~0,2 MB/día** |
+| JSON crudo caliente (30 días en la base) | — | ~3,2 GB | **~0,3 GB** (zstd por fila con diccionario, 11,6x medido) |
+| JSON crudo archivado (fuera de la base) | — | — | **~0,5 GB/año** (zstd-19 por hospital y día, 79,6x medido) |
 
-Resultado estimado: **de ~35 GB/año a ~1 GB/año en la base, más ~2,5 GB/año de archivo
-comprimido**, con más información consultable que hoy y sin resumen con pérdida. Las tasas de
-compresión son típicas para series de este tipo, **no están medidas sobre nuestros datos**: la
-Fase 0 lo confirma con una muestra real antes de diseñar el esquema final.
+Resultado: **de ~45 GB/año (ritmo actual) a ~1 GB/año en la base, más ~0,5 GB/año de archivo**,
+sin resumen con pérdida. Todo escala lineal con la cantidad de hospitales. El histórico completo
+(16,5 GB de JSON desde 2026-04) archivado ocuparía ~0,2 GB; la foto entera de la base comprimida con
+zstd -10 pesa 580 MB (2,84 %).
 
 ## 6. Auditoría y retención por niveles
 
@@ -233,6 +253,51 @@ el `VACUUM` deja de requerir el server detenido.
 7. Espacio y RAM disponibles donde iría Postgres.
 
 Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aporta aunque la migración se demore.
+
+### 9.2 Resultados de la Fase 0 (2026-10-01)
+
+Script `herramientas/migracion_pg/fase0_medicion.py` (solo lectura) sobre una foto de producción
+del 2026-10-01 10:31 hecha con `VACUUM INTO` (`quick_check` ok). Corrió en 7 min en la PC de
+desarrollo. El informe completo queda fuera del repo, junto a la foto (contiene IDs de hospitales).
+Ítems 1–4 y 6 de la lista de arriba: hechos. Pendientes: 5 (`historico_*.db`) y 7 (dónde va
+Postgres).
+
+**A. Tablas.** `reportes_historicos` 17,75 GB (**93,4 %**; 2.895.302 filas desde 2026-04-01);
+`software_monitoring` 628 MB (2,2 M filas); índices ~0,7 GB; `reportes_uso` 45 MB; el resto, KB.
+Sin páginas libres dentro del archivo.
+
+**B. Por mes** (`reportes_historicos`): de 2,21 GB de JSON en abril (62 hospitales) a **3,17 GB en
+septiembre (77)**; promedio 5,96 KB por reporte. Filas resumidas con pérdida por `maintenance.py`:
+0,3–0,7 % por mes (cada una reemplazó un bloque de 30 min): **casi todo el histórico está completo**.
+
+**C. Composición** (un día, 84 MB): `virtual_layer` 56 %, `physical_layer` 36 % (almacenamiento
+físico 13,5 %, sensores 9 %, discos 7,4 %), `collection_meta` 4 %, `envelope` 2 %.
+
+**D. Repetición:** 89,5 % de los valores y 88,9 % de los bytes iguales al reporte anterior; lo que
+cambia ronda 1,8 KB por reporte. Ver ajustes al modelo en §4.1.
+
+**E. Compresión del crudo** (un día, 92 MB):
+
+| Método | Tasa |
+|---|---|
+| zlib-6 / zstd-3, cada reporte por separado | 4,5–4,7x |
+| zstd-3 con diccionario, cada reporte | **11,6x** |
+| zlib-9 / lzma, archivo por hospital y día | 47x / 72x |
+| zstd-19, archivo por hospital y día | **79,6x** (26 s por día de datos) |
+
+**F. Modelo nuevo:** ver §5.
+
+**G. `software_monitoring`** (últimos 30 días, filas/día): Mirth 10.140, autoenrute DICOM 9.012,
+Elasticsearch 7.619, SSL 1.232, portal 77, backups SQL 15, CHECKDB 2. ~4,7 MB/día de `extra_data`.
+
+**H. Lecturas calientes** (en la PC, disco local; en el server serán más lentas): último reporte por
+hospital para el motor de alertas 264 ms; **gráfico de 30 días de un hospital 978 ms**; resumen de
+`reportes_uso` 15 ms. Son la línea de base para comparar después de la Fase 3.
+
+**Lecciones de la foto:** el `.backup` del cliente `sqlite3` **no termina** con la ingesta andando
+(se reinicia con cada escritura; estuvo 10 h sin avanzar). Para fotos en caliente usar
+`VACUUM INTO` (5,5 min, no bloquea la ingesta) y verificar con `PRAGMA quick_check` antes de
+comprimir. Pico de disco durante la foto: ~20 GB.
 
 ### 9.1 Carga histórica: local + diferencial (camino elegido, 2026-09-30)
 
@@ -318,12 +383,15 @@ los meses viejos (decisión 10).
    `mantenimiento_resumen_enabled`, apagada por defecto; `maintenance.resumen_habilitado()`). Al
    desplegarlo deja de correr solo. Costo: la base crece ~3 GB/mes hasta la migración; vigilar el
    disco del server.
-3. **Crudo: ¿cuánto en la base y cuánto archivado?** Propuesta: 30 días en la base, el resto en
-   archivo frío.
-4. **Dónde vive Postgres** (mismo servidor o aparte) y quién lo opera. Con 35 GB libres (§2.1),
-   durante la carga histórica y la doble escritura conviven SQLite (20+ GB y creciendo), Postgres y
-   el archivo del crudo: en este disco queda justo. **Recomendado: ampliar el disco o poner Postgres
-   en otra VM.**
+3. ~~**Crudo: ¿cuánto en la base y cuánto archivado?**~~ **Resuelto (2026-10-01, con la Fase 0):
+   30 días en la base**, comprimido por fila con diccionario (~0,3 GB en total), **y el resto en
+   archivo frío** (zstd-19 por hospital y día, ~0,5 GB/año). Los dos costos son tan bajos que el
+   período caliente se puede alargar si la auditoría (decisión 1) lo pide.
+4. **Dónde vive Postgres** (mismo servidor o aparte) y quién lo opera. Con la Fase 0, Postgres
+   con todo el histórico migrado ocupa pocos GB y el archivo frío ~0,2 GB: **entra en el disco
+   actual** junto a SQLite hasta el corte, siempre que el corte llegue antes de que el libre baje
+   de ~15 GB (~4 meses, §2.1). Otra VM o ampliar el disco sigue siendo lo más cómodo, pero ya no
+   es condición.
 5. **TimescaleDB o Postgres puro** (depende de la 4).
 6. ~~**Tolerancia a downtime** en el corte~~. **Resuelto (2026-09-30): se puede detener la
    ingesta** hasta tener el diferencial migrado. Por eso no hay sincronización continua ni doble
@@ -331,9 +399,10 @@ los meses viejos (decisión 10).
 7. **Zona horaria:** guardar en UTC con la zona de cada hospital, o seguir en hora local sin zona.
 8. **¿Hacer la Fase 2 (capa de acceso) ya, sobre SQLite?** Recomendado: es útil sola y baja el
    riesgo de todo lo demás.
-9. **Discos: ¿todas las muestras o solo cambios?** El uso de disco cambia lento; guardar solo
-   cuando varía más de X % bajaría filas, pero pierde la serie exacta (sería con pérdida, salvo que
-   el crudo lo respalde).
+9. ~~**Discos: ¿todas las muestras o solo cambios?**~~ **Resuelto (2026-10-01): todas las
+   muestras** de las métricas que cambian, sin umbral. Ya están dentro del estimado de §5 (~0,8
+   GB/año) y la compresión columnar absorbe los valores repetidos sin perder la serie exacta. El
+   inventario de cada disco (punto de montaje, tamaño total) sí va solo cuando cambia.
 10. *(Solo si se usa la alternativa mes a mes de §9.1.)* **PDF de infraestructura de meses ya migrados**: limitarlo a
     lo que sigue en SQLite, o que lea de Postgres para esos meses. Depende de cada cuánto se piden
     PDF de meses viejos.
