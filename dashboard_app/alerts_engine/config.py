@@ -178,6 +178,10 @@ def _followers_de(db, config, clave='global_alert_responsible_email'):
     Traduce una lista de emails guardada en config (CSV) a IDs de Asana.
     Centralizado para que todos los detectores resuelvan followers de la
     misma manera.
+
+    Los usuarios desactivados en TecnoMonitor se omiten aunque su email siga
+    en la config: si también se dieron de baja en Asana, mandarlos como
+    follower hace que Asana rechace la tarea entera (400 "deactivated").
     """
     emails = [e.strip() for e in (config.get(clave) or '').split(',') if e.strip()]
     if not emails:
@@ -185,7 +189,7 @@ def _followers_de(db, config, clave='global_alert_responsible_email'):
     usuarios = db.query(database.UserModel).filter(
         database.UserModel.email.in_(emails)
     ).all()
-    return [u.asana_id for u in usuarios if u.asana_id]
+    return [u.asana_id for u in usuarios if u.asana_id and u.is_active is not False]
 
 
 def _kpi_habilitado(hosp, clave):
