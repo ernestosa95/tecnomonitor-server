@@ -212,7 +212,7 @@ el `VACUUM` deja de requerir el server detenido.
 | **1. Infra Postgres** | Staging y producción | Instalado, endurecido, backups probados con restauración, monitoreo | M |
 | **2. Capa de acceso a datos** | Que el código no dependa del motor ni del JSON | Todas las lecturas de series, último estado e inventario pasan por funciones únicas (al 2026-09-30 hay 36 `json.loads` y 27 consultas SQL crudas con `text()` dispersos, y los PDF de infraestructura duplicados; en la v1 eran 29 y 18: crecen con cada módulo nuevo). Se puede hacer **antes** de migrar, sobre SQLite, y achica el riesgo del corte | L |
 | **3. Esquema nuevo** | Tablas de §4, compresión, agregados, políticas | Esquema con Alembic en staging; ingesta que escribe inventario + métricas + crudo; pruebas con reportes reales grabados | M |
-| **4. Carga histórica** | Pasar el histórico | Transformación idempotente por hospital y mes: JSON → inventario + métricas + crudo/archivo. Verificación: conteos, y comparación de valores en una muestra contra el JSON original. Incluye los `historico_*.db` | M |
+| **4. Carga histórica, mes a mes** | Pasar el histórico sin duplicar disco | Ver §9.1. Por mes, del más viejo al más nuevo: archivo frío → Postgres → verificación → borrado del mes en SQLite. Incluye primero los `historico_*.db` | M |
 | **5. Doble escritura** | Validar en vivo | La ingesta escribe en los dos motores 1–2 semanas; comparación automática diaria; las lecturas siguen en SQLite | M |
 | **6. Corte** | Cambiar de motor | Interruptor por área (gráficos, alertas, PDF…), motor de alertas último; OFFLINE pausado durante la ventana (los agentes no reenvían lo que se pierde). Vuelta atrás: el interruptor a SQLite, que siguió actualizado | S |
 | **7. Políticas y UI** | Retención por niveles configurable | Pantalla Admin con piso, vista previa, doble confirmación y registro | M |
@@ -233,6 +233,32 @@ el `VACUUM` deja de requerir el server detenido.
 7. Espacio y RAM disponibles donde iría Postgres.
 
 Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aporta aunque la migración se demore.
+
+### 9.1 Carga histórica mes a mes (propuesta del 2026-09-30)
+
+Solo para `reportes_historicos` (el 93 % de la base). `reportes_uso` (40 MB; el resumen de red suma
+todo su histórico) y `software_monitoring` (0,5 GB; se lee hasta 7 días) pasan enteras en el corte.
+
+Ciclo por mes, empezando por los `historico_*.db` ya exportados y después por el mes más viejo de
+la base (2026-04):
+
+1. **Archivo frío:** JSON crudo del mes, un archivo zstd por hospital y día, con su hash. Es el nivel
+   frío de §6: queda como segunda copia antes de borrar nada.
+2. **Carga en Postgres:** inventario + métricas + agregados, idempotente (se puede repetir).
+3. **Verificación:** reportes por hospital y día iguales en SQLite, Postgres y archivo; hash de cada
+   JSON contra el archivo; valores de una muestra (CPU, RAM, discos) contra el JSON original.
+4. **Borrado del mes en SQLite**, solo si 3 dio bien: por lotes de un día, en horario de poco uso
+   (un borrado grande bloquea la base y la ingesta espera hasta 15 s).
+
+**Qué gana y qué no:** SQLite no achica el archivo al borrar (solo `VACUUM`, que no es opción). El
+borrado **frena el crecimiento** (cada mes liberado, ~3 GB, absorbe unas tres semanas de reportes
+nuevos) y el pico de disco queda en SQLite (~20,5 GB fijo) + Postgres (pocos GB) + archivo (1–2 GB),
+que entra en los 35 GB libres. El espacio se recupera de una vez al borrar el `.db` en la Fase 8.
+
+**Restricción mientras dura:** solo se migran meses de más de 31 días (el gráfico de
+infraestructura lee hasta 30). El **PDF de infraestructura con rango libre** saldría vacío para un
+mes ya migrado: limitarlo a los meses que siguen en SQLite o hacer que ese PDF lea de Postgres para
+los meses viejos (decisión 10).
 
 ## 10. Riesgos
 
@@ -274,6 +300,9 @@ Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aport
 9. **Discos: ¿todas las muestras o solo cambios?** El uso de disco cambia lento; guardar solo
    cuando varía más de X % bajaría filas, pero pierde la serie exacta (sería con pérdida, salvo que
    el crudo lo respalde).
+10. **PDF de infraestructura de meses ya migrados** durante la carga mes a mes (§9.1): limitarlo a
+    lo que sigue en SQLite, o que lea de Postgres para esos meses. Depende de cada cuánto se piden
+    PDF de meses viejos.
 
 ## 12. Qué se conserva de la v1
 
