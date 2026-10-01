@@ -450,6 +450,10 @@ async function cargarConfigUI() {
         const inpGracia = document.getElementById('monitoreo-gracia-horas');
         if(inpGracia) inpGracia.value = data.monitoreo_gracia_horas || 6;
 
+        // --- ALMACENAMIENTO: resumen con pérdida (maintenance.py) ---
+        const chkResumen = document.getElementById('mantenimiento-resumen-enabled');
+        if(chkResumen) chkResumen.checked = !!data.mantenimiento_resumen_enabled;
+
         cargarUsuariosResponsables(data.kpi_rad_responsible_email, data.global_alert_responsible_email, data.mirth_responsible_email, data.dicom_responsible_email);
         
         renderKpiModsChips();
@@ -520,6 +524,9 @@ async function guardarConfig() {
         // --- MÓDULOS DADOS DE BAJA (REQ-03) ---
         monitoreo_bajas_enabled: document.getElementById('monitoreo-bajas-enabled')?.checked || false,
         monitoreo_gracia_horas: parseInt(document.getElementById('monitoreo-gracia-horas')?.value) || 6,
+
+        // --- ALMACENAMIENTO ---
+        mantenimiento_resumen_enabled: document.getElementById('mantenimiento-resumen-enabled')?.checked || false,
     };
     
     try {

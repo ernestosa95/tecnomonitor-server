@@ -42,9 +42,9 @@ minutos por hospital (~57 hospitales × 288 reportes/día).
   filas/día). Es la tabla que más va a crecer en filas.
 - **Tablas de configuración nuevas** (chicas, sin problema de volumen): `mirth_channel_topology`,
   `mirth_nodos`, `mirth_canales_meta`, `monitoreo_modulos`, `dicom_regla_baseline`.
-- **`maintenance.py` sigue corriendo** todos los días (`server.py:111`): resume con pérdida los
-  bloques de 30 min de más de 7 días. Cada día que pasa se pierden muestras de forma irreversible
-  (ver decisión 2, §11).
+- **`maintenance.py` corría** todos los días (`server.py:111`) resumiendo con pérdida los bloques
+  de 30 min de más de 7 días. Desde 2026-09-30 está pausado por defecto con un interruptor (ver
+  decisión 2, §11); lo resumido antes no se recupera.
 
 ### 2.3 Por qué pesa tanto
 
@@ -247,9 +247,11 @@ Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aport
 
 1. **Auditoría:** cuánto tiempo hay que conservar el crudo, si exige **inmutabilidad** y si incluye
    `software_monitoring` y KPIs. Define el nivel frío.
-2. **¿Pausar `maintenance.py` ya?** Sigue destruyendo muestras de más de 7 días cada día. Pausarlo
-   cuesta ~3 GB/mes de disco hasta la migración. **Recomendado: pausarlo**, salvo que el disco no
-   lo permita.
+2. ~~**¿Pausar `maintenance.py` ya?**~~ **Resuelto (2026-09-30): pausado.** El resumen con
+   pérdida solo corre si se prende *Configuración → Almacenamiento* (clave
+   `mantenimiento_resumen_enabled`, apagada por defecto; `maintenance.resumen_habilitado()`). Al
+   desplegarlo deja de correr solo. Costo: la base crece ~3 GB/mes hasta la migración; vigilar el
+   disco del server.
 3. **Crudo: ¿cuánto en la base y cuánto archivado?** Propuesta: 30 días en la base, el resto en
    archivo frío.
 4. **Dónde vive Postgres** (mismo servidor o aparte) y quién lo opera.

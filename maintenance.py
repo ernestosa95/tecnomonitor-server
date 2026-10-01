@@ -90,12 +90,30 @@ def procesar_bloque_30min(cursor, hospital_id, registros):
     except Exception as e:
         print(f"⚠️ Error en bloque {hospital_id}: {e}")
 
+def resumen_habilitado(cursor):
+    """
+    El resumen de abajo es CON PÉRDIDA: reemplaza los reportes de cada bloque de 30 min por uno
+    solo con promedios, y los originales no se recuperan. Desde 2026-09-30 está pausado por
+    defecto (clave `mantenimiento_resumen_enabled`, Configuración → Almacenamiento) mientras se
+    define la migración a PostgreSQL (docs/14 §11, decisión 2): solo corre si alguien lo prende.
+    """
+    try:
+        cursor.execute("SELECT valor FROM configuracion WHERE clave = 'mantenimiento_resumen_enabled'")
+        fila = cursor.fetchone()
+    except sqlite3.Error:
+        return False
+    return bool(fila) and str(fila[0]) == "1"
+
+
 def ejecutar_mantenimiento():
     print(f"--- 🧹 MANTENIMIENTO LIGHT: {datetime.now()} ---")
     conn = conectar_db()
     if not conn: return
     try:
         cursor = conn.cursor()
+        if not resumen_habilitado(cursor):
+            print("⏸️ Resumen de reportes históricos pausado (Configuración → Almacenamiento). No se toca nada.")
+            return
         fecha_limite = datetime.now() - timedelta(days=DIAS_RETENCION_DETALLE)
         
         # Procesamos de a BATCH_SIZE para no bloquear la DB

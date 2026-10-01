@@ -102,6 +102,9 @@ class ConfigRequest(BaseModel):
     monitoreo_bajas_enabled: bool = False
     monitoreo_gracia_horas: int = 6
 
+    # --- Almacenamiento: resumen con pérdida de reportes viejos (maintenance.py) ---
+    mantenimiento_resumen_enabled: bool = False
+
 class ExclusionRequest(BaseModel):
     hospital_id: str = "*"
     patron: str
@@ -208,6 +211,9 @@ def obtener_configuracion(db: Session = Depends(get_db),
         # --- MÓDULOS DADOS DE BAJA (REQ-03) ---
         "monitoreo_bajas_enabled": g("monitoreo_bajas_enabled", False, is_bool=True),
         "monitoreo_gracia_horas": g("monitoreo_gracia_horas", 6),
+
+        # --- ALMACENAMIENTO ---
+        "mantenimiento_resumen_enabled": g("mantenimiento_resumen_enabled", False, is_bool=True),
     }
 
 
@@ -277,6 +283,9 @@ def guardar_configuracion(cfg: ConfigRequest,
     # --- GUARDAR MÓDULOS DADOS DE BAJA (REQ-03) ---
     s("monitoreo_bajas_enabled", cfg.monitoreo_bajas_enabled)
     s("monitoreo_gracia_horas", max(1, cfg.monitoreo_gracia_horas))
+
+    # --- GUARDAR ALMACENAMIENTO ---
+    s("mantenimiento_resumen_enabled", cfg.mantenimiento_resumen_enabled)
 
     db.commit()
     return {"status": "ok", "msg": "Configuración actualizada"}
