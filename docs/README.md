@@ -40,10 +40,11 @@ desactualizada y hay que revisarla.
     panel de administración y endpoint del mapa (✅ implementado: agente >= 4.5.1 +
     3 tablas nuevas + router de administración + endpoint de lectura + tab "Integraciones"
     en `index_beta.html`).
-14. [Plan de migración a PostgreSQL](14-plan-migracion-postgres.md) — historial completo
-    para auditoría, compresión sin pérdida y niveles configurables, con mediciones de la
-    base actual (18,7 GB, 93% en `reportes_historicos`) y plan por fases (⏸️ diagramado, no
-    ejecutado).
+14. [Plan de migración a PostgreSQL](14-plan-migracion-postgres.md) — v2 (2026-09-30):
+    migración + rediseño del almacenamiento (inventario solo cuando cambia, métricas tipadas,
+    compresión por columnas, agregados precalculados, crudo por niveles). Estimado: de ~35 a
+    ~1 GB/año en la base. Mediciones de la base actual (18,7 GB, 93% en
+    `reportes_historicos`) y plan por fases (⏸️ diagramado, no ejecutado).
 15. [Plan de redes DICOM](15-plan-redes-dicom.md) — categorías periférico/caché/central,
     enlaces entre hospitales, mapa con selector de red y filtro por red en las listas
     (⏸️ diagramado, no ejecutado; el agente no cambia: el AE title ya llega como `to_nickname`).
