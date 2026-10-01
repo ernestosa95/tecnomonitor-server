@@ -84,3 +84,37 @@ def test_variantes_viejas_del_agente():
     assert f.inventario["physical_layer"]["storage"]["error"] == "x"
     assert {v["vm"] for v in f.vms} == {"APPV", "ESX-VM1"}
     assert transformar(TS, {}, None).host["cpu_pct"] is None
+
+
+def test_software_por_app():
+    from zoneinfo import ZoneInfo
+
+    from datos.transformar import software
+    z = ZoneInfo("America/Argentina/Buenos_Aires")
+    t, f = software("mirth", "[SE] IN", "STARTED", 3, {"instancia": "SE", "recibidos": 912, "enviados": 84,
+                                                     "errored": 2, "channel_id": "a9e", "last_error": "x"}, z)
+    assert t == "mirth_canal_metricas" and f["encolados"] == 3 and f["errores"] == 2 and f["componente"] == "[SE] IN"
+    t, f = software("dicom_routing", "51", "OK", 7, {"label": "A → B", "from_key": None, "to_key": 51,
+                                                     "to_nickname": "B"}, z)
+    assert t == "cola_dicom_metricas" and f["pendientes"] == 7 and f["_regla"]["destino_key"] == 51
+    t, f = software("patient_portal", "MPS:9", "BURNER", 8, {"origin": "MPS", "code": 9, "oldest": "2026-09-02T08:45:37"}, z)
+    assert t == "portal_estado_metricas" and f["codigo"] == "9"
+    assert f["mas_antiguo"] == datetime(2026, 9, 2, 11, 45, 37, tzinfo=timezone.utc)   # -03 -> UTC
+    assert software("sql_backup", "BD1", "BACKUP", 0, {"last_full": "x"}, z)[0] == "sql_eventos"
+    assert software("elasticsearch", "ERR-1", "LOW", 1, {"titulo": "t"}, z)[0] == "software_eventos"
+
+
+def test_kpis_conserva_orden_y_fechas():
+    from zoneinfo import ZoneInfo
+
+    from datos.transformar import kpis
+    m = {"extraction_interval_hours": 24.0, "start_time_extraction": "2026-09-30T00:00:00",
+         "end_time_extraction": "2026-10-01T00:00:00",
+         "ris": [{"equipo": "TOMO", "aet": "CT1", "mod": "CT", "totales": 5, "admitidos": 4}],
+         "pacs": [{"aet": "B", "mod": "CR", "almacenados": 1}, {"aet": "A", "mod": "CT", "almacenados": 20}],
+         "users": [{"rol": "Nurse", "usuarios_unicos": 9, "inicios_sesion": 16}]}
+    cab, ris, pacs, usuarios = kpis(m, ZoneInfo("America/Argentina/Buenos_Aires"))
+    assert cab["desde"] == datetime(2026, 9, 30, 3, 0, tzinfo=timezone.utc) and cab["intervalo_horas"] == 24.0
+    assert ris[0]["modalidad"] == "CT" and ris[0]["admitidos"] == 4 and ris[0]["citados"] is None
+    assert [(p["orden"], p["aet"]) for p in pacs] == [(0, "B"), (1, "A")]
+    assert usuarios[0]["inicios_sesion"] == 16

@@ -154,3 +154,157 @@ ALTER TABLE reporte_crudo     SET (timescaledb.compress, timescaledb.compress_se
 SELECT add_compression_policy(t, INTERVAL '7 days')
 FROM unnest(ARRAY['metricas_host', 'metricas_sensor', 'metricas_vm', 'metricas_disco',
                   'metricas_servicio', 'recoleccion', 'reporte_crudo']::regclass[]) AS t;
+
+-- =============================================================================
+-- Bloque 2: software (hoy software_monitoring) y KPIs de uso (hoy reportes_uso).
+-- `componente` conserva el component_id de hoy (p. ej. "[MIRTH_SE] IN"): es la
+-- identidad con la que el motor de alertas arma sus tipo_unico.
+-- =============================================================================
+
+-- Mirth: una fila por canal y lectura (~14 mil/día).
+CREATE TABLE mirth_canal_metricas (
+    ts             timestamptz NOT NULL,
+    hospital_id    text        NOT NULL,
+    componente     text        NOT NULL,       -- "[INSTANCIA] canal" (o "canal" en la instancia Default)
+    instancia      text,
+    channel_id     text,
+    estado         text,                       -- STARTED / STOPPED / ERROR / ...
+    encolados      integer,
+    recibidos      bigint,
+    enviados       bigint,
+    errores        bigint,
+    ultimo_error   text
+);
+SELECT create_hypertable('mirth_canal_metricas', by_range('ts', INTERVAL '7 days'));
+CREATE INDEX ON mirth_canal_metricas (hospital_id, componente, ts DESC);
+
+-- Autoenrute DICOM: pendientes por regla (~12 mil/día) + catálogo de reglas.
+CREATE TABLE cola_dicom_metricas (
+    ts             timestamptz NOT NULL,
+    hospital_id    text        NOT NULL,
+    regla          text        NOT NULL,
+    pendientes     integer
+);
+SELECT create_hypertable('cola_dicom_metricas', by_range('ts', INTERVAL '7 days'));
+CREATE INDEX ON cola_dicom_metricas (hospital_id, regla, ts DESC);
+
+CREATE TABLE dicom_reglas (                    -- nodos de cada regla: casi nunca cambian
+    hospital_id    text        NOT NULL,
+    regla          text        NOT NULL,
+    etiqueta       text,
+    origen_key     integer,
+    origen_nick    text,
+    origen_host    text,
+    destino_key    integer,
+    destino_nick   text,
+    destino_host   text,
+    visto          timestamptz NOT NULL,       -- última lectura con estos datos
+    PRIMARY KEY (hospital_id, regla)
+);
+
+-- Portal paciente: un estado por fila, todas las filas de una lectura comparten ts.
+CREATE TABLE portal_estado_metricas (
+    ts             timestamptz NOT NULL,
+    hospital_id    text        NOT NULL,
+    componente     text        NOT NULL,       -- "MPS:9"
+    origen         text,
+    codigo         text,
+    estado         text,
+    total          integer,
+    ultimas_24h    integer,
+    sin_iso        integer,
+    con_iso        integer,
+    mas_antiguo    timestamptz,
+    fuente         text
+);
+SELECT create_hypertable('portal_estado_metricas', by_range('ts', INTERVAL '7 days'));
+CREATE INDEX ON portal_estado_metricas (hospital_id, ts DESC);
+
+-- SSL y logs de Elastic: poco volumen o formato variable, genérica con jsonb.
+CREATE TABLE software_eventos (
+    ts             timestamptz NOT NULL,
+    hospital_id    text        NOT NULL,
+    app            text        NOT NULL,       -- 'ssl_certificate' | 'elasticsearch'
+    componente     text        NOT NULL,
+    estado         text,
+    valor          integer,
+    extra          jsonb
+);
+SELECT create_hypertable('software_eventos', by_range('ts', INTERVAL '7 days'));
+CREATE INDEX ON software_eventos (hospital_id, app, componente, ts DESC);
+
+-- CHECKDB y backups SQL: pocas filas y la ingesta renueva la última de backups
+-- en el lugar (last_seen), así que es tabla común (no hypertable comprimida).
+-- El orden de inserción importa (backups): id.
+CREATE TABLE sql_eventos (
+    id             bigserial   PRIMARY KEY,
+    ts             timestamptz NOT NULL,
+    hospital_id    text        NOT NULL,
+    app            text        NOT NULL,       -- 'sql_integrity' | 'sql_backup'
+    base           text        NOT NULL,
+    estado         text,
+    valor          integer,
+    extra          jsonb
+);
+CREATE INDEX ON sql_eventos (hospital_id, app, base, id DESC);
+
+-- KPIs de uso: un reporte (application_metrics) por hospital y período, con sus
+-- ítems de RIS, PACS y usuarios. `desde` es la fecha del evento
+-- (start_time_extraction), que es la que usa todo lo que agrupa por fecha.
+CREATE TABLE kpi_reporte (
+    id             bigserial   PRIMARY KEY,
+    hospital_id    text        NOT NULL,
+    insertado      timestamptz NOT NULL,
+    desde          timestamptz,
+    hasta          timestamptz,
+    intervalo_horas real
+);
+CREATE INDEX ON kpi_reporte (hospital_id, desde);
+CREATE INDEX ON kpi_reporte (hospital_id, insertado);
+
+CREATE TABLE kpi_ris (
+    reporte_id     bigint      NOT NULL REFERENCES kpi_reporte (id) ON DELETE CASCADE,
+    orden          smallint    NOT NULL,       -- posición en la lista del agente
+    equipo         text,
+    aet            text,
+    modalidad      text,
+    totales        integer,
+    citados        integer,
+    admitidos      integer,
+    ejecutados     integer,
+    con_imagen     integer,
+    borradores     integer,
+    definitivos    integer,
+    suspendidos    integer,
+    PRIMARY KEY (reporte_id, orden)
+);
+
+CREATE TABLE kpi_pacs (
+    reporte_id     bigint      NOT NULL REFERENCES kpi_reporte (id) ON DELETE CASCADE,
+    orden          smallint    NOT NULL,
+    aet            text,
+    modalidad      text,
+    almacenados    integer,
+    PRIMARY KEY (reporte_id, orden)
+);
+
+CREATE TABLE kpi_usuarios (
+    reporte_id     bigint      NOT NULL REFERENCES kpi_reporte (id) ON DELETE CASCADE,
+    orden          smallint    NOT NULL,
+    rol            text,
+    usuarios_unicos integer,
+    inicios_sesion integer,
+    PRIMARY KEY (reporte_id, orden)
+);
+
+ALTER TABLE mirth_canal_metricas   SET (timescaledb.compress, timescaledb.compress_segmentby = 'hospital_id, componente',
+                                        timescaledb.compress_orderby = 'ts');
+ALTER TABLE cola_dicom_metricas    SET (timescaledb.compress, timescaledb.compress_segmentby = 'hospital_id, regla',
+                                        timescaledb.compress_orderby = 'ts');
+ALTER TABLE portal_estado_metricas SET (timescaledb.compress, timescaledb.compress_segmentby = 'hospital_id, componente',
+                                        timescaledb.compress_orderby = 'ts');
+ALTER TABLE software_eventos       SET (timescaledb.compress, timescaledb.compress_segmentby = 'hospital_id, app, componente',
+                                        timescaledb.compress_orderby = 'ts');
+SELECT add_compression_policy(t, INTERVAL '7 days')
+FROM unnest(ARRAY['mirth_canal_metricas', 'cola_dicom_metricas', 'portal_estado_metricas',
+                  'software_eventos']::regclass[]) AS t;

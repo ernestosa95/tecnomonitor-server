@@ -182,3 +182,82 @@ def _sin_vacios(x):
     if isinstance(x, list):
         return [_sin_vacios(v) for v in x]
     return x
+
+
+# ---------------------------------------------------------------------------
+# Software (hoy una fila de software_monitoring) -> tabla tipada
+# ---------------------------------------------------------------------------
+def _ts_local(valor, zona):
+    """Fecha local sin zona del agente ("2026-09-02T08:45:37") -> datetime con la zona del hospital."""
+    if not valor:
+        return None
+    try:
+        t = datetime.fromisoformat(str(valor).replace("Z", ""))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=zona)
+
+
+def software(app, componente, estado, valor, extra, zona):
+    """
+    Una lectura de software -> (tabla, columnas sin ts ni hospital_id). Para el
+    autoenrute devuelve además la fila de `dicom_reglas` (catálogo de nodos).
+    """
+    extra = extra if isinstance(extra, dict) else {}
+    if app == "mirth":
+        return "mirth_canal_metricas", {
+            "componente": componente, "instancia": extra.get("instancia"), "channel_id": extra.get("channel_id"),
+            "estado": estado, "encolados": _entero(valor), "recibidos": _entero(extra.get("recibidos")),
+            "enviados": _entero(extra.get("enviados")), "errores": _entero(extra.get("errored")),
+            "ultimo_error": extra.get("last_error"),
+        }
+    if app == "dicom_routing":
+        return "cola_dicom_metricas", {
+            "regla": componente, "pendientes": _entero(valor),
+            "_regla": {
+                "etiqueta": extra.get("label"),
+                "origen_key": _entero(extra.get("from_key")), "origen_nick": extra.get("from_nickname"),
+                "origen_host": extra.get("from_hostname"),
+                "destino_key": _entero(extra.get("to_key")), "destino_nick": extra.get("to_nickname"),
+                "destino_host": extra.get("to_hostname"),
+            },
+        }
+    if app == "patient_portal":
+        return "portal_estado_metricas", {
+            "componente": componente, "origen": extra.get("origin"),
+            "codigo": None if extra.get("code") is None else str(extra.get("code")),
+            "estado": extra.get("state") or estado, "total": _entero(valor),
+            "ultimas_24h": _entero(extra.get("last_24h")), "sin_iso": _entero(extra.get("pending_iso")),
+            "con_iso": _entero(extra.get("with_iso")), "mas_antiguo": _ts_local(extra.get("oldest"), zona),
+            "fuente": extra.get("source"),
+        }
+    if app in ("sql_integrity", "sql_backup"):
+        return "sql_eventos", {"app": app, "base": componente, "estado": estado, "valor": _entero(valor),
+                               "extra": extra}
+    return "software_eventos", {"app": app, "componente": componente, "estado": estado,
+                                "valor": _entero(valor), "extra": extra}
+
+
+# ---------------------------------------------------------------------------
+# KPIs de uso (application_metrics) -> kpi_reporte + ítems
+# ---------------------------------------------------------------------------
+_RIS = ("totales", "citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos")
+
+
+def kpis(metrics, zona):
+    """application_metrics -> (cabecera, ris, pacs, usuarios); cada ítem conserva su posición."""
+    m = metrics if isinstance(metrics, dict) else {}
+    cabecera = {
+        "desde": _ts_local(m.get("start_time_extraction"), zona),
+        "hasta": _ts_local(m.get("end_time_extraction"), zona),
+        "intervalo_horas": _num(m.get("extraction_interval_hours")),
+    }
+    ris = [{"orden": i, "equipo": it.get("equipo"), "aet": it.get("aet"), "modalidad": it.get("mod"),
+            **{k: _entero(it.get(k)) for k in _RIS}}
+           for i, it in enumerate(m.get("ris") or []) if isinstance(it, dict)]
+    pacs = [{"orden": i, "aet": it.get("aet"), "modalidad": it.get("mod"), "almacenados": _entero(it.get("almacenados"))}
+            for i, it in enumerate(m.get("pacs") or []) if isinstance(it, dict)]
+    usuarios = [{"orden": i, "rol": it.get("rol"), "usuarios_unicos": _entero(it.get("usuarios_unicos")),
+                 "inicios_sesion": _entero(it.get("inicios_sesion"))}
+                for i, it in enumerate(m.get("users") or []) if isinstance(it, dict)]
+    return cabecera, ris, pacs, usuarios

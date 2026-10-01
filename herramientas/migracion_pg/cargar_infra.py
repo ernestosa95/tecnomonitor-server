@@ -9,7 +9,9 @@ el esquema y repetir las veces que haga falta.
 
 La hora local sin zona de los agentes se interpreta como America/Argentina/Buenos_Aires
 (decisión 7). El inventario se arma en orden por hospital: una versión nueva solo si
-cambia su hash. Asume la base Postgres vacía para el rango (no hace upsert del histórico).
+cambia su hash. Se puede correr por tramos consecutivos (sirve para el diferencial del
+corte): parte de la versión de inventario vigente que ya esté en Postgres. Los rangos no
+se pueden repetir ni solapar (las métricas se agregan, no se reemplazan).
 """
 import argparse
 import csv
@@ -93,7 +95,10 @@ def main():
 
     t0 = time.time()
     n = 0
-    inv_actual = {}      # hospital -> [vigente_desde, hash, datos]
+    inv_actual = {}      # hospital -> [vigente_desde, hash, datos, ya_en_postgres]
+    cur.execute("SELECT hospital_id, vigente_desde, hash FROM inventario WHERE vigente_hasta IS NULL")
+    for hid, desde, h in cur.fetchall():
+        inv_actual[hid] = [desde, h, None, True]
     ultimo = {}          # hospital -> (ts, host_status, datos)
     filas = src.execute(
         "SELECT hospital_id, timestamp, host_status, full_json_data FROM reportes_historicos "
@@ -126,16 +131,20 @@ def main():
 
         previo = inv_actual.get(hid)
         if previo is None or previo[1] != f.inventario_hash:
-            if previo is not None:
+            if previo is not None and previo[3]:      # vigente de una carga anterior: se cierra ahí
+                cur.execute("UPDATE inventario SET vigente_hasta = %s WHERE hospital_id = %s AND vigente_desde = %s",
+                            (ts, hid, previo[0]))
+            elif previo is not None:
                 cp.add("inventario", [hid, previo[0], ts, previo[1], json.dumps(previo[2], ensure_ascii=False)])
-            inv_actual[hid] = [ts, f.inventario_hash, f.inventario]
+            inv_actual[hid] = [ts, f.inventario_hash, f.inventario, False]
         ultimo[hid] = (ts, host_status, data)
         n += 1
         if n % 20000 == 0:
             print(f"  {n} reportes, {time.time() - t0:.0f} s", flush=True)
 
-    for hid, (desde, h, datos) in inv_actual.items():
-        cp.add("inventario", [hid, desde, None, h, json.dumps(datos, ensure_ascii=False)])
+    for hid, (desde, h, datos, ya_en_postgres) in inv_actual.items():
+        if not ya_en_postgres:
+            cp.add("inventario", [hid, desde, None, h, json.dumps(datos, ensure_ascii=False)])
     cp.flush()
     for hid, (ts, st, data) in ultimo.items():
         cur.execute("""
