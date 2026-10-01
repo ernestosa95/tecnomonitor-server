@@ -3826,6 +3826,20 @@ function renderizarSoftware(data) {
     // Ícono Chevron reutilizable para el colapso
     const chevronSvg = `<svg class="card-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.3s ease; margin-left:10px; color: var(--muted);"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 
+    // Selector de rango único para todos los gráficos de la pestaña (Mirth, logs, autoenrute,
+    // portal paciente): antes cada tarjeta tenía el suyo, pero todos cambiaban el mismo rango.
+    const hasGraficos = hasMirth || hasElastic || hasDicom || !!data.patient_portal;
+    if (hasGraficos) {
+        const rangos = [[30, '30 Min'], [60, '1H'], [1440, '24H'], [10080, '7D']];
+        html += `
+            <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px;">
+                <span style="color:var(--muted); font-size:0.8em; font-weight:600;">Rango de los gráficos</span>
+                <div class="chart-toggles" style="display:flex; flex-wrap:wrap;">
+                    ${rangos.map(([m, t]) => `<button class="chart-btn sw-time-btn ${currentSoftwareMinutes === m ? 'active' : ''}" onclick="cambiarRangoSoftware(${m}, this)">${t}</button>`).join('')}
+                </div>
+            </div>`;
+    }
+
     // ==========================================
     // --- 1. RENDER DE CERTIFICADOS SSL ---
     // ==========================================
@@ -3997,12 +4011,6 @@ function renderizarSoftware(data) {
                             </div>
                             <input type="hidden" id="mirth-metric_${instancia}" value="traffic">
 
-                            <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
-                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
-                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
-                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
-                                <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
-                            </div>
                             ${chevronSvg}
                         </div>
                     </div>
@@ -4075,12 +4083,6 @@ function renderizarSoftware(data) {
                     </div>
                     
                     <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
-                        <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
-                        </div>
                         ${chevronSvg}
                     </div>
                 </div>
@@ -4138,12 +4140,6 @@ function renderizarSoftware(data) {
                         <h3 style="margin:0; font-size:1.1em; color:var(--text); text-transform:none;">Auto-Enrutado DICOM <span style="color:var(--green);">(Colas de envío)</span></h3>
                     </div>
                     <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
-                        <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
-                        </div>
                         ${chevronSvg}
                     </div>
                 </div>
@@ -4292,12 +4288,6 @@ function renderizarSoftware(data) {
                         <span style="color: ${estadoColor}; background: ${estadoBg}; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: bold;">${estadoTexto}</span>
                     </div>
                     <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;" onclick="event.stopPropagation()">
-                        <div class="chart-toggles" style="display: flex; flex-wrap: wrap;">
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 30 ? 'active' : ''}" onclick="cambiarRangoSoftware(30, this)">30 Min</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 60 ? 'active' : ''}" onclick="cambiarRangoSoftware(60, this)">1H</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 1440 ? 'active' : ''}" onclick="cambiarRangoSoftware(1440, this)">24H</button>
-                            <button class="chart-btn sw-time-btn ${currentSoftwareMinutes === 10080 ? 'active' : ''}" onclick="cambiarRangoSoftware(10080, this)">7D</button>
-                        </div>
                         ${chevronSvg}
                     </div>
                 </div>
