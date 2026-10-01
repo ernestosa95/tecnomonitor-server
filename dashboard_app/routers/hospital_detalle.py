@@ -11,10 +11,10 @@ original (no retipeado a mano) para no arriesgar un error de transcripción
 en la función de 268 líneas de estado de software.
 """
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import alerts_engine
@@ -25,6 +25,7 @@ import auth
 import database
 from datos import infra as datos_infra
 from datos import uso as datos_uso
+from datos import software as datos_sw
 from core import get_db
 from database import HospitalMetadata
 from routers.mirth_mapa import _parsear_ts
@@ -113,14 +114,7 @@ def _estado_colas_dicom(db: Session, hospital_id: str):
     ahora = datetime.now()
     desde = ahora - timedelta(minutes=win_crit * 1.5)
 
-    filas = db.execute(text("""
-        SELECT component_id, metric_value, timestamp
-        FROM software_monitoring
-        WHERE hospital_id = :hid
-          AND app_name = 'dicom_routing'
-          AND timestamp >= :desde
-        ORDER BY component_id, timestamp ASC
-    """), {"hid": hospital_id, "desde": desde}).fetchall()
+    filas = datos_sw.lecturas(db, hospital_id, datos_sw.DICOM_ROUTING, desde, por_componente=True)
 
     por_regla = {}
     for f in filas:
@@ -180,23 +174,14 @@ def _estado_colas_dicom(db: Session, hospital_id: str):
 # independiente de `minutos`.
 # ============================================================
 def _ultimo_checkdb(db: Session, hospital_id: str):
-    filas = db.execute(text("""
-        WITH RankedData AS (
-            SELECT component_id, status_value, metric_value, extra_data, timestamp,
-                   ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
-            FROM software_monitoring
-            WHERE hospital_id = :hid AND app_name = 'sql_integrity'
-        )
-        SELECT component_id, status_value, metric_value, extra_data, timestamp
-        FROM RankedData WHERE rn = 1
-    """), {"hid": hospital_id}).fetchall()
+    filas = datos_sw.ultimas_lecturas(db, hospital_id, datos_sw.SQL_INTEGRITY)
 
     if not filas:
         return None
 
     bases = []
     for f in filas:
-        extra = json.loads(f.extra_data) if f.extra_data else {}
+        extra = f.extra_data
         ts_str = ""
         if f.timestamp:
             ts_str = f.timestamp[:19] if isinstance(f.timestamp, str) else f.timestamp.strftime("%Y-%m-%d %H:%M:%S")
@@ -258,56 +243,39 @@ def _portal_paciente(db: Session, hospital_id: str, minutos: int):
     return resumen
 
 
+APPS_PANEL = (datos_sw.MIRTH, datos_sw.SSL, datos_sw.ELASTIC, datos_sw.DICOM_ROUTING)
+
+
+def _como_foto(lecturas):
+    """
+    Modo "estado actual": una lectura por componente, sin serie. La hora va en
+    `ultimo_ts` y `timestamp` queda en None, que es lo que el armado de
+    abajo usa para no dibujar historia.
+    """
+    fotos = []
+    for lectura in lecturas:
+        foto = replace(lectura, timestamp=None)
+        foto.ultimo_ts = lectura.timestamp
+        fotos.append(foto)
+    return fotos
+
+
 @router.get("/api/hospital/{hospital_id}/software")
 def obtener_estado_software(hospital_id: str, minutos: int = 0,
                             db: Session = Depends(get_db),
                             current_user: dict = Depends(auth.require_hospital_access("software"))):
 
-    # 1. QUERY (histórico total vs. ventana de tiempo)
+    # 1. LECTURAS (última por componente vs. ventana de tiempo)
     if minutos == 0:
-        query = text("""
-            WITH RankedData AS (
-                SELECT app_name, component_id, status_value, metric_value, extra_data,
-                       timestamp AS ts_real,
-                       ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
-                FROM software_monitoring
-                WHERE hospital_id = :hid
-                  AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
-            )
-            SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp,
-                   ts_real AS ultimo_ts
-            FROM RankedData WHERE rn = 1
-        """)
-        resultados = db.execute(query, {"hid": hospital_id}).fetchall()
+        resultados = _como_foto(datos_sw.ultimas_lecturas(db, hospital_id, APPS_PANEL))
         is_historical = False
     else:
         time_limit = datetime.now() - timedelta(minutes=minutos)
-        query = text("""
-            SELECT app_name, component_id, status_value, metric_value, extra_data, timestamp
-            FROM software_monitoring
-            WHERE hospital_id = :hid
-              AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
-              AND timestamp >= :time_limit
-            ORDER BY timestamp ASC
-        """)
-        resultados = db.execute(query, {"hid": hospital_id, "time_limit": time_limit}).fetchall()
+        resultados = datos_sw.lecturas(db, hospital_id, APPS_PANEL, time_limit)
 
         # Fallback: hospital sin historial reciente -> traemos el último snapshot
         if not resultados:
-            query_last = text("""
-                WITH RankedData AS (
-                    SELECT app_name, component_id, status_value, metric_value, extra_data,
-                           timestamp AS ts_real,
-                           ROW_NUMBER() OVER(PARTITION BY app_name, component_id ORDER BY timestamp DESC) as rn
-                    FROM software_monitoring
-                    WHERE hospital_id = :hid
-                      AND app_name IN ('mirth', 'ssl_certificate', 'elasticsearch', 'dicom_routing')
-                )
-                SELECT app_name, component_id, status_value, metric_value, extra_data, NULL as timestamp,
-                       ts_real AS ultimo_ts
-                FROM RankedData WHERE rn = 1
-            """)
-            resultados = db.execute(query_last, {"hid": hospital_id}).fetchall()
+            resultados = _como_foto(datos_sw.ultimas_lecturas(db, hospital_id, APPS_PANEL))
             is_historical = False
         else:
             is_historical = True
@@ -354,7 +322,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
     for cid, history in canales_mirth.items():
         if not history: continue
         actual = history[-1]
-        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        extra_actual = actual.extra_data
         instancia = extra_actual.get("instancia", "Default")
 
         if instancia not in software_data["mirth"]:
@@ -372,7 +340,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
             if is_historical and len(history) > 1:
                 prev_r, prev_s = None, None
                 for row in history:
-                    extra = json.loads(row.extra_data) if row.extra_data else {}
+                    extra = row.extra_data
                     r = extra.get("recibidos", 0)
                     s = extra.get("enviados", 0)
 
@@ -419,7 +387,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
     for url, history in certificados_ssl.items():
         if not history: continue
         actual = history[-1]
-        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        extra_actual = actual.extra_data
 
         software_data["ssl_certificates"].append({
             "url": url,
@@ -437,7 +405,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         history.sort(key=lambda x: str(x.timestamp) if x.timestamp else "")
 
         actual = history[-1]
-        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        extra_actual = actual.extra_data
 
         last_seen_str = ""
         if actual.timestamp:
@@ -493,7 +461,7 @@ def obtener_estado_software(hospital_id: str, minutos: int = 0,
         history.sort(key=lambda x: str(x.timestamp) if x.timestamp else "")
 
         actual = history[-1]
-        extra_actual = json.loads(actual.extra_data) if actual.extra_data else {}
+        extra_actual = actual.extra_data
 
         try:
             pendientes = int(actual.metric_value or 0)

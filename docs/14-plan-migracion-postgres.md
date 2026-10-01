@@ -302,7 +302,7 @@ comprimir. Pico de disco durante la foto: ~20 GB.
 
 ### 9.0 Fase 2 en curso: capa de acceso `dashboard_app/datos/`
 
-Paquete único para leer el histórico (reglas en `datos/__init__.py`). Pruebas en `tests/`
+Paquete único para leer el histórico (reglas en `datos/__init__.py`). **Fase 2 terminada (2026-10-01):** ninguna lectura de `reportes_historicos`, `reportes_uso` ni `software_monitoring` queda fuera de `datos/`; solo la ingesta (`main.py`) las toca para escribir y evitar duplicados, y eso se rehace en la Fase 3. Pruebas en `tests/`
 (`python3 -m pytest tests`, base SQLite en memoria). Se migra por bloques, cada uno verificado
 contra la foto de producción:
 
@@ -311,7 +311,7 @@ contra la foto de producción:
 | 1. Último reporte | `ultimo_reporte`, `ultimos_reportes`, `ultimo_timestamp`, `valores_recientes`; parser único de fechas (`datos.tiempo`). 8 lugares: motor de alertas, OFFLINE, Mirth, autoenrute, detalle del hospital, resumen de red y mapa, resumen del hospital, mapa de Mirth | **Hecho (2026-10-01)** |
 | 2. Series de infraestructura | `serie_infra` (métricas ya extraídas: CPU/RAM de host y VM, temperaturas, red) y `ultimo_reporte(hasta=)`. Gráfico `/history` y PDF de infraestructura con su gráfico de temperaturas; se borró la copia muerta del PDF en `routers/informes.py`. Salida idéntica a la anterior sobre la foto (15 series y 3 PDF) | **Hecho (2026-10-01)** |
 | 3. KPIs de uso (`reportes_uso`) | `datos.uso`: `reportes_uso` (por inserción) y `reportes_uso_por_evento` (por `start_time_extraction`, con el margen de 3 días en un solo lugar); `fecha_evento` única (había 4 copias). Resumen de red y del hospital, `kpi-history`, PDF clínico y KPIs programados: salida idéntica sobre la foto, salvo el PDF clínico (ver abajo) | **Hecho (2026-10-01)** |
-| 4. Software (`software_monitoring`) | Detectores (Mirth, autoenrute, CHECKDB, backups, portal), pestaña Software, mapa y topología de Mirth | Pendiente |
+| 4. Software (`software_monitoring`) | `datos.software`: `ultimas_lecturas` (n por componente, por hora o por orden de inserción), `lecturas` (desde una hora, con tope) y `ultima_foto` (portal). `extra_data` llega siempre como dict y la hora como datetime. Detectores (Mirth, autoenrute y su piso habitual, CHECKDB, backups, portal), pestaña Software, mapa, acumulado y topología de Mirth. Salida idéntica sobre la foto: 224 decisiones de detectores (mismo orden), 41 pisos, 28 respuestas de la pestaña Software y los endpoints de Mirth | **Hecho (2026-10-01)** |
 
 **Corrección de paso en el PDF clínico (bloque 3):** el nombre de equipo de cada AET del PACS se
 armaba mientras se recorrían los reportes, así que el resultado dependía del orden en que SQLite

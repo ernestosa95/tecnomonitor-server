@@ -19,9 +19,11 @@ Ver docs/12-ultima-milla-alertas-asana.md §3quater.
 """
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, text
+from sqlalchemy import func
 
 import database
+
+from datos import software as datos_sw
 
 from ..estado import _parsear_timestamp
 
@@ -91,14 +93,7 @@ def cargar_baselines(db, hospital_id):
 
 def _recalcular_hospital(db, hospital_id, ahora):
     desde = ahora - timedelta(days=DIAS_HISTORIA)
-    filas = db.execute(text("""
-        SELECT component_id, metric_value, timestamp
-        FROM software_monitoring
-        WHERE hospital_id = :hid
-          AND app_name = 'dicom_routing'
-          AND timestamp >= :desde
-        ORDER BY component_id, timestamp ASC
-    """), {"hid": hospital_id, "desde": desde}).fetchall()
+    filas = datos_sw.lecturas(db, hospital_id, datos_sw.DICOM_ROUTING, desde, por_componente=True)
 
     por_regla = {}
     for f in filas:

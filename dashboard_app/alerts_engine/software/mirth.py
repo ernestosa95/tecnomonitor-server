@@ -20,13 +20,12 @@ instancia, sin esperar la gracia de 6 h.
 
 Ver docs/09-plan-refactor-alertas.md y docs/13-contrato-topologia-mirth.md.
 """
-import json
 from datetime import timedelta
 
-from sqlalchemy import text
 
 import database
 from datos import infra as datos_infra
+from datos import software as datos_sw
 
 from .. import modulos
 from ..config import _followers_de
@@ -122,20 +121,8 @@ def verificar_mirth(db, config, hospitales_activos):
         vigentes = set()
         motivos = {}
 
-        # CORRECCIÓN 1 y 2: LIKE insensible a mayúsculas y ORDER BY explícito
-        query = text("""
-            WITH RankedData AS (
-                SELECT component_id, status_value, metric_value, extra_data, timestamp,
-                       ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
-                FROM software_monitoring
-                WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%'
-            )
-            SELECT component_id, status_value, metric_value, extra_data, timestamp, rn
-            FROM RankedData
-            WHERE rn <= 2
-            ORDER BY component_id, rn ASC
-        """)
-        registros = db.execute(query, {"hid": hosp.hospital_id}).fetchall()
+        # Las 2 últimas lecturas de cada canal (la segunda filtra micro-cortes).
+        registros = datos_sw.ultimas_lecturas(db, hosp.hospital_id, datos_sw.MIRTH, n=2)
 
         historial_canales = {}
         for reg in registros:
@@ -198,12 +185,7 @@ def verificar_mirth(db, config, hospitales_activos):
             # Resolución de criticidad: extra_data.channel_id primero (agente
             # >= 4.5.1), si no está, fallback vía component_id -> channel_id
             # de la topología reportada. Canal sin classify -> mirth_crit_default.
-            try:
-                extra = json.loads(actual.extra_data) if actual.extra_data else {}
-            except (TypeError, ValueError):
-                extra = {}
-            if not isinstance(extra, dict):  # JSON 'null' en la columna
-                extra = {}
+            extra = actual.extra_data
             channel_id = extra.get("channel_id") or mapa_component_a_channel.get(cid)
             crit = mapa_crit.get(channel_id, crit_default) if channel_id else crit_default
             u = umbrales.get(crit, umbrales["media"])

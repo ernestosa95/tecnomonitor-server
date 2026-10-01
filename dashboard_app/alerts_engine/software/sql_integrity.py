@@ -9,9 +9,9 @@ Solo alerta por status ERROR -- NOT_ONLINE no dispara ticket a propósito
 Decisión del usuario (2026-09-22): sin responsable propio, reusa
 'global_alert_responsible_email' (Infraestructura) en vez de un campo nuevo.
 """
-import json
 
-from sqlalchemy import text
+
+from datos import software as datos_sw
 
 from ..config import _followers_de
 from ..estado import actualizar_estado_alerta
@@ -24,16 +24,7 @@ def verificar_integridad_bases(db, config, hospitales_activos):
         # Última fila por base (mismo criterio que _ultimo_checkdb en
         # routers/hospital_detalle.py): un reinicio es un evento raro, así
         # que siempre se evalúa el chequeo más reciente, no una ventana.
-        filas = db.execute(text("""
-            WITH RankedData AS (
-                SELECT component_id, status_value, metric_value, extra_data, timestamp,
-                       ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
-                FROM software_monitoring
-                WHERE hospital_id = :hid AND app_name = 'sql_integrity'
-            )
-            SELECT component_id, status_value, metric_value, extra_data, timestamp
-            FROM RankedData WHERE rn = 1
-        """), {"hid": hosp.hospital_id}).fetchall()
+        filas = datos_sw.ultimas_lecturas(db, hosp.hospital_id, datos_sw.SQL_INTEGRITY)
 
         for fila in filas:
             db_name = fila.component_id
@@ -49,7 +40,7 @@ def verificar_integridad_bases(db, config, hospitales_activos):
             tipo_unico = f"CHECKDB_{db_name[:35]}"
 
             if estado == "ERROR":
-                extra = json.loads(fila.extra_data) if fila.extra_data else {}
+                extra = fila.extra_data
                 detalle = extra.get("detail", "")
                 nivel = "CRITICAL"
                 mensaje = f"DBCC CHECKDB encontró {errores} error(es) en '{db_name}'."

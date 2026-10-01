@@ -23,7 +23,8 @@ Infraestructura ('global_alert_responsible_email').
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import text
+
+from datos import software as datos_sw
 
 from ..config import _followers_de
 from ..estado import actualizar_estado_alerta
@@ -128,21 +129,9 @@ def estado_portal(db, hospital_id, max_horas, ahora=None):
     general con el mismo criterio que la alerta.
     """
     ahora = ahora or datetime.now()
-    # El valor crudo de MAX() se reusa tal cual en el filtro de igualdad: convertirlo a datetime y
-    # volver a bindearlo puede no coincidir con el texto guardado (microsegundos en SQLite).
-    ultimo_raw = db.execute(text("""
-        SELECT MAX(timestamp) FROM software_monitoring
-        WHERE hospital_id = :hid AND app_name = :app
-    """), {"hid": hospital_id, "app": APP_NAME}).scalar()
-    ultimo = _fecha(ultimo_raw)
+    ultimo, filas = datos_sw.ultima_foto(db, hospital_id, APP_NAME)
     if ultimo is None:
         return None
-
-    filas = db.execute(text("""
-        SELECT component_id, status_value, metric_value, extra_data
-        FROM software_monitoring
-        WHERE hospital_id = :hid AND app_name = :app AND timestamp = :ts
-    """), {"hid": hospital_id, "app": APP_NAME, "ts": ultimo_raw}).fetchall()
     estados = sorted((_item(f) for f in filas), key=lambda e: (e["origin"] != "RIS", _orden_codigo(e["code"])))
 
     mps_pend = [e for e in estados if e["origin"] == "MPS" and e["clase"] == PENDIENTE]
@@ -187,12 +176,7 @@ def serie_portal(db, hospital_id, minutos):
     if not minutos:
         return {"labels": [], "series": []}
     desde = datetime.now() - timedelta(minutes=minutos)
-    filas = db.execute(text("""
-        SELECT component_id, status_value, metric_value, extra_data, timestamp
-        FROM software_monitoring
-        WHERE hospital_id = :hid AND app_name = :app AND timestamp >= :desde
-        ORDER BY timestamp ASC
-    """), {"hid": hospital_id, "app": APP_NAME, "desde": desde}).fetchall()
+    filas = datos_sw.lecturas(db, hospital_id, APP_NAME, desde)
 
     etiquetas, por_clave, info = [], {}, {}
     for f in filas:

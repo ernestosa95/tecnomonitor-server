@@ -8,16 +8,15 @@ Shape del response pensado 1:1 contra el modelo JS del prototipo
 (ORIGENES/DESTINOS/CANALES/TL/UMBRALES) -- ver docs/13-contrato-topologia-mirth.md.
 """
 import hashlib
-import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import auth
 import database
 from datos import infra as datos_infra
+from datos import software as datos_sw
 from datos.tiempo import parsear_ts
 from alerts_engine import modulos
 from alerts_engine.config import cargar_config
@@ -36,10 +35,7 @@ _parsear_ts = parsear_ts
 
 
 def _extra(row):
-    try:
-        return json.loads(row.extra_data) if row.extra_data else {}
-    except (TypeError, ValueError):
-        return {}
+    return row.extra_data
 
 
 def _identidad_de(row, component_a_channel):
@@ -149,13 +145,7 @@ def obtener_mapa_mirth(hospital_id: str, minutos: int = 180, paso: int = 5, incl
     padres_por_target = _mapa_padres(topo_por_channel)
 
     # --- Serie temporal (una query, ventana completa, igual patrón que /software) ---
-    filas = db.execute(text("""
-        SELECT component_id, status_value, metric_value, extra_data, timestamp
-        FROM software_monitoring
-        WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%' AND timestamp >= :t0
-        ORDER BY timestamp ASC
-        LIMIT 20000
-    """), {"hid": hospital_id, "t0": t0}).fetchall()
+    filas = datos_sw.lecturas(db, hospital_id, datos_sw.MIRTH, t0, limite=20000)
 
     filas_por_canal = {}       # identidad -> [(row, extra), ...] ASC
     ultimo_ts_hospital = None
@@ -317,12 +307,7 @@ def obtener_acumulado_mirth(hospital_id: str, minutos: int = 1440,
         t.component_id: t.channel_id
         for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hospital_id).all()
     }
-    filas = db.execute(text("""
-        SELECT component_id, extra_data, timestamp
-        FROM software_monitoring
-        WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%' AND timestamp >= :t0
-        ORDER BY timestamp ASC
-    """), {"hid": hospital_id, "t0": t0}).fetchall()
+    filas = datos_sw.lecturas(db, hospital_id, datos_sw.MIRTH, t0)
 
     canales, previos = {}, {}
     primera = None

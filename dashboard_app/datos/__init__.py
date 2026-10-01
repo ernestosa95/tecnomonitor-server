@@ -16,5 +16,7 @@ Reglas:
 
 Módulos:
   - tiempo: parseo único de timestamps de la base.
-  - infra: reportes de infraestructura (último reporte, última hora).
+  - infra: reportes de infraestructura (último reporte, series de métricas).
+  - uso: KPIs de uso del RIS/PACS (por inserción o por fecha del evento).
+  - software: lecturas de Mirth, autoenrute, SSL, Elastic, CHECKDB, backups y portal.
 """

@@ -40,14 +40,13 @@ local). Se re-exportan desde alerts_engine/__init__.py por eso.
 
 Ver docs/09-plan-refactor-alertas.md.
 """
-import json
 import re
 from datetime import datetime, timedelta
 
-from sqlalchemy import text
 
 import database
 from datos import infra as datos_infra
+from datos import software as datos_sw
 
 from .. import modulos
 from ..config import _followers_de
@@ -343,17 +342,8 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
         vigentes = set()
         motivos = {}
 
-        query = text("""
-            SELECT component_id, metric_value, extra_data, timestamp
-            FROM software_monitoring
-            WHERE hospital_id = :hid
-              AND app_name = 'dicom_routing'
-              AND timestamp >= :desde
-            ORDER BY component_id, timestamp ASC
-        """)
-        registros = db.execute(
-            query, {"hid": hosp.hospital_id, "desde": desde}
-        ).fetchall()
+        registros = datos_sw.lecturas(db, hosp.hospital_id, datos_sw.DICOM_ROUTING, desde,
+                                      por_componente=True)
 
         if not registros:
             if hospital_reporta:
@@ -393,8 +383,6 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
             nodos = None
             try:
                 extra = historia[-1].extra_data
-                if isinstance(extra, str):
-                    extra = json.loads(extra)
                 if isinstance(extra, dict) and extra.get("label"):
                     ruta = extra["label"]
                 nodos = _identificador_nodos(extra)

@@ -11,10 +11,10 @@ Una base cuya última lectura tiene más de LECTURA_VIGENTE_HORAS no se evalúa 
 sin lecturas no se puede afirmar nada, y el agente pudo haberse apagado o el módulo desactivado.
 Sin responsable propio: reusa 'global_alert_responsible_email' (Infraestructura), como CHECKDB.
 """
-import json
 from datetime import datetime
 
-from sqlalchemy import text
+
+from datos import software as datos_sw
 
 from ..config import _followers_de
 from ..estado import actualizar_estado_alerta
@@ -42,25 +42,11 @@ def estado_backups(db, hospital_id, max_horas, ahora=None):
     por backup nuevo y renueva `last_seen` en la última).
     """
     ahora = ahora or datetime.now()
-    filas = db.execute(text("""
-        WITH RankedData AS (
-            SELECT component_id, status_value, extra_data,
-                   ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY id DESC) as rn
-            FROM software_monitoring
-            WHERE hospital_id = :hid AND app_name = 'sql_backup'
-        )
-        SELECT component_id, status_value, extra_data FROM RankedData WHERE rn = 1
-    """), {"hid": hospital_id}).fetchall()
+    filas = datos_sw.ultimas_lecturas(db, hospital_id, datos_sw.SQL_BACKUP, por_id=True)
 
     bases = []
     for f in filas:
         extra = f.extra_data
-        if isinstance(extra, str):
-            try:
-                extra = json.loads(extra)
-            except ValueError:
-                extra = {}
-        extra = extra or {}
         ultimo = _fecha(extra.get("last_full"))
         leido = _fecha(extra.get("last_seen"))
         horas = round((ahora - ultimo).total_seconds() / 3600, 1) if ultimo else None

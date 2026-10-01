@@ -10,11 +10,11 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import auth
 import database
+from datos import software as datos_sw
 from core import get_db
 
 router = APIRouter()
@@ -100,22 +100,13 @@ def _sugerencia_nodo(topo_fila):
 
 
 def _ultimo_estado_por_component(db, hid):
-    filas = db.execute(text("""
-        WITH RankedData AS (
-            SELECT component_id, status_value, metric_value, timestamp,
-                   ROW_NUMBER() OVER(PARTITION BY component_id ORDER BY timestamp DESC) as rn
-            FROM software_monitoring
-            WHERE hospital_id = :hid AND LOWER(app_name) LIKE '%mirth%'
-        )
-        SELECT component_id, status_value, metric_value, timestamp
-        FROM RankedData WHERE rn = 1
-    """), {"hid": hid}).fetchall()
     return {
         f.component_id: {
             "status": f.status_value, "queued": f.metric_value,
-            "visto": f.timestamp.isoformat() if hasattr(f.timestamp, "isoformat") else f.timestamp,
+            # Mismo texto que guardaba la columna ("YYYY-MM-DD HH:MM:SS.ffffff").
+            "visto": str(f.timestamp) if f.timestamp else None,
         }
-        for f in filas
+        for f in datos_sw.ultimas_lecturas(db, hid, datos_sw.MIRTH)
     }
 
 
