@@ -2,7 +2,7 @@
 
 ## 1. Despliegue
 
-Proceso único, `uvicorn server:master_app --host 0.0.0.0 --port 8001`, detrás de un Nginx
+Proceso único, `uvicorn server:master_app --host 127.0.0.1 --port 8001` (solo local desde 2026-10-01), detrás de un Nginx
 local que hace de reverse proxy (`proxy_headers=True, forwarded_allow_ips="127.0.0.1"` en
 `server.py`). No hay `Dockerfile`, `docker-compose.yml`, archivo `.service` de systemd, ni
 script de despliegue en el repo — el proceso de arranque en el servidor real no está

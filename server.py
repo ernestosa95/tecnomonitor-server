@@ -230,7 +230,9 @@ master_app.mount("/", dashboard_app)
 if __name__ == "__main__":
     uvicorn.run(
         master_app,
-        host="0.0.0.0",
+        # Solo local: se entra siempre por Nginx (HTTPS, logs, X-Forwarded-For).
+        # Con 0.0.0.0 cualquiera que llegue al 8001 se saltea Nginx.
+        host="127.0.0.1",
         port=8001,
         proxy_headers=True,                  # ← lee el X-Forwarded-For
         forwarded_allow_ips="127.0.0.1",     # ← confía solo en tu Nginx local
