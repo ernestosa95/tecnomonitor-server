@@ -213,8 +213,8 @@ el `VACUUM` deja de requerir el server detenido.
 | **2. Capa de acceso a datos** | Que el código no dependa del motor ni del JSON | Todas las lecturas de series, último estado e inventario pasan por funciones únicas (al 2026-09-30 hay 36 `json.loads` y 27 consultas SQL crudas con `text()` dispersos, y los PDF de infraestructura duplicados; en la v1 eran 29 y 18: crecen con cada módulo nuevo). Se puede hacer **antes** de migrar, sobre SQLite, y achica el riesgo del corte | L |
 | **3. Esquema nuevo** | Tablas de §4, compresión, agregados, políticas | Esquema con Alembic en staging; ingesta que escribe inventario + métricas + crudo; pruebas con reportes reales grabados | M |
 | **4. Carga histórica fuera del server** | Pasar el histórico sin cargar ni duplicar disco en producción | Ver §9.1. Desde una foto (`.backup`) en una PC: transformación completa y verificación local; se sube un `pg_dump` comprimido y el archivo frío. Incluye los `historico_*.db` | M |
-| **5. Sincronización continua** | Validar en vivo sin tocar la ingesta | En el server, un diferencial desde la foto corre cada pocos minutos (§9.1); comparación automática diaria; ingesta y lecturas siguen en SQLite. Reemplaza a la doble escritura de la v1 | M |
-| **6. Corte** | Cambiar de motor | Interruptor por área (gráficos, alertas, PDF…), motor de alertas último; OFFLINE pausado durante la ventana (los agentes no reenvían lo que se pierde). Vuelta atrás: el interruptor a SQLite, que siguió actualizado | S |
+| **5. Ensayo del diferencial** | Saber cuánto dura el corte | En el server, el diferencial desde la foto contra un esquema de prueba: tiempo y verificación. Sin sincronización continua ni doble escritura (decisión 6) | S |
+| **6. Corte con la ingesta parada** | Cambiar de motor | Ingesta y motor de alertas detenidos → diferencial una vez → verificación de conteos → ingesta y lecturas a Postgres → arranque. Lo que manden los agentes en esa ventana se pierde (no reenvían; salvo CHECKDB). Vuelta atrás: arrancar sobre SQLite, que quedó tal cual | S |
 | **7. Políticas y UI** | Retención por niveles configurable | Pantalla Admin con piso, vista previa, doble confirmación y registro | M |
 | **8. Retiro de SQLite** | Limpiar | Backup final de solo lectura; se apagan `maintenance.py` y los scripts de export/borrado | S |
 
@@ -251,10 +251,12 @@ Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aport
    - Filas que se modifican en el lugar (`alertas`, las filas `sql_backup` que renuevan
      `last_seen`, topología y curación de Mirth, configuración, usuarios, `monitoreo_modulos`,
      `dicom_regla_baseline`): tablas chicas, se copian enteras en cada pasada.
-5. **Sincronización continua** (Fase 5): el diferencial corre cada pocos minutos hasta el corte. La
-   ingesta no se toca.
-6. **Corte** (Fase 6): última pasada, ingesta y lecturas a Postgres. Vuelta atrás: SQLite nunca dejó
-   de recibir datos.
+5. **Ensayo** (Fase 5): el diferencial en el server contra un esquema de prueba, para medir cuánto
+   tarda.
+6. **Corte** (Fase 6), con la ingesta parada (decisión 6): diferencial una sola vez, verificación,
+   ingesta y lecturas a Postgres. Vuelta atrás: arrancar sobre SQLite, que quedó tal cual al parar.
+   El diferencial crece ~16 mil reportes por día desde la foto: si el corte se demora semanas, sacar
+   una foto nueva y repetir la migración local (ya probada).
 
 Condición: **la pausa de `maintenance.py` (decisión 2) desplegada antes o al momento de la foto.**
 Si el resumen corre después, reescribe en el server filas viejas que en la foto están completas: no
@@ -323,7 +325,9 @@ los meses viejos (decisión 10).
    el archivo del crudo: en este disco queda justo. **Recomendado: ampliar el disco o poner Postgres
    en otra VM.**
 5. **TimescaleDB o Postgres puro** (depende de la 4).
-6. **Tolerancia a downtime** en el corte.
+6. ~~**Tolerancia a downtime** en el corte~~. **Resuelto (2026-09-30): se puede detener la
+   ingesta** hasta tener el diferencial migrado. Por eso no hay sincronización continua ni doble
+   escritura: el diferencial corre una vez con la ingesta parada. Se acepta el hueco de esa ventana.
 7. **Zona horaria:** guardar en UTC con la zona de cada hospital, o seguir en hora local sin zona.
 8. **¿Hacer la Fase 2 (capa de acceso) ya, sobre SQLite?** Recomendado: es útil sola y baja el
    riesgo de todo lo demás.
