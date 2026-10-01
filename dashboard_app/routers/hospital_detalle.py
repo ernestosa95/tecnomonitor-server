@@ -47,104 +47,21 @@ def obtener_historial(hospital_id: str, horas: int = 24,
                       db: Session = Depends(get_db),
                       current_user: dict = Depends(auth.require_hospital_access("infra"))):
     flimit = datetime.now() - timedelta(hours=horas)
-    
-    # 🛡️ FIX: Agregamos LIMIT 15000 para evitar desbordamientos de memoria
-    query = text("""
-        SELECT timestamp, host_cpu_usage, full_json_data 
-        FROM reportes_historicos 
-        WHERE hospital_id = :hid AND timestamp >= :flimit 
-        ORDER BY timestamp ASC
-        LIMIT 15000
-    """)
-    result = db.execute(query, {"hid": hospital_id, "flimit": flimit}).fetchall()
-    
-    if not result: return []
 
-    # 🛡️ FIX: Downsampling agresivo. Nunca devolvemos más de ~600 puntos al frontend.
-    total_registros = len(result)
-    step = 1
-    if total_registros > 600: 
-        step = max(1, int(total_registros / 600))
-    muestras = result[::step]
-    
-    historial = []
-    for row in muestras:
-        try:
-            if isinstance(row.full_json_data, str):
-                d = json.loads(row.full_json_data) if row.full_json_data else {}
-            else:
-                d = row.full_json_data if row.full_json_data else {}
-                
-            # 1. Datos Físicos
-            phy = d.get("physical_layer") or d.get("physical_host") or {}
-            tele = phy.get("telemetry") or {}
-            
-            cpu_val = row.host_cpu_usage
-            if cpu_val is None:
-                cpu_val = (tele.get("cpu") or {}).get("usage_percent", 0)
-                
-            sensors = phy.get("sensors") or (d.get("environment") or {}).get("thermal") or {}
-            temps_list = sensors.get("temperatures") or sensors.get("cpu_temps") or []
-            
-            cpu_s = {}
-            for x in temps_list:
-                val = x.get("value") if x.get("value") is not None else x.get("temp_c")
-                name = x.get("name") or x.get("sensor")
-                if val is not None and name:
-                    cpu_s[name] = val
-            
-            amb_val = sensors.get("ambient_temp_c")
-            if amb_val is None:
-                for x in temps_list:
-                    if "Ambient" in (x.get("name") or ""): 
-                        amb_val = x.get("value")
-                        break
+    # Tope de 15.000 reportes leídos y ~600 puntos al frontend (submuestreo parejo).
+    puntos = datos_infra.serie_infra(db, hospital_id, flimit, max_puntos=600, limite=15000)
 
-            # --------------------------------------------------------
-            # --- 1.5 Datos de Red (NUEVO) ---
-            # --------------------------------------------------------
-            net_health = phy.get("network_health") or {}
-            net_lat = net_health.get("cloud_latency_ms")
-            net_up = net_health.get("upload_usage_mbps")
-            net_dw = net_health.get("download_usage_mbps")
-
-            # 2. Datos Virtuales
-            vms_data = {}
-            if "virtual_layer" in d and isinstance(d["virtual_layer"], list):
-                for vm in d["virtual_layer"]:
-                    vid = vm.get("id")
-                    if vid: 
-                        vms_data[vid] = {
-                            "cpu": (vm.get("telemetry") or {}).get("cpu", {}).get("usage_percent", 0), 
-                            "ram": (vm.get("telemetry") or {}).get("ram", {}).get("usage_percent", 0)
-                        }
-            elif "vms" in d and isinstance(d["vms"], dict):
-                for k, v in d["vms"].items():
-                    m = v.get("metrics") or {}
-                    vms_data[k] = {
-                        "cpu": m.get("cpu_load_percent", 0),
-                        "ram": (m.get("ram") or {}).get("percent", 0)
-                    }
-
-            historial.append({
-                "timestamp": str(row.timestamp)[:19].replace("T", " "),
-                "global": {
-                    "cpu_host": cpu_val, 
-                    "temp_amb": amb_val, 
-                    "cpu_sensors": cpu_s,
-                    # --- NUEVO: Inyectamos la red en el scope global ---
-                    "network": {
-                        "lat": net_lat, 
-                        "up": net_up, 
-                        "dw": net_dw
-                    } 
-                },
-                "vms": vms_data
-            })
-        except Exception as e:
-            continue
-        
-    return historial
+    return [{
+        "timestamp": str(p.timestamp)[:19],
+        "global": {
+            # Sin CPU en el reporte se grafica 0, como cuando se leía la columna host_cpu_usage.
+            "cpu_host": p.cpu_host if p.cpu_host is not None else 0.0,
+            "temp_amb": p.temp_amb,
+            "cpu_sensors": p.temperaturas,
+            "network": p.red,
+        },
+        "vms": p.vms,
+    } for p in puntos]
 
 # --- NUEVA RUTA PARA KPIS (Añadir a dashboard.py) ---
 @router.get("/api/hospital/{hospital_id}/kpi-history")

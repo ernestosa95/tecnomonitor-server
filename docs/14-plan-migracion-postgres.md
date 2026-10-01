@@ -249,7 +249,7 @@ el `VACUUM` deja de requerir el server detenido.
    muestra de métricas tipadas (nivel tibio).
 4. Cuántas filas ya están resumidas con pérdida por `maintenance.py` (marca `_is_compressed`) y
    desde cuándo: define qué parte del histórico es recuperable.
-5. Inventario y estado de los `historico_*.db`.
+5. Inventario y estado de los `historico_*.db`. **(2026-10-01: no están en la carpeta del server; falta saber dónde quedaron los meses exportados antes de 2026-04.)**
 6. Tiempos actuales de las lecturas de §2.4, para tener contra qué comparar.
 7. Espacio y RAM disponibles donde iría Postgres.
 
@@ -309,7 +309,7 @@ contra la foto de producción:
 | Bloque | Qué | Estado |
 |---|---|---|
 | 1. Último reporte | `ultimo_reporte`, `ultimos_reportes`, `ultimo_timestamp`, `valores_recientes`; parser único de fechas (`datos.tiempo`). 8 lugares: motor de alertas, OFFLINE, Mirth, autoenrute, detalle del hospital, resumen de red y mapa, resumen del hospital, mapa de Mirth | **Hecho (2026-10-01)** |
-| 2. Series de infraestructura | Gráfico `/history`, PDF de infraestructura (duplicado en `informes.py` y `generator_report.py`), gráfico de temperaturas | Pendiente |
+| 2. Series de infraestructura | `serie_infra` (métricas ya extraídas: CPU/RAM de host y VM, temperaturas, red) y `ultimo_reporte(hasta=)`. Gráfico `/history` y PDF de infraestructura con su gráfico de temperaturas; se borró la copia muerta del PDF en `routers/informes.py`. Salida idéntica a la anterior sobre la foto (15 series y 3 PDF) | **Hecho (2026-10-01)** |
 | 3. KPIs de uso (`reportes_uso`) | Resumen de red y del hospital, `kpi-history`, PDF clínico, KPIs programados | Pendiente |
 | 4. Software (`software_monitoring`) | Detectores (Mirth, autoenrute, CHECKDB, backups, portal), pestaña Software, mapa y topología de Mirth | Pendiente |
 
@@ -407,7 +407,10 @@ los meses viejos (decisión 10).
 4. ~~**Dónde vive Postgres**~~ **Resuelto (2026-10-01): en el mismo server.** Con todo el
    histórico migrado ocupa pocos GB y el archivo frío ~0,2 GB: entra en el disco actual junto a
    SQLite hasta el corte, siempre que el corte llegue antes de que el libre baje de ~15 GB (~4
-   meses, §2.1). Falta medir CPU y RAM del server (Fase 0, ítem 7) para dimensionar Postgres.
+   meses, §2.1). **Server medido (2026-10-01): 4 vCPU, 7,4 GiB de RAM con ~2,6 GiB disponibles y
+   sin swap.** Alcanza para Postgres con poca memoria (`shared_buffers` ~1 GB, `work_mem` chico:
+   las lecturas van a agregados), pero **hay que agregar swap (4 GB) antes de instalarlo**: sin
+   swap, un pico de memoria mata procesos (OOM) en lugar de ponerlos lentos.
 5. ~~**TimescaleDB o Postgres puro**~~ **Resuelto (2026-10-01): PostgreSQL 16 + TimescaleDB**
    (edición comunitaria, §8).
 6. ~~**Tolerancia a downtime** en el corte~~. **Resuelto (2026-09-30): se puede detener la

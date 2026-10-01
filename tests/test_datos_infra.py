@@ -58,3 +58,49 @@ def test_valores_recientes(db, ahora):
     db.commit()
     vals = infra.valores_recientes(db, "H01", "$.collection_meta.dicom_routing", ahora - timedelta(minutes=30))
     assert vals == [meta, None]
+
+
+def _json_agente(cpu, ram, temps, vms=()):
+    return {
+        "physical_layer": {
+            "telemetry": {"cpu": {"usage_percent": cpu}, "ram": {"usage_percent": ram}},
+            "sensors": {"temperatures": [{"name": n, "value": v, "unit": "C"} for n, v in temps]},
+            "network_health": {"cloud_latency_ms": 40, "upload_usage_mbps": 1, "download_usage_mbps": 2},
+        },
+        "virtual_layer": [{"id": vid, "telemetry": {"cpu": {"usage_percent": c}, "ram": {"usage_percent": r}}}
+                          for vid, c, r in vms],
+    }
+
+
+def test_metricas_de_formato_actual_y_viejo(ahora):
+    p = infra.metricas_de(ahora, _json_agente(12.5, 60, [("Inlet Ambient", 22), ("CPU1", "41")], [("APPV", 5, 70)]))
+    assert (p.cpu_host, p.ram_host, p.temp_amb) == (12.5, 60.0, 22.0)
+    assert p.temperaturas == {"Inlet Ambient": 22.0, "CPU1": 41.0}
+    assert p.vms == {"APPV": {"cpu": 5, "ram": 70}}
+    assert p.red == {"lat": 40, "up": 1, "dw": 2}
+
+    viejo = {"physical_host": {"telemetry": {}}, "environment": {"thermal": {
+                 "ambient_temp_c": 24, "cpu_temps": [{"sensor": "CPU", "temp_c": 50}]}},
+             "vms": {"VM1": {"metrics": {"cpu_load_percent": 9, "ram": {"percent": 33}}}}}
+    p = infra.metricas_de(ahora, viejo)
+    assert p.cpu_host is None and p.temp_amb == 24.0
+    assert p.temperaturas == {"CPU": 50.0}
+    assert p.vms == {"VM1": {"cpu": 9, "ram": 33}}
+
+
+def test_serie_infra_rango_limite_y_submuestreo(db, ahora):
+    for m in range(100):
+        _reporte(db, "H01", ahora - timedelta(minutes=m), _json_agente(m, 50, [("CPU1", 40)]))
+    db.commit()
+    serie = infra.serie_infra(db, "H01", ahora - timedelta(minutes=49), ahora - timedelta(minutes=10))
+    assert [p.cpu_host for p in serie] == [float(m) for m in range(49, 9, -1)]   # cronológico, bordes incluidos
+    assert len(infra.serie_infra(db, "H01", ahora - timedelta(hours=2), limite=30)) == 30
+    assert len(infra.serie_infra(db, "H01", ahora - timedelta(hours=2), max_puntos=25)) == 25
+    assert infra.serie_infra(db, "NUNCA", ahora - timedelta(hours=2)) == []
+
+
+def test_ultimo_reporte_hasta(db, ahora):
+    _reporte(db, "H01", ahora - timedelta(days=2), {"v": "viejo"})
+    _reporte(db, "H01", ahora, {"v": "nuevo"})
+    db.commit()
+    assert infra.ultimo_reporte(db, "H01", hasta=ahora - timedelta(days=1)).data == {"v": "viejo"}

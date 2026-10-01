@@ -22,6 +22,7 @@ import io
 import matplotlib.ticker as ticker
 
 import database
+from datos import infra as datos_infra
 from database import HospitalMetadata, HistorialReportes, AlertaModel
 import asana_conector
 import os
@@ -373,38 +374,12 @@ def generar_grafico_temporal(datos_equipo):
     plt.close(fig)
     return buf
 
-def generar_grafico_temperaturas_infra(result):
-    if not result: return None
-    
-    registros_planos = []
-    for row in result:
-        try:
-            ts = row.timestamp
-            if isinstance(ts, str):
-                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
-                    try:
-                        ts = datetime.strptime(ts, fmt)
-                        break
-                    except:
-                        continue
-            if isinstance(ts, str):
-                continue
+def generar_grafico_temperaturas_infra(puntos):
+    """Evolución de cada sensor de temperatura. `puntos`: datos_infra.serie_infra()."""
+    if not puntos: return None
 
-            data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
-            if not data: continue
-                
-            phy = data.get("physical_layer") or {}
-            sensors = phy.get("sensors") or {}
-            temps = sensors.get("temperatures") or []
-            
-            for t in temps:
-                name = t.get("name") or "Desc"
-                val = t.get("value")
-                if val is not None:
-                    try: registros_planos.append((ts, name, float(val)))
-                    except (TypeError, ValueError): continue
-        except:
-            continue
+    registros_planos = [(p.timestamp, nombre, valor)
+                        for p in puntos for nombre, valor in p.temperaturas.items()]
 
     if not registros_planos: return None
 
@@ -778,27 +753,16 @@ def generar_pdf_infra(req, db: Session):
     f_ini = parse_f(req.fecha_desde)
     f_fin = parse_f(req.fecha_hasta) + timedelta(days=1)
     
-    query = text("""
-        SELECT timestamp, host_cpu_usage, host_ram_usage, full_json_data 
-        FROM reportes_historicos 
-        WHERE hospital_id = :hid AND timestamp BETWEEN :f1 AND :f2
-        ORDER BY timestamp ASC
-    """)
-    result = db.execute(query, {"hid": req.hospital_id, "f1": f_ini, "f2": f_fin}).fetchall()
+    puntos = datos_infra.serie_infra(db, req.hospital_id, f_ini, f_fin)
 
-    if not result:
+    if not puntos:
         return {"error": "No hay datos para el periodo"}
 
-    metrics_host = {"cpu": [], "ram": []}
-    for row in result:
-        data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
-        tele = (data.get("physical_layer") or {}).get("telemetry") or {}
-        cpu_p = tele.get("cpu", {}).get("usage_percent")
-        ram_p = tele.get("ram", {}).get("usage_percent")
-        if cpu_p is not None: metrics_host["cpu"].append(cpu_p)
-        if ram_p is not None: metrics_host["ram"].append(ram_p)
+    metrics_host = {"cpu": [p.cpu_host for p in puntos if p.cpu_host is not None],
+                    "ram": [p.ram_host for p in puntos if p.ram_host is not None]}
 
-    ultimo_json = json.loads(result[-1].full_json_data) if isinstance(result[-1].full_json_data, str) else result[-1].full_json_data
+    # Inventario (sensores, RAID, VMs y discos): el último reporte del período.
+    ultimo_json = datos_infra.ultimo_reporte(db, req.hospital_id, hasta=f_fin).data
     phy = ultimo_json.get("physical_layer") or {}
     vms_raw = ultimo_json.get("virtual_layer") or []
 
@@ -829,7 +793,7 @@ def generar_pdf_infra(req, db: Session):
 
     segundos_totales = (f_fin - f_ini).total_seconds()
     reportes_esperados = segundos_totales / 600 # Se espera minimo un reporte cada 10 minutos
-    uptime_pct = min(100.0, (len(result) / reportes_esperados * 100))
+    uptime_pct = min(100.0, (len(puntos) / reportes_esperados * 100))
 
     draw_kpi("UPTIME ESTIMADO", f"{round(uptime_pct, 2)}%", 60, pos_y - 25, (0.15, 0.68, 0.37))
     draw_kpi("AVG CPU HOST", f"{round(np.mean(metrics_host['cpu']), 1) if metrics_host['cpu'] else 'N/A'}%", 210, pos_y - 25)
@@ -840,31 +804,19 @@ def generar_pdf_infra(req, db: Session):
     c.drawString(40, pos_y, "ESTADO DE SENSORES Y EVOLUCIÓN TÉRMICA")
     pos_y -= 10
     
-    img_temp = generar_grafico_temperaturas_infra(result)
+    img_temp = generar_grafico_temperaturas_infra(puntos)
     if img_temp:
         c.drawImage(ImageReader(img_temp), 35, pos_y - 210, width=ancho-70, height=210, mask='auto')
         pos_y -= 230
 
     # --- CÁLCULO HISTÓRICO DE SENSORES TÉRMICOS ---
+    # La unidad es inventario del sensor: se toma del último reporte del período.
+    unidades = {t.get("name"): t.get("unit", "C")
+                for t in (phy.get("sensors") or {}).get("temperatures") or []}
     temp_stats = {}
-    for row in result:
-        row_data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
-        if not row_data: continue
-        
-        temps_list = row_data.get("physical_layer", {}).get("sensors", {}).get("temperatures", [])
-        for t in temps_list:
-            name = t.get("name", "Desc")
-            val = t.get("value")
-            unit = t.get("unit", "C")
-            
-            if val is not None:
-                try:
-                    val_float = float(val)
-                    if name not in temp_stats:
-                        temp_stats[name] = {"values": [], "unit": unit}
-                    temp_stats[name]["values"].append(val_float)
-                except (TypeError, ValueError):
-                    continue
+    for p in puntos:
+        for name, val in p.temperaturas.items():
+            temp_stats.setdefault(name, {"values": [], "unit": unidades.get(name, "C")})["values"].append(val)
 
     if temp_stats:
         data_t = [["Sensor", "Temperatura Promedio", "Temperatura Máxima"]]
