@@ -18,7 +18,8 @@ from typing import Optional
 from sqlalchemy import bindparam, text
 
 from .infra import json_a_dict
-from .tiempo import parsear_ts
+from . import pg
+from .tiempo import es_postgres, parsear_ts
 
 MIRTH = "mirth"
 DICOM_ROUTING = "dicom_routing"
@@ -57,6 +58,8 @@ def ultimas_lecturas(db, hospital_id, apps, n=1, por_id=False):
     inserción en vez de por timestamp (backups SQL: la ingesta renueva la
     última fila en el lugar).
     """
+    if es_postgres(db):
+        return pg.ultimas_lecturas(db, hospital_id=hospital_id, apps=apps, n=n, por_id=por_id)
     orden = "id DESC" if por_id else "timestamp DESC"
     filas = db.execute(
         text(f"""
@@ -76,9 +79,13 @@ def ultimas_lecturas(db, hospital_id, apps, n=1, por_id=False):
 def lecturas(db, hospital_id, apps, desde, limite=None, por_componente=False):
     """
     Lecturas del hospital desde `desde`, en orden cronológico (o por
-    componente y después cronológico, si `por_componente`).
+    componente y después cronológico, si `por_componente`). Las de un mismo
+    instante (varios canales o estados leídos juntos) van por componente: el
+    orden no depende de cómo guarde las filas cada motor.
     """
-    orden = "component_id, timestamp ASC" if por_componente else "timestamp ASC"
+    if es_postgres(db):
+        return pg.lecturas(db, hospital_id=hospital_id, apps=apps, desde=desde, limite=limite, por_componente=por_componente)
+    orden = "component_id, timestamp ASC" if por_componente else "timestamp ASC, component_id, app_name"
     filtro_limite = " LIMIT :limite" if limite else ""
     filas = db.execute(
         text(f"""
@@ -97,6 +104,8 @@ def ultima_foto(db, hospital_id, app):
     (hora, [lecturas]) de la última lectura completa de una app cuyas filas
     comparten el timestamp (portal paciente). (None, []) si nunca reportó.
     """
+    if es_postgres(db):
+        return pg.ultima_foto(db, hospital_id=hospital_id, app=app)
     # El valor crudo de MAX() se reusa tal cual en el filtro de igualdad:
     # convertirlo a datetime y volver a bindearlo puede no coincidir con el
     # texto guardado (microsegundos en SQLite).
@@ -109,7 +118,8 @@ def ultima_foto(db, hospital_id, app):
         return None, []
     filas = db.execute(
         text("SELECT app_name, component_id, status_value, metric_value, extra_data, timestamp "
-             "FROM software_monitoring WHERE hospital_id = :hid AND app_name = :app AND timestamp = :ts"),
+             "FROM software_monitoring WHERE hospital_id = :hid AND app_name = :app AND timestamp = :ts "
+             "ORDER BY component_id"),
         {"hid": hospital_id, "app": app, "ts": ultimo_raw},
     ).fetchall()
     return ultimo, [_lectura(f) for f in filas]

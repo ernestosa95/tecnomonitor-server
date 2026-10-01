@@ -26,8 +26,8 @@ from typing import Optional
 @dataclass
 class Filas:
     host: dict
-    sensores: list = field(default_factory=list)     # {tipo, nombre, valor}
-    vms: list = field(default_factory=list)          # {vm, cpu_pct, ram_pct, ram_usada_gb, arranque, estado, motivo, error}
+    sensores: list = field(default_factory=list)     # {tipo, nombre, orden, valor}
+    vms: list = field(default_factory=list)          # {vm, origen, cpu_pct, ram_pct, ram_usada_gb, arranque, estado, motivo, error}
     discos: list = field(default_factory=list)       # {vm, montaje, uso_pct, libre_gb, latencia_ms}
     servicios: list = field(default_factory=list)    # {vm, servicio, cpu_pct, ram_mb, hilos, handles}
     meta: Optional[dict] = None                      # collection_meta
@@ -104,9 +104,9 @@ def transformar(ts: datetime, data: dict, host_status: Optional[str] = None) -> 
     for tipo, lista, clave in (("temp", sensors.get("temperatures"), "value"),
                                ("fan", sensors.get("fans"), "value"),
                                ("psu", power.get("supplies"), "watts")):
-        for s in lista or []:
+        for orden, s in enumerate(lista or []):
             if isinstance(s, dict) and s.get("name"):
-                filas.sensores.append({"tipo": tipo, "nombre": s["name"], "valor": _num(s.get(clave))})
+                filas.sensores.append({"tipo": tipo, "nombre": s["name"], "orden": orden, "valor": _num(s.get(clave))})
                 s.pop(clave, None)
 
     for clave_raid in ("storage_layer", "storage"):
@@ -115,7 +115,9 @@ def transformar(ts: datetime, data: dict, host_status: Optional[str] = None) -> 
             raid["error"] = _HEX.sub("", raid["error"])
 
     # --- VMs: virtual_layer (Proxmox/WMI) y physical_layer.vms (VMware) ---
-    for vm in list(inv.get("virtual_layer") or []) + list(phy.get("vms") or []):
+    vms_con_origen = ([("virtual_layer", v) for v in inv.get("virtual_layer") or []]
+                      + [("hipervisor", v) for v in phy.get("vms") or []])
+    for orden, (origen, vm) in enumerate(vms_con_origen):
         if not isinstance(vm, dict) or not vm.get("id"):
             continue
         vid = vm["id"]
@@ -123,6 +125,8 @@ def transformar(ts: datetime, data: dict, host_status: Optional[str] = None) -> 
         vcpu, vram = vt.get("cpu") or {}, vt.get("ram") or {}
         filas.vms.append({
             "vm": vid,
+            "origen": origen,     # virtual_layer (WMI/Proxmox) o hipervisor (VMware: physical_layer.vms)
+            "orden": orden,       # posición en el reporte: el panel y los PDF muestran en ese orden
             "cpu_pct": _num(vcpu.get("usage_percent")),
             "ram_pct": _num(vram.get("usage_percent")),
             "ram_usada_gb": _num(vram.get("used_gb")),

@@ -917,7 +917,9 @@ def generar_pdf_infra(req, db: Session):
                 t_d.setStyle(TableStyle([('FONTSIZE',(0,0),(-1,-1),7), ('GRID',(0,0),(-1,-1),0.2,colors.grey)]))
                 tw, th = t_d.wrap(0,0); t_d.drawOn(c, 60, pos_y - th); pos_y -= (th + 15)
 
-    alertas = db.query(AlertaModel).filter(AlertaModel.hospital_id == req.hospital_id, AlertaModel.start_time >= f_ini).all()
+    # Más recientes primero (la tabla muestra 12): es el orden en que las devolvía el índice
+    # idx_alertas_hosp_time en SQLite, ahora explícito para que no dependa del motor.
+    alertas = db.query(AlertaModel).filter(AlertaModel.hospital_id == req.hospital_id, AlertaModel.start_time >= f_ini).order_by(AlertaModel.start_time.desc(), AlertaModel.id.desc()).all()
     if alertas:
         c.setFont("Helvetica-Bold", 11); c.setFillColorRGB(0.7, 0.1, 0.1)
         c.drawString(40, pos_y - 10, "HISTORIAL DE INCIDENTES RELEVANTES"); pos_y -= 30

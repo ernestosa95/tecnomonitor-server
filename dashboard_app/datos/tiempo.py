@@ -25,3 +25,31 @@ def parsear_ts(ts_val):
         return datetime.strptime(s.replace("T", " ").split(".")[0], "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Postgres guarda timestamptz (UTC); el resto del código trabaja con hora local
+# sin zona, como siempre. La conversión pasa solo acá (docs/14, decisión 7).
+# ---------------------------------------------------------------------------
+from zoneinfo import ZoneInfo  # noqa: E402
+
+ZONA = ZoneInfo("America/Argentina/Buenos_Aires")
+
+
+def a_local(ts):
+    """timestamptz de Postgres -> hora local sin zona (lo que espera el código)."""
+    if ts is None or ts.tzinfo is None:
+        return ts
+    return ts.astimezone(ZONA).replace(tzinfo=None)
+
+
+def a_pg(ts):
+    """Hora local sin zona (la de datetime.now()) -> con zona, para comparar contra timestamptz."""
+    if ts is None or ts.tzinfo is not None:
+        return ts
+    return ts.replace(tzinfo=ZONA)
+
+
+def es_postgres(db):
+    """La sesión apunta a Postgres (el histórico vive en el esquema nuevo)."""
+    return db.get_bind().dialect.name == "postgresql"

@@ -111,8 +111,8 @@ def _ultimo_estado_por_component(db, hid):
 
 
 def _armar_inventario_canales(hid, db):
-    topo_por_channel = {t.channel_id: t for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hid).all()}
-    meta_por_channel = {m.channel_id: m for m in db.query(database.MirthCanalMeta).filter_by(hospital_id=hid).all()}
+    topo_por_channel = {t.channel_id: t for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hid).order_by(database.MirthChannelTopology.id).all()}
+    meta_por_channel = {m.channel_id: m for m in db.query(database.MirthCanalMeta).filter_by(hospital_id=hid).order_by(database.MirthCanalMeta.id).all()}
     ultimo_por_component = _ultimo_estado_por_component(db, hid)
 
     vistos = set()

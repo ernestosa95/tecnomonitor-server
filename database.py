@@ -6,28 +6,37 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
 
+from dotenv import load_dotenv
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "monitor_hospitales.db")
 
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+# Motor por configuración (docs/14 §9.3, A4): sin DATABASE_URL sigue en SQLite, como siempre.
+# Postgres: DATABASE_URL=postgresql://usuario:clave@127.0.0.1:5432/tecnomonitor en el .env.
+# Este módulo se importa antes que los que cargan el .env, por eso lo carga él.
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{DB_PATH}"
+ES_SQLITE = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
 
-# --- 2. MODIFICADO: Agregamos el timeout de 15 segundos ---
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={
-        "check_same_thread": False,
-        "timeout": 15  # Le da a SQLite un margen de 15s para esperar si está ocupada
-    }
-)
+if ES_SQLITE:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 15  # Le da a SQLite un margen de 15s para esperar si está ocupada
+        }
+    )
 
-# --- 3. NUEVO: Activamos el modo WAL (Write-Ahead Logging) ---
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")
-    cursor.close()
-# -----------------------------------------------------------
+    # Modo WAL (Write-Ahead Logging)
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+else:
+    # pool_pre_ping: si Postgres se reinició, la conexión vieja se descarta en vez de fallar.
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_size=10, max_overflow=10, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -452,4 +461,8 @@ class MonitoreoModulo(Base):
 
 
 # --- FINAL DEL ARCHIVO: SE CREAN TODAS LAS TABLAS REGISTRADAS EN 'Base' ---
-Base.metadata.create_all(bind=engine)
+# En Postgres el histórico vive en el esquema nuevo (postgres/esquema.sql): las tres tablas
+# históricas de SQLite no se crean ahí.
+TABLAS_HISTORICAS_SQLITE = {"reportes_historicos", "reportes_uso", "software_monitoring"}
+Base.metadata.create_all(bind=engine, tables=None if ES_SQLITE else [
+    t for t in Base.metadata.sorted_tables if t.name not in TABLAS_HISTORICAS_SQLITE])

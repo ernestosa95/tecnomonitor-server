@@ -104,6 +104,8 @@ def main():
         cp.add("kpi_reporte", [rid, hid, _ts(ts_txt), cab["desde"], cab["hasta"], cab["intervalo_horas"]])
         for tabla, items in (("kpi_ris", ris), ("kpi_pacs", pacs), ("kpi_usuarios", usuarios)):
             for it in items:
+                if len(cp.buf[tabla]) + 1 >= cp.bloque:
+                    cp.flush("kpi_reporte")      # los ítems referencian a su reporte: va primero
                 cp.add(tabla, [rid] + [it[c] for c in COLUMNAS[tabla][1:]])
     cp.flush()
     pg.commit()

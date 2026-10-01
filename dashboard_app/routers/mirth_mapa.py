@@ -139,8 +139,8 @@ def obtener_mapa_mirth(hospital_id: str, minutos: int = 180, paso: int = 5, incl
         database.MirthNodo.orden
     ).all()
     nodos_por_id = {n.id: n for n in nodos_curados}
-    meta_por_channel = {m.channel_id: m for m in db.query(database.MirthCanalMeta).filter_by(hospital_id=hospital_id).all()}
-    topo_por_channel = {t.channel_id: t for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hospital_id).all()}
+    meta_por_channel = {m.channel_id: m for m in db.query(database.MirthCanalMeta).filter_by(hospital_id=hospital_id).order_by(database.MirthCanalMeta.id).all()}
+    topo_por_channel = {t.channel_id: t for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hospital_id).order_by(database.MirthChannelTopology.id).all()}
     component_a_channel = {t.component_id: t.channel_id for t in topo_por_channel.values()}
     padres_por_target = _mapa_padres(topo_por_channel)
 
@@ -305,7 +305,7 @@ def obtener_acumulado_mirth(hospital_id: str, minutos: int = 1440,
 
     component_a_channel = {
         t.component_id: t.channel_id
-        for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hospital_id).all()
+        for t in db.query(database.MirthChannelTopology).filter_by(hospital_id=hospital_id).order_by(database.MirthChannelTopology.id).all()
     }
     filas = datos_sw.lecturas(db, hospital_id, datos_sw.MIRTH, t0)
 

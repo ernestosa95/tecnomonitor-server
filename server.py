@@ -105,6 +105,8 @@ async def ciclo_vigilancia():
 
         # --- TAREA A: MANTENIMIENTO PROGRAMADO DE DB (Cada 24 horas) ---
         ticks_mantenimiento += 1
+        if ticks_mantenimiento >= LIMIT_TICKS_DIA and not database.ES_SQLITE:
+            ticks_mantenimiento = 0   # el resumen de maintenance.py es solo para SQLite (docs/14 §6)
         if ticks_mantenimiento >= LIMIT_TICKS_DIA:
             print("🧹 Ejecutando mantenimiento programado de DB...")
             try:

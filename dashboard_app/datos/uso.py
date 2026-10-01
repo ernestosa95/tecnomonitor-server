@@ -16,7 +16,8 @@ from typing import Optional
 from sqlalchemy import text
 
 from .infra import json_a_dict
-from .tiempo import parsear_ts
+from . import pg
+from .tiempo import es_postgres, parsear_ts
 
 # Un backfill o un agente atrasado puede insertar un período hasta unos días
 # después de que ocurrió: al filtrar por fecha del evento se lee con este margen
@@ -51,6 +52,8 @@ def _reporte(fila):
 
 def reportes_uso(db, hospital_id, desde=None):
     """Reportes del hospital insertados desde `desde` (todos si es None), por orden de inserción."""
+    if es_postgres(db):
+        return pg.reportes_uso(db, hospital_id=hospital_id, desde=desde)
     filtro = " AND timestamp >= :desde" if desde is not None else ""
     filas = db.execute(
         text(f"SELECT timestamp, kpi_json_data FROM reportes_uso WHERE hospital_id = :hid{filtro} "
@@ -65,6 +68,8 @@ def reportes_uso_por_evento(db, hospital_id, desde, hasta=None, limite=None):
     Reportes cuya fecha del evento cae en [desde, hasta), en orden de
     inserción. `limite` corta la consulta (por fecha de inserción) antes de filtrar.
     """
+    if es_postgres(db):
+        return pg.reportes_uso_por_evento(db, hospital_id=hospital_id, desde=desde, hasta=hasta, limite=limite)
     filtro_limite = " LIMIT :limite" if limite else ""
     filas = db.execute(
         text("SELECT timestamp, kpi_json_data FROM reportes_uso "

@@ -18,7 +18,8 @@ from typing import Optional
 
 from sqlalchemy import text
 
-from .tiempo import parsear_ts
+from . import pg
+from .tiempo import es_postgres, parsear_ts
 
 
 @dataclass
@@ -53,6 +54,8 @@ def _reporte(fila):
 
 def ultimo_timestamp(db, hospital_id):
     """Hora del último reporte del hospital, o None si nunca reportó (o es ilegible, con aviso)."""
+    if es_postgres(db):
+        return pg.ultimo_timestamp(db, hospital_id=hospital_id)
     fila = db.execute(
         text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid "
              "ORDER BY timestamp DESC LIMIT 1"),
@@ -68,6 +71,8 @@ def ultimo_timestamp(db, hospital_id):
 
 def ultimo_reporte(db, hospital_id, hasta=None):
     """Último reporte del hospital (anterior a `hasta`, si se pasa), o None si no hay."""
+    if es_postgres(db):
+        return pg.ultimo_reporte(db, hospital_id=hospital_id, hasta=hasta)
     filtro_hasta = " AND timestamp <= :hasta" if hasta is not None else ""
     fila = db.execute(
         text("SELECT hospital_id, timestamp, host_status, full_json_data FROM reportes_historicos "
@@ -79,6 +84,8 @@ def ultimo_reporte(db, hospital_id, hasta=None):
 
 def ultimos_reportes(db):
     """El último reporte de cada hospital que alguna vez reportó (una consulta para todos)."""
+    if es_postgres(db):
+        return pg.ultimos_reportes(db)
     filas = db.execute(text("""
         SELECT h.hospital_id, h.timestamp, h.host_status, h.full_json_data
         FROM reportes_historicos h
@@ -95,6 +102,8 @@ def valores_recientes(db, hospital_id, ruta_json, desde):
     reporte del hospital desde `desde`, en orden cronológico. Lee solo esa
     parte del JSON. Cada elemento es el valor parseado, o None si falta.
     """
+    if es_postgres(db):
+        return pg.valores_recientes(db, hospital_id=hospital_id, ruta_json=ruta_json, desde=desde)
     filas = db.execute(
         text("SELECT json_extract(full_json_data, :ruta) AS valor FROM reportes_historicos "
              "WHERE hospital_id = :hid AND timestamp >= :desde ORDER BY timestamp ASC"),
@@ -192,6 +201,8 @@ def serie_infra(db, hospital_id, desde, hasta=None, max_puntos=None, limite=None
     gráfico de siempre); `max_puntos` submuestrea parejo antes de parsear.
     Los reportes con timestamp ilegible se omiten.
     """
+    if es_postgres(db):
+        return pg.serie_infra(db, hospital_id=hospital_id, desde=desde, hasta=hasta, max_puntos=max_puntos, limite=limite)
     filtro_hasta = " AND timestamp <= :hasta" if hasta is not None else ""
     filtro_limite = " LIMIT :limite" if limite else ""
     filas = db.execute(

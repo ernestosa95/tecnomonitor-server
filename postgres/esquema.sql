@@ -36,13 +36,13 @@ CREATE UNIQUE INDEX inventario_actual ON inventario (hospital_id) WHERE vigente_
 CREATE TABLE metricas_host (
     ts             timestamptz NOT NULL,
     hospital_id    text        NOT NULL,
-    cpu_pct        real,
-    ram_pct        real,
-    ram_usada_gb   real,
-    potencia_w     real,
-    latencia_ms    real,
-    subida_mbps    real,
-    bajada_mbps    real,
+    cpu_pct        double precision,
+    ram_pct        double precision,
+    ram_usada_gb   double precision,
+    potencia_w     double precision,
+    latencia_ms    double precision,
+    subida_mbps    double precision,
+    bajada_mbps    double precision,
     arranque       timestamptz,                -- ts - uptime: cambia solo al reiniciar
     host_status    text                        -- el que hoy calcula la ingesta (OK/WARNING/...)
 );
@@ -54,7 +54,8 @@ CREATE TABLE metricas_sensor (
     hospital_id    text        NOT NULL,
     tipo           text        NOT NULL,       -- 'temp' | 'fan' | 'psu'
     nombre         text        NOT NULL,
-    valor          real
+    orden          smallint,                   -- posición en la lista del agente
+    valor          double precision
 );
 SELECT create_hypertable('metricas_sensor', by_range('ts', INTERVAL '7 days'));
 CREATE INDEX ON metricas_sensor (hospital_id, ts DESC);
@@ -63,9 +64,11 @@ CREATE TABLE metricas_vm (
     ts             timestamptz NOT NULL,
     hospital_id    text        NOT NULL,
     vm             text        NOT NULL,
-    cpu_pct        real,
-    ram_pct        real,
-    ram_usada_gb   real,
+    origen         text        NOT NULL,       -- 'virtual_layer' | 'hipervisor' (VMware: physical_layer.vms)
+    orden          smallint,                   -- posición en el reporte
+    cpu_pct        double precision,
+    ram_pct        double precision,
+    ram_usada_gb   double precision,
     arranque       timestamptz,
     estado         text,                       -- state: Online / Offline / ...
     motivo         text,                       -- state_reason
@@ -79,9 +82,9 @@ CREATE TABLE metricas_disco (
     hospital_id    text        NOT NULL,
     vm             text        NOT NULL,
     montaje        text        NOT NULL,
-    uso_pct        real,
-    libre_gb       real,
-    latencia_ms    real
+    uso_pct        double precision,
+    libre_gb       double precision,
+    latencia_ms    double precision
 );
 SELECT create_hypertable('metricas_disco', by_range('ts', INTERVAL '7 days'));
 CREATE INDEX ON metricas_disco (hospital_id, vm, montaje, ts DESC);
@@ -91,8 +94,8 @@ CREATE TABLE metricas_servicio (
     hospital_id    text        NOT NULL,
     vm             text        NOT NULL,
     servicio       text        NOT NULL,
-    cpu_pct        real,
-    ram_mb         real,
+    cpu_pct        double precision,
+    ram_mb         double precision,
     hilos          integer,
     handles        integer
 );
@@ -257,7 +260,7 @@ CREATE TABLE kpi_reporte (
     insertado      timestamptz NOT NULL,
     desde          timestamptz,
     hasta          timestamptz,
-    intervalo_horas real
+    intervalo_horas double precision
 );
 CREATE INDEX ON kpi_reporte (hospital_id, desde);
 CREATE INDEX ON kpi_reporte (hospital_id, insertado);

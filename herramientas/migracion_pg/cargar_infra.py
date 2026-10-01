@@ -69,8 +69,8 @@ class Copiador:
 COLUMNAS = {
     "metricas_host": ["ts", "hospital_id", "cpu_pct", "ram_pct", "ram_usada_gb", "potencia_w", "latencia_ms",
                       "subida_mbps", "bajada_mbps", "arranque", "host_status"],
-    "metricas_sensor": ["ts", "hospital_id", "tipo", "nombre", "valor"],
-    "metricas_vm": ["ts", "hospital_id", "vm", "cpu_pct", "ram_pct", "ram_usada_gb", "arranque",
+    "metricas_sensor": ["ts", "hospital_id", "tipo", "nombre", "orden", "valor"],
+    "metricas_vm": ["ts", "hospital_id", "vm", "origen", "orden", "cpu_pct", "ram_pct", "ram_usada_gb", "arranque",
                     "estado", "motivo", "error"],
     "metricas_disco": ["ts", "hospital_id", "vm", "montaje", "uso_pct", "libre_gb", "latencia_ms"],
     "metricas_servicio": ["ts", "hospital_id", "vm", "servicio", "cpu_pct", "ram_mb", "hilos", "handles"],
@@ -116,9 +116,9 @@ def main():
         cp.add("metricas_host", [ts, hid, h["cpu_pct"], h["ram_pct"], h["ram_usada_gb"], h["potencia_w"],
                                  h["latencia_ms"], h["subida_mbps"], h["bajada_mbps"], h["arranque"], h["host_status"]])
         for s in f.sensores:
-            cp.add("metricas_sensor", [ts, hid, s["tipo"], s["nombre"], s["valor"]])
+            cp.add("metricas_sensor", [ts, hid, s["tipo"], s["nombre"], s["orden"], s["valor"]])
         for v in f.vms:
-            cp.add("metricas_vm", [ts, hid, v["vm"], v["cpu_pct"], v["ram_pct"], v["ram_usada_gb"], v["arranque"],
+            cp.add("metricas_vm", [ts, hid, v["vm"], v["origen"], v["orden"], v["cpu_pct"], v["ram_pct"], v["ram_usada_gb"], v["arranque"],
                                    v["estado"], v["motivo"], v["error"]])
         for d in f.discos:
             cp.add("metricas_disco", [ts, hid, d["vm"], d["montaje"], d["uso_pct"], d["libre_gb"], d["latencia_ms"]])

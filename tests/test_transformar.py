@@ -43,9 +43,9 @@ def test_extrae_metricas():
     assert f.host["cpu_pct"] == 13.8 and f.host["ram_pct"] == 82.5 and f.host["potencia_w"] == 295
     assert f.host["latencia_ms"] == 43.6 and f.host["host_status"] == "OK"
     assert f.host["arranque"] == TS - timedelta(hours=1)
-    assert {(s["tipo"], s["nombre"], s["valor"]) for s in f.sensores} == {
-        ("temp", "CPU1 Temp", 44.0), ("fan", "Fan1A", 6120.0), ("psu", "PS1", 264.0)}
-    assert f.vms == [{"vm": "APPV", "cpu_pct": 69.0, "ram_pct": 91.1, "ram_usada_gb": 43.7,
+    assert {(s["tipo"], s["nombre"], s["orden"], s["valor"]) for s in f.sensores} == {
+        ("temp", "CPU1 Temp", 0, 44.0), ("fan", "Fan1A", 0, 6120.0), ("psu", "PS1", 0, 264.0)}
+    assert f.vms == [{"vm": "APPV", "origen": "virtual_layer", "orden": 0, "cpu_pct": 69.0, "ram_pct": 91.1, "ram_usada_gb": 43.7,
                       "arranque": datetime(2026, 10, 1, 12, 43, tzinfo=timezone.utc),   # 12:43:20 -> 12:43
                       "estado": "Online", "motivo": "ok", "error": None}]
     assert f.discos == [{"vm": "APPV", "montaje": "C:", "uso_pct": 40.3, "libre_gb": 268.7, "latencia_ms": 0.0}]
@@ -82,7 +82,7 @@ def test_variantes_viejas_del_agente():
                                    "telemetry": {"cpu": {"usage_percent": 7}, "ram": {"usage_percent": 30, "used_gb": 2}}}]
     f = transformar(TS, copy.deepcopy(d), None)
     assert f.inventario["physical_layer"]["storage"]["error"] == "x"
-    assert {v["vm"] for v in f.vms} == {"APPV", "ESX-VM1"}
+    assert {(v["vm"], v["origen"]) for v in f.vms} == {("APPV", "virtual_layer"), ("ESX-VM1", "hipervisor")}
     assert transformar(TS, {}, None).host["cpu_pct"] is None
 
 
