@@ -1414,61 +1414,131 @@ async function cargarAlertas() {
 }
 
 // --- ALERTAS (VISTA) ---
-function renderizarAlertas(data) {
-    // 1. Renderizar Alertas Activas
-    const tbodyA = document.getElementById('alertas-activas-body');
+// Incidentes en curso agrupados por nivel (crítico / advertencia / aviso) y, dentro de cada nivel,
+// por categoría (discos, CPU, Mirth...). El nivel sale del prefijo del mensaje ("[CRITICAL] ...",
+// lo pone alerts_engine/estado.py) y la categoría, del prefijo de `tipo`. Las categorías abiertas y
+// los niveles cerrados se recuerdan entre refrescos.
+const INC_NIVELES = [
+    { k: 'CRITICAL', label: 'Críticas',     color: 'var(--red)',   bg: 'var(--red-dim)' },
+    { k: 'WARNING',  label: 'Advertencias', color: 'var(--amber)', bg: 'rgba(255,169,64,.14)' },
+    { k: 'NOTICE',   label: 'Avisos',       color: 'var(--blue)',  bg: 'rgba(74,143,255,.14)' },
+];
+// Orden = orden de aparición. Prefijos de `tipo` de cada detector (alerts_engine).
+const INC_CATEGORIAS = [
+    { k: 'conectividad', label: 'Conectividad',            ico: '📡', pref: ['OFFLINE', 'NETWORK_LATENCY'] },
+    { k: 'discos',       label: 'Discos y RAID',           ico: '💽', pref: ['DISK_', 'RAID_'] },
+    { k: 'cpu',          label: 'CPU',                     ico: '⚙️', pref: ['VM_CPU_', 'HOST_CPU'] },
+    { k: 'ram',          label: 'Memoria RAM',             ico: '🧠', pref: ['VM_RAM_', 'HOST_RAM'] },
+    { k: 'temp',         label: 'Temperatura',             ico: '🌡️', pref: ['TEMP_'] },
+    { k: 'energia',      label: 'Ventiladores y fuentes',  ico: '🔌', pref: ['FAN_', 'PSU_'] },
+    { k: 'reinicios',    label: 'Reinicios',               ico: '🔄', pref: ['HOST_UPTIME', 'VM_UPTIME_'] },
+    { k: 'mirth',        label: 'Integraciones Mirth',     ico: '🔀', pref: ['MIRTH_'] },
+    { k: 'dicom',        label: 'Autoenrute DICOM',        ico: '📤', pref: ['DICOM_ROUTE_'] },
+    { k: 'sql',          label: 'Bases SQL',               ico: '🗄️', pref: ['CHECKDB_', 'SQLBACKUP_'] },
+    { k: 'portal',       label: 'Portal paciente',         ico: '🧾', pref: ['PORTAL_'] },
+    { k: 'kpis',         label: 'KPIs de uso',             ico: '📊', pref: ['KPI_INACT_'] },
+];
+const _incAbiertas = new Set();     // "NIVEL|categoria" desplegadas
+const _incNivelesCerrados = new Set();
+
+function _incNivel(mensaje) {
+    const m = /\[(CRITICAL|WARNING|NOTICE)\]/.exec(mensaje || '');
+    return m ? m[1] : 'CRITICAL';
+}
+function _incCategoria(tipo) {
+    const t = tipo || '';
+    return INC_CATEGORIAS.find(c => c.pref.some(p => t.startsWith(p))) || { k: 'otros', label: 'Otros', ico: '•', pref: [] };
+}
+function _incDuracion(desde) {
+    const min = Math.max(0, Math.floor((new Date() - new Date(desde)) / 60000));
+    if (min < 60) return `${min} min`;
+    if (min < 1440) return `${Math.floor(min / 60)} h ${min % 60 ? (min % 60) + ' min' : ''}`.trim();
+    const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60);
+    return `${d} d${h ? ' ' + h + ' h' : ''}`;
+}
+function _incAsana(gid) {
+    if (!gid) return '<span style="color:var(--muted2);font-size:.8em;text-align:center">—</span>';
+    const link = `https://app.asana.com/1/1165430292217894/project/1209783009881570/task/${encodeURIComponent(gid)}?focus=true`;
+    return `<a href="${link}" target="_blank" class="alert-asana-btn" title="Ver en Asana" onclick="event.stopPropagation()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>`;
+}
+function toggleIncNivel(k) {
+    _incNivelesCerrados.has(k) ? _incNivelesCerrados.delete(k) : _incNivelesCerrados.add(k);
+    document.querySelector(`.inc-nivel[data-k="${k}"]`)?.classList.toggle('cerrado', _incNivelesCerrados.has(k));
+}
+function toggleIncCategoria(clave) {
+    _incAbiertas.has(clave) ? _incAbiertas.delete(clave) : _incAbiertas.add(clave);
+    document.querySelector(`.inc-cat[data-k="${clave}"]`)?.classList.toggle('abierta', _incAbiertas.has(clave));
+}
+
+function _renderizarIncidentes(activas) {
+    const cont = document.getElementById('alertas-agrupadas');
     const msg = document.getElementById('no-activas');
-    if (tbodyA) tbodyA.innerHTML = '';
-    
-    if (data.activas.length === 0) { 
-        if(msg) msg.style.display = 'block'; 
-    } else {
-        if(msg) msg.style.display = 'none';
-        data.activas.forEach(a => {
-            const min = Math.floor((new Date() - new Date(a.start_time))/60000);
-            
-            // Lógica de Semáforo para la Etiqueta
-            let badgeClass = 'status-critical'; // Rojo por defecto
-            if (a.mensaje.includes('[NOTICE]')) {
-                badgeClass = 'status-notice';   // Amarillo
-            } else if (a.mensaje.includes('[WARNING]')) {
-                badgeClass = 'status-warning';  // Naranja
-            }
+    if (!cont) return;
+    if (msg) msg.style.display = activas.length ? 'none' : 'block';
 
-            // Botón de Asana con enlace directo (Focus Mode - Nueva API Asana)
-            let asanaBtn = '';
-            if (a.asana_task_gid) {
-                // Usamos el ID de tu Workspace y el ID del Tablero General
-                const workspaceId = '1165430292217894';
-                const tableroGeneralId = '1209783009881570';
-                const asanaLink = `https://app.asana.com/1/${workspaceId}/project/${tableroGeneralId}/task/${a.asana_task_gid}?focus=true`;
-                
-                asanaBtn = `
-                <a href="${asanaLink}" target="_blank" 
-                   style="text-decoration:none; background:#2c3e50; color:white; padding:3px 10px; border-radius:12px; font-size:0.75em; font-weight:600; display:inline-flex; align-items:center; gap:5px; margin-left:10px; transition:0.2s;" 
-                   onmouseover="this.style.background='#f06a6a'" 
-                   onmouseout="this.style.background='#2c3e50'" 
-                   title="Abrir tarea directo en Asana">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
-                    Ver
-                </a>`;
-            }
+    // KPIs de la tarjeta izquierda (antes se leían del DOM de la tabla)
+    const elAct = document.getElementById('kpi-alertas-activas');
+    if (elAct) elAct.textContent = activas.length;
+    const elSedes = document.getElementById('kpi-alertas-sedes');
+    if (elSedes) elSedes.textContent = new Set(activas.map(a => a.hospital_id)).size;
 
-            tbodyA.innerHTML += `
-                <tr>
-                    <td style="font-weight:bold;"><span class="hospital-tag">${a.hospital_id}</span></td>
-                    <td>
-                        <span class="status-badge ${badgeClass}" style="font-size:0.75em; margin-right:5px; color:#000;">${a.tipo}</span> 
-                        <span style="color:#2c3e50;">${a.mensaje}</span>
-                        ${asanaBtn}
-                    </td>
-                    <td style="font-size:0.9em; color:#555;">${new Date(a.start_time).toLocaleString()}</td>
-                    <td style="color:#c0392b; font-weight:bold;">hace ${min} min</td>
-                </tr>`;
+    const chev = '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    let html = '';
+    INC_NIVELES.forEach(nv => {
+        const delNivel = activas.filter(a => _incNivel(a.mensaje) === nv.k);
+        if (!delNivel.length) return;
+
+        const porCat = new Map();
+        delNivel.forEach(a => {
+            const c = _incCategoria(a.tipo);
+            if (!porCat.has(c.k)) porCat.set(c.k, { cat: c, items: [] });
+            porCat.get(c.k).items.push(a);
         });
-    }
+        const orden = [...INC_CATEGORIAS.map(c => c.k), 'otros'];
+        const grupos = [...porCat.values()].sort((x, y) => orden.indexOf(x.cat.k) - orden.indexOf(y.cat.k));
+
+        const cats = grupos.map(({ cat, items }) => {
+            const clave = `${nv.k}|${cat.k}`;
+            items.sort((x, y) => new Date(x.start_time) - new Date(y.start_time));   // el más viejo primero
+            const hosp = [...new Set(items.map(a => a.hospital_id))];
+            const filas = items.map(a => {
+                const desc = String(a.mensaje || '').replace(/^\[(CRITICAL|WARNING|NOTICE)\]\s*/, '');
+                return `<div class="inc-item">
+                    <span class="h">${escapeHtml(a.hospital_id)}</span>
+                    <span class="d" title="${escapeHtml(desc)}">${escapeHtml(desc)}<small>${escapeHtml(a.tipo)}</small></span>
+                    <span class="t" title="Desde ${escapeHtml(new Date(a.start_time).toLocaleString())}"><b>${_incDuracion(a.start_time)}</b>${new Date(a.start_time).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                    ${_incAsana(a.asana_task_gid)}
+                </div>`;
+            }).join('');
+            return `<div class="inc-cat ${_incAbiertas.has(clave) ? 'abierta' : ''}" data-k="${clave}">
+                <div class="inc-cat-h" onclick="toggleIncCategoria('${clave}')">
+                    <span class="inc-cat-ico">${cat.ico}</span>
+                    <span class="inc-cat-nom">${cat.label}</span>
+                    <span class="inc-cat-n" style="color:${nv.color}">${items.length}</span>
+                    <span class="inc-cat-hosp">${hosp.map(h => `<span>${escapeHtml(h)}</span>`).join('')}</span>
+                    ${chev}
+                </div>
+                <div class="inc-items">${filas}</div>
+            </div>`;
+        }).join('');
+
+        html += `<div class="inc-nivel ${_incNivelesCerrados.has(nv.k) ? 'cerrado' : ''}" data-k="${nv.k}">
+            <div class="inc-nivel-h" onclick="toggleIncNivel('${nv.k}')" style="color:${nv.color}">
+                <span>${nv.label}</span>
+                <span class="cnt" style="background:${nv.bg};color:${nv.color}">${delNivel.length}</span>
+                <span style="color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">${grupos.length} categoría${grupos.length > 1 ? 's' : ''} · ${new Set(delNivel.map(a => a.hospital_id)).size} hospital${new Set(delNivel.map(a => a.hospital_id)).size > 1 ? 'es' : ''}</span>
+                ${chev}
+            </div>
+            <div class="inc-cats">${cats}</div>
+        </div>`;
+    });
+    cont.innerHTML = html;
+}
+
+function renderizarAlertas(data) {
+    // 1. Incidentes en curso, agrupados por nivel y categoría
+    _renderizarIncidentes(data.activas || []);
 
     // 2. Renderizar Historial de Alertas
     const tbodyH = document.getElementById('alertas-historial-body');

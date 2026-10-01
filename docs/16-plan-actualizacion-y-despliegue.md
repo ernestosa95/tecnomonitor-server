@@ -1249,6 +1249,27 @@ No son de REQ-07, pero salieron mirando la pestaña con todos los módulos de H0
 
 Los tres desplegados en producción el 2026-09-30.
 
+#### Rediseño de "Incidentes en curso" (vista de alertas, 2026-09-30)
+
+La tarjeta era una tabla paginada de a 8 (24 incidentes = 3 páginas), ordenada por hora de inicio, y
+casi no se usaba: no dejaba ver de un vistazo qué estaba pasando. Ahora agrupa:
+
+- **Por nivel:** Críticas, Advertencias y Avisos, con la cantidad, cuántas categorías y cuántos
+  hospitales. El nivel sale del prefijo del mensaje (`[CRITICAL] …`, lo pone `estado.py`).
+- **Dentro de cada nivel, por categoría**, según el prefijo de `tipo`: Conectividad (`OFFLINE`,
+  `NETWORK_LATENCY`), Discos y RAID, CPU, Memoria RAM, Temperatura, Ventiladores y fuentes,
+  Reinicios, Integraciones Mirth, Autoenrute DICOM, Bases SQL (`CHECKDB_`, `SQLBACKUP_`), Portal
+  paciente, KPIs de uso y Otros. Cada categoría muestra la cantidad y los hospitales afectados.
+- **Al tocar una categoría**, el detalle: hospital, descripción, tipo, hace cuánto (en min / h / d,
+  ya no "hace 806 min"), desde cuándo y el enlace a Asana. El más viejo primero.
+- Sin paginación. Los niveles cerrados y las categorías abiertas se mantienen en cada refresco.
+
+La tabla, su paginación y los tres scripts de `index_beta.html` que la reacomodaban leyendo el DOM
+se eliminaron; los indicadores "Alertas activas" y "Sedes con incidentes" se calculan directo de los
+datos (antes contaban solo las filas de la página visible). Las categorías están en
+`INC_CATEGORIAS` de `static/script.js`: un detector nuevo con otro prefijo cae en "Otros" hasta
+agregarlo ahí.
+
 #### Criterios de aceptación (borrador)
 
 - En el hospital piloto, las consultas corren (a mano en SSMS y por Logstash) y tardan poco.
