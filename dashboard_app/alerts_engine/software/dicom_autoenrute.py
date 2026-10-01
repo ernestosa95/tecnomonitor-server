@@ -20,6 +20,19 @@ hospital que mueve 500 instancias que para el que mueve 15.000.
 Piso habitual por regla: las reglas con un residuo constante evalúan solo el
 exceso sobre su piso (ver dicom_baseline.py y docs/12 §3quater).
 
+Reglas que dejan de reportarse: Logstash indexa por IDRULE con upsert y nunca
+borra, así que una regla eliminada en el PACS queda en el índice con su último
+valor; el agente la descarta por antigüedad y deja de mandarla. Sin filas no
+hay evaluación ni OK, y su alerta quedaba abierta para siempre. Igual que los
+canales fantasma de Mirth, se cierra (con [BAJA]) cuando el hospital sigue
+reportando y la regla no aparece hace más de la ventana crítica.
+
+Índice desactualizado: si TODO el índice está vencido (`collection_meta.
+dicom_routing.status == "stale"` sin reglas vigentes), desde el server no se
+distingue "pipeline de Logstash caído" de "se borró la única regla". Las colas
+se cierran igual (arriba) y queda una alerta liviana por hospital
+(DICOM_INDICE_DESACTUALIZADO) para que un pipeline caído no pase inadvertido.
+
 Nota de dependencia externa: `evaluar_cola`, `_serie_de` y `_ventana` también
 los usa dashboard_app/routers/hospital_detalle.py para mostrar el mismo estado
 de salud en el panel de detalle del hospital (mismo criterio, no una copia
@@ -33,9 +46,15 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
+import database
+
+from .. import modulos
 from ..config import _followers_de
 from ..estado import _parsear_timestamp, actualizar_estado_alerta
 from .dicom_baseline import cargar_baselines, refrescar_baselines
+
+PREFIJO_TIPO = "DICOM_ROUTE_"
+TIPO_INDICE = "DICOM_INDICE_DESACTUALIZADO"
 
 
 def _sanear_nodo(valor):
@@ -209,6 +228,79 @@ def evaluar_cola(valores, timestamps, ahora, win_warn, win_crit, min_inst, drain
     return {"nivel": nivel, "motivo": "drenaje", "v_crit": v_crit, "v_warn": v_warn}
 
 
+def _metas_recientes(db, hid, desde):
+    """
+    (último reporte del hospital, [collection_meta.dicom_routing de los reportes
+    desde `desde`], cronológico). Solo lee la clave que hace falta del JSON.
+    """
+    ultimo = db.execute(
+        text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid "
+             "ORDER BY timestamp DESC LIMIT 1"),
+        {"hid": hid},
+    ).fetchone()
+    filas = db.execute(
+        text("SELECT json_extract(full_json_data, '$.collection_meta.dicom_routing') AS meta "
+             "FROM reportes_historicos WHERE hospital_id = :hid AND timestamp >= :desde "
+             "ORDER BY timestamp ASC"),
+        {"hid": hid, "desde": desde},
+    ).fetchall()
+    metas = []
+    for f in filas:
+        try:
+            m = json.loads(f.meta) if isinstance(f.meta, str) else f.meta
+        except (TypeError, ValueError):
+            m = None
+        metas.append(m if isinstance(m, dict) else None)
+    return (_parsear_timestamp(ultimo.timestamp) if ultimo else None), metas
+
+
+def _indice_vencido(meta):
+    """El agente leyó el índice y TODAS sus reglas estaban vencidas."""
+    return (isinstance(meta, dict) and meta.get("enabled") is True
+            and meta.get("status") == "stale" and not meta.get("total"))
+
+
+def evaluar_indice(metas):
+    """
+    Nivel de DICOM_INDICE_DESACTUALIZADO a partir de los collection_meta de la
+    ventana corta. WARNING solo si todos los reportes (al menos 3) vieron el
+    índice entero vencido; OK si el último no lo vio; None si no alcanza para
+    decidir (pocos reportes, agente viejo sin collection_meta).
+    """
+    conocidas = [m for m in metas if m is not None]
+    if not conocidas:
+        return None
+    if not _indice_vencido(conocidas[-1]):
+        return "OK"
+    if len(conocidas) >= 3 and all(_indice_vencido(m) for m in conocidas):
+        return "WARNING"
+    return None
+
+
+def _cerrar_fantasmas(db, hosp, vigentes, motivos):
+    """
+    Cierra las alertas DICOM_ROUTE_* abiertas del hospital cuya regla no se
+    evaluó este tick por haber dejado de reportarse. Con [BAJA]
+    (modulos.cerrar_alertas), como Mirth: si la regla vuelve, arranca de cero.
+    """
+    abiertas = db.query(database.AlertaModel).filter(
+        database.AlertaModel.hospital_id == hosp.hospital_id,
+        database.AlertaModel.is_active == 1,
+        database.AlertaModel.tipo.like("DICOM\\_ROUTE\\_%", escape="\\"),
+    ).all()
+    n = 0
+    for a in abiertas:
+        if a.tipo in vigentes:
+            continue
+        motivo = motivos.get(
+            a.tipo, "Regla de autoenrute sin lecturas: eliminada o desactivada en el PACS")
+        print(f"✅ NORMALIZADO (regla sin lecturas): {hosp.hospital_id} -> {a.tipo}")
+        n += modulos.cerrar_alertas(db, [a], motivo)
+    if n:
+        db.commit()
+        modulos._avisar_ws()
+
+
 def verificar_autoenrute_dicom(db, config, hospitales_activos):
     win_warn = int(config.get('dicom_stall_warning_minutes', 30) or 30)
     win_crit = int(config.get('dicom_stall_critical_minutes', 120) or 120)
@@ -230,6 +322,42 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
     desde = ahora - timedelta(minutes=win_crit * 1.5)
 
     for hosp in hospitales_activos:
+        if modulos.baja_para(hosp.hospital_id, modulo="dicom_routing"):
+            continue  # módulo dado de baja (REQ-03): sus alertas ya se cerraron en aplicar_bajas()
+
+        ultimo_reporte, metas = _metas_recientes(
+            db, hosp.hospital_id, ahora - timedelta(minutes=win_warn))
+        # Solo se cierran reglas fantasma si el hospital reporta (si está
+        # OFFLINE la falta de filas no dice nada) y el agente pudo leer el
+        # índice: con status "error" (Elastic inaccesible) faltan TODAS las
+        # reglas por la falla, no porque las hayan borrado.
+        ultima_meta = next((m for m in reversed(metas) if m is not None), None)
+        hospital_reporta = (
+            bool(ultimo_reporte)
+            and ahora - ultimo_reporte <= timedelta(minutes=win_warn)
+            and not (ultima_meta and ultima_meta.get("status") == "error")
+        )
+
+        nivel_indice = evaluar_indice(metas)
+        if nivel_indice:
+            actualizar_estado_alerta(
+                db=db, hid=hosp.hospital_id, tipo_unico=TIPO_INDICE, nivel=nivel_indice,
+                mensaje=(
+                    "El índice de autoenrute (Elastic) no tiene ninguna regla con datos "
+                    "recientes: el pipeline de Logstash no está actualizando, o se "
+                    "eliminaron las reglas y quedaron sus documentos viejos en el "
+                    "índice (borrarlos de Elastic). Mientras tanto no se evalúan las colas."
+                    if nivel_indice == "WARNING" else
+                    "Índice de autoenrute actualizado."
+                ),
+                asana_proj_id=hosp.asana_project_id,
+                asana_followers=asana_followers,
+                titulo_visible="DICOM_INDICE_DESACTUALIZADO",
+            )
+
+        vigentes = set()
+        motivos = {}
+
         query = text("""
             SELECT component_id, metric_value, extra_data, timestamp
             FROM software_monitoring
@@ -243,6 +371,8 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
         ).fetchall()
 
         if not registros:
+            if hospital_reporta:
+                _cerrar_fantasmas(db, hosp, vigentes, motivos)
             continue
 
         baselines = cargar_baselines(db, hosp.hospital_id) if usar_baseline else {}
@@ -257,6 +387,19 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
                 continue
 
             actual = valores[-1]
+            tipo_alerta = f"{PREFIJO_TIPO}{str(id_rule)[:30]}"
+
+            # Regla fantasma: su última lectura quedó más de la ventana crítica
+            # detrás del último reporte del hospital (la borraron o la
+            # desactivaron en el PACS). No se evalúa; _cerrar_fantasmas cierra
+            # su alerta si quedó abierta.
+            if ultimo_reporte and ultimo_reporte - timestamps[-1] > timedelta(minutes=win_crit):
+                motivos[tipo_alerta] = (
+                    f"Regla de autoenrute sin lecturas desde {timestamps[-1]:%Y-%m-%d %H:%M} "
+                    f"mientras el hospital sigue reportando: eliminada o desactivada en el PACS"
+                )
+                continue
+            vigentes.add(tipo_alerta)
 
             # Etiquetas legibles. El extra_data lo escribe main.py:
             # "label" es para leer en el mensaje ("NODO-A → NODO-B"), los
@@ -273,7 +416,6 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
             except Exception:
                 pass
 
-            tipo_alerta = f"DICOM_ROUTE_{str(id_rule)[:30]}"
             # Título del ticket: mismo formato de siempre (DICOM_ROUTE_<algo>),
             # pero con los nodos que conecta la ruta en vez del ID numérico
             # cuando el agente los informó.
@@ -338,3 +480,6 @@ def verificar_autoenrute_dicom(db, config, hospitales_activos):
                 asana_followers=asana_followers,
                 titulo_visible=titulo_visible,
             )
+
+        if hospital_reporta:
+            _cerrar_fantasmas(db, hosp, vigentes, motivos)

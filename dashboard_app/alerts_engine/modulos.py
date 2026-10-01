@@ -41,7 +41,7 @@ MODULOS = {
     "idrac": {"label": "iDRAC (sensores y RAID)", "prefijos": ("TEMP_", "FAN_", "PSU_", "RAID_"), "apps": (), "agente": True},
     "wmi": {"label": "VMs / estaciones / equipos", "prefijos": ("VM_", "DISK_"), "apps": (), "agente": True},
     "mirth": {"label": "Mirth Connect", "prefijos": ("MIRTH_",), "apps": ("mirth",), "agente": True},
-    "dicom_routing": {"label": "Autoenrute DICOM", "prefijos": ("DICOM_ROUTE_",), "apps": ("dicom_routing",), "agente": True},
+    "dicom_routing": {"label": "Autoenrute DICOM", "prefijos": ("DICOM_ROUTE_", "DICOM_INDICE_"), "apps": ("dicom_routing",), "agente": True},
     "ssl_monitoring": {"label": "Certificados SSL", "prefijos": (), "apps": ("ssl_certificate",), "agente": True},
     "suitestensa_logs": {"label": "Logs de SuiteEstensa", "prefijos": (), "apps": ("elasticsearch",), "agente": True},
     "sql_integrity": {"label": "Integridad de bases (CHECKDB)", "prefijos": ("CHECKDB_",), "apps": ("sql_integrity",), "agente": True},
