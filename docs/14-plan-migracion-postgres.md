@@ -371,6 +371,68 @@ páginas de "evolución combinada" de más. Ahora el diccionario se arma complet
 totales no cambian (H03: 2.180 estudios antes y después) y el orden de las páginas por equipo
 pasa a ser fijo (cronológico).
 
+### 9.3 Camino al corte: lo que falta (análisis del 2026-10-01)
+
+**Hecho:** Fase 0 (mediciones), Fase 2 (capa `datos/`, en el repo, sin desplegar), y de la Fase 3
+el esquema (infraestructura, software, KPIs, agregados), la transformación y los cargadores,
+medidos y validados en la PC contra la foto. Base estimada: ~2,5 GB/año.
+
+#### A. Código, en la PC (no toca producción)
+
+| # | Qué | Por qué hace falta | Tamaño |
+|---|---|---|---|
+| A1 | **`datos/` leyendo de Postgres**: las mismas funciones de `infra`, `uso` y `software` con un segundo motor, elegido por configuración. Verificación igual que en la Fase 2: misma salida desde SQLite y desde Postgres sobre la foto | Es lo que conecta el esquema con el panel, los PDF y el motor de alertas | L |
+| A2 | **Ingesta escribiendo en Postgres** (`main.py`): `transformar` → métricas, inventario (solo si cambia), estado actual, crudo y software; las deduplicaciones de CHECKDB/backups/portal; `collection_meta` a módulos dados de baja. **Guardar la hora de recepción del server** y usarla si la del agente difiere más de ~10 min (reloj de H03) | Sin esto, después del corte no entra nada | M |
+| A3 | **Tablas chicas** (alertas, configuración, usuarios, hospitales, Mirth, módulos, exclusiones, baselines…): se crean con los modelos de hoy (`create_all` funciona igual); copia completa en el corte. Siguen con hora local sin zona, como hoy: el código las compara con `datetime.now()` y cambiarlas no aporta. Revisado: fuera de `datos/` el código usa solo el ORM, sin SQL propio de SQLite | Son la configuración y el estado de las alertas | S |
+| A4 | **Esquema con Alembic** (`postgres/esquema.sql` + tablas chicas) y motor por configuración (`DATABASE_URL`) | Instalación repetible en el server y vuelta atrás por configuración | S |
+| A5 | **Cargador del corte**: diferencial por `id` desde la foto (ya reanudable) + tablas chicas completas + refresco de agregados + **verificación** (reportes por hospital y día iguales en los dos motores) | Es el guion del día del corte | S |
+| A6 | **Decidir** el criterio de VMs sin dato (0 como hoy, o hueco; §5.1) | Cambia lo que se ve en el gráfico | — |
+
+#### B. En producción, antes del corte (sin detener el monitoreo)
+
+| # | Qué | Quién | Tiempo |
+|---|---|---|---|
+| B1 | **Desplegar la Fase 2** (sigue en SQLite) y dejarla andar **al menos una semana**: valida `datos/` en producción antes de cambiar de motor | Usuario (`git pull` + reinicio) | 15 min + 1 semana |
+| B2 | **Fase 1 en el server**: swap de 4 GB; PostgreSQL 16 + **TimescaleDB 2.17.2** (la misma versión que la PC, si no el dump no restaura); `timescaledb-tune` con poca memoria (~1,5 GB); roles (app, solo lectura, migración); backup diario (`pg_dump` comprimido) con una restauración de prueba | Usuario con comandos preparados | 1–2 h |
+| B3 | **Carga histórica en la PC** desde una foto nueva (`VACUUM INTO`, como el 01/10): 6 meses de infraestructura ~1,5 h + software y KPIs minutos + archivo frío del crudo; verificación; `pg_dump` | PC | ~3 h |
+| B4 | **Subir y restaurar** el dump en el server (procedimiento de TimescaleDB: `timescaledb_pre_restore` / `post_restore`) y **ensayo del diferencial** (Fase 5) contra esa copia: mide cuánto dura el corte de verdad | Usuario + guion | 1 h |
+| B5 | Saber dónde están los `historico_*.db` (meses anteriores a abril): si existen, entran en B3 | Usuario | — |
+
+#### C. El día del corte (monitoreo detenido)
+
+Para que el diferencial sea chico, **B3 y B4 se hacen con una foto de 1 o 2 días antes del corte**.
+
+1. Detener la app (ingesta, motor de alertas y panel). Desde acá lo que manden los agentes se pierde
+   (no reenvían; decisión 6).
+2. Diferencial: reportes, software y KPIs con `id` mayor al de la foto; tablas chicas completas.
+   Con 1 día de diferencia son ~19 mil reportes y ~30 mil lecturas de software: **5–10 min** en el
+   server (en la PC, 132 mil reportes cargan en 3,7 min).
+3. Refresco de agregados y verificación de conteos por hospital y día: **~10 min**.
+4. Cambiar `DATABASE_URL` a Postgres y arrancar **primero la ingesta**; el motor de alertas recién
+   cuando todos los hospitales hayan reportado (~10 min), para no disparar OFFLINE en falso.
+5. Controles: panel, detalle de 3–4 hospitales, un PDF, tick del motor sin errores, Asana.
+
+**Ventana estimada: 45–60 min** de monitoreo detenido (con margen); el número firme sale del
+ensayo B4. **Vuelta atrás**: volver `DATABASE_URL` a SQLite y arrancar (SQLite queda intacto); se
+pierde lo que haya entrado a Postgres después del corte. Conviene elegir el horario de menos
+actividad en los hospitales y avisar a quien mire el panel.
+
+#### D. Después del corte
+
+- Fase 7: retención por niveles desde la UI (crudo 30 días → archivo frío) y quitar el resumen de
+  `maintenance.py`. No apura: el crudo comprimido son ~0,2 GB al mes.
+- Fase 8: backup final de solo lectura del `.db` de SQLite y borrarlo (libera ~21 GB).
+
+#### Orden y plazo
+
+A1–A5 (código, ~3–5 sesiones de trabajo) en paralelo con B1 (despliegue de la Fase 2 y una
+semana andando) y B2 (instalar Postgres) → B3 + B4 con una foto fresca → corte (C). **El corte se
+puede hacer, como pronto, en 2 a 3 semanas.** Límite de disco (§2.1): el libre llega a ~15 GB en
+~4 meses, así que hay margen para no apurarlo.
+
+Pendientes operativos fuera de la migración: reloj del agente de H03 (+4 h), encabezados
+`X-Forwarded-For` en `location /ws/` de Nginx, revisar si el 8100 (`/hl7/`) escucha en `0.0.0.0`.
+
 ### 9.1 Carga histórica: local + diferencial (camino elegido, 2026-09-30)
 
 1. **Foto:** `.backup` de la base de producción (seguro con el server andando). Se anota el último
