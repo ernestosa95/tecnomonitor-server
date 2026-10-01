@@ -212,8 +212,8 @@ el `VACUUM` deja de requerir el server detenido.
 | **1. Infra Postgres** | Staging y producción | Instalado, endurecido, backups probados con restauración, monitoreo | M |
 | **2. Capa de acceso a datos** | Que el código no dependa del motor ni del JSON | Todas las lecturas de series, último estado e inventario pasan por funciones únicas (al 2026-09-30 hay 36 `json.loads` y 27 consultas SQL crudas con `text()` dispersos, y los PDF de infraestructura duplicados; en la v1 eran 29 y 18: crecen con cada módulo nuevo). Se puede hacer **antes** de migrar, sobre SQLite, y achica el riesgo del corte | L |
 | **3. Esquema nuevo** | Tablas de §4, compresión, agregados, políticas | Esquema con Alembic en staging; ingesta que escribe inventario + métricas + crudo; pruebas con reportes reales grabados | M |
-| **4. Carga histórica, mes a mes** | Pasar el histórico sin duplicar disco | Ver §9.1. Por mes, del más viejo al más nuevo: archivo frío → Postgres → verificación → borrado del mes en SQLite. Incluye primero los `historico_*.db` | M |
-| **5. Doble escritura** | Validar en vivo | La ingesta escribe en los dos motores 1–2 semanas; comparación automática diaria; las lecturas siguen en SQLite | M |
+| **4. Carga histórica fuera del server** | Pasar el histórico sin cargar ni duplicar disco en producción | Ver §9.1. Desde una foto (`.backup`) en una PC: transformación completa y verificación local; se sube un `pg_dump` comprimido y el archivo frío. Incluye los `historico_*.db` | M |
+| **5. Sincronización continua** | Validar en vivo sin tocar la ingesta | En el server, un diferencial desde la foto corre cada pocos minutos (§9.1); comparación automática diaria; ingesta y lecturas siguen en SQLite. Reemplaza a la doble escritura de la v1 | M |
 | **6. Corte** | Cambiar de motor | Interruptor por área (gráficos, alertas, PDF…), motor de alertas último; OFFLINE pausado durante la ventana (los agentes no reenvían lo que se pierde). Vuelta atrás: el interruptor a SQLite, que siguió actualizado | S |
 | **7. Políticas y UI** | Retención por niveles configurable | Pantalla Admin con piso, vista previa, doble confirmación y registro | M |
 | **8. Retiro de SQLite** | Limpiar | Backup final de solo lectura; se apagan `maintenance.py` y los scripts de export/borrado | S |
@@ -234,9 +234,39 @@ el `VACUUM` deja de requerir el server detenido.
 
 Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aporta aunque la migración se demore.
 
-### 9.1 Carga histórica mes a mes (propuesta del 2026-09-30)
+### 9.1 Carga histórica: local + diferencial (camino elegido, 2026-09-30)
 
-Solo para `reportes_historicos` (el 93 % de la base). `reportes_uso` (40 MB; el resumen de red suma
+1. **Foto:** `.backup` de la base de producción (seguro con el server andando). Se anota el último
+   `id` de cada tabla grande.
+2. **Migración en una PC** (la de desarrollo tiene 172 GB libres, 8 núcleos, 31 GB de RAM):
+   Postgres + TimescaleDB local, transformación completa (inventario, métricas, agregados, archivo
+   frío) y verificación contra la foto. Se puede repetir las veces que haga falta sin tocar
+   producción.
+3. **Subida:** `pg_dump` comprimido (pocos GB) + archivo frío, restaurado en el Postgres del server.
+   **Misma versión de Postgres y de TimescaleDB en los dos lados**; TimescaleDB pide su procedimiento
+   de restauración (pre/post restore).
+4. **Diferencial en el server**, con el mismo código de transformación:
+   - Tablas que solo agregan filas (`reportes_historicos`, `reportes_uso`, casi todo
+     `software_monitoring`): las filas con `id` mayor al de la foto.
+   - Filas que se modifican en el lugar (`alertas`, las filas `sql_backup` que renuevan
+     `last_seen`, topología y curación de Mirth, configuración, usuarios, `monitoreo_modulos`,
+     `dicom_regla_baseline`): tablas chicas, se copian enteras en cada pasada.
+5. **Sincronización continua** (Fase 5): el diferencial corre cada pocos minutos hasta el corte. La
+   ingesta no se toca.
+6. **Corte** (Fase 6): última pasada, ingesta y lecturas a Postgres. Vuelta atrás: SQLite nunca dejó
+   de recibir datos.
+
+Condición: **la pausa de `maintenance.py` (decisión 2) desplegada antes o al momento de la foto.**
+Si el resumen corre después, reescribe en el server filas viejas que en la foto están completas: no
+se pierde nada (la foto es la versión buena y el diferencial solo mira `id` nuevos), pero la
+comparación del corte daría diferencias en esos meses.
+
+En el server nunca se duplica el histórico: SQLite queda como está (~20,5 GB) y Postgres suma pocos
+GB hasta el corte, cuando se borra el `.db`.
+
+#### Alternativa: mes a mes en el server
+
+Solo si no se pudiera migrar fuera del server. Solo para `reportes_historicos` (el 93 % de la base). `reportes_uso` (40 MB; el resumen de red suma
 todo su histórico) y `software_monitoring` (0,5 GB; se lee hasta 7 días) pasan enteras en el corte.
 
 Ciclo por mes, empezando por los `historico_*.db` ya exportados y después por el mes más viejo de
@@ -300,7 +330,7 @@ los meses viejos (decisión 10).
 9. **Discos: ¿todas las muestras o solo cambios?** El uso de disco cambia lento; guardar solo
    cuando varía más de X % bajaría filas, pero pierde la serie exacta (sería con pérdida, salvo que
    el crudo lo respalde).
-10. **PDF de infraestructura de meses ya migrados** durante la carga mes a mes (§9.1): limitarlo a
+10. *(Solo si se usa la alternativa mes a mes de §9.1.)* **PDF de infraestructura de meses ya migrados**: limitarlo a
     lo que sigue en SQLite, o que lea de Postgres para esos meses. Depende de cada cuánto se piden
     PDF de meses viejos.
 
