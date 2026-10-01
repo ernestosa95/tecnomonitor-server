@@ -181,6 +181,32 @@ sin resumen con pérdida. Todo escala lineal con la cantidad de hospitales. El h
 (16,5 GB de JSON desde 2026-04) archivado ocuparía ~0,2 GB; la foto entera de la base comprimida con
 zstd -10 pesa 580 MB (2,84 %).
 
+### 5.1 Medido en Postgres 16 + TimescaleDB (2026-10-01, Fase 3)
+
+Una semana real de la foto (22 al 29 de septiembre: 132.007 reportes de 77 hospitales) cargada
+con `herramientas/migracion_pg/cargar_infra.py` sobre `postgres/esquema.sql`, en la PC (Docker,
+`timescale/timescaledb:2.17.2-pg16`). Carga: 3,7 min por semana (~1,5 h los 6 meses).
+
+| Tabla | Filas/semana | Sin comprimir | Comprimido | Tasa | Por año |
+|---|---|---|---|---|---|
+| `metricas_host` | 132 mil | 22 MB | 2,3 MB | 10x | 0,12 GB |
+| `metricas_sensor` | 920 mil | 85 MB | 5,7 MB | 15x | 0,30 GB |
+| `metricas_vm` | 299 mil | 56 MB | 4,1 MB | 14x | 0,21 GB |
+| `metricas_disco` | 1,5 M | 234 MB | 9,5 MB | 24x | 0,50 GB |
+| `metricas_servicio` | 926 mil | 168 MB | 7,5 MB | 22x | 0,39 GB |
+| `recoleccion` | 99 mil | 51 MB | 0,8 MB | 70x | 0,04 GB |
+| `inventario` (versiones) | 3.826 | 8,9 MB | (TOAST) | — | 0,46 GB |
+| `reporte_crudo` (30 días) | 132 mil | 401 MB | 48 MB | 8,4x | **~0,2 GB fijos** |
+
+**Resultado: ~2 GB/año en la base** (métricas 1,55 + inventario 0,46) más ~0,2 GB fijos de crudo
+caliente, contra ~45 GB/año de hoy: unas 20 veces menos. Es el doble del estimado de §5 porque
+hay más filas de discos, sensores y servicios de lo supuesto. Margen de mejora, si hace falta:
+- **Inventario (0,46 GB/año):** el 3 % de los reportes cambia el inventario, casi todo en 3
+  hospitales donde la recolección oscila (H37 iDRAC, H07 una VM): el reporte llega sin discos o
+  sin controladoras y el inventario alterna entre completo y vacío. Conservar la última versión
+  conocida de esas partes cuando la recolección falla lo bajaría a casi nada.
+- **Servicios (0,39 GB/año):** `handles` e hilos son lo que más cambia y lo que menos se mira.
+
 ## 6. Auditoría y retención por niveles
 
 | Nivel | Qué | Dónde | Por defecto |
