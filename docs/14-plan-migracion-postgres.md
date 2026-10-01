@@ -377,7 +377,20 @@ pasa a ser fijo (cronológico).
 el esquema (infraestructura, software, KPIs, agregados), la transformación y los cargadores,
 medidos y validados en la PC contra la foto. Base estimada: ~2,5 GB/año.
 
-#### A. Código, en la PC (no toca producción)
+#### A. Código, en la PC (no toca producción) — **hecho el 2026-10-01 salvo A6**
+
+Estado: A1 (`85ce911`), A2 (`e163bf0`), A3 y la parte de configuración de A4 (`85ce911`), A5
+(`93d6511`). **Alembic (resto de A4) queda para después del corte**: para instalar alcanza
+`instalar_esquema.py`; Alembic sirve para los cambios de esquema que vengan. Verificación:
+- A1: las 21 funciones de `datos/` dan idéntico leyendo la foto en SQLite y cargada en Postgres
+  (82 hospitales), y de punta a punta los detectores (224 decisiones), la pestaña Software, Mirth,
+  KPIs, PDF clínico y de infraestructura y el gráfico de 24 h / 7 días.
+- A2: 3 h de ingesta real reproducidas contra el endpoint (`reproducir_ingesta.py`): en SQLite
+  queda igual que en producción; SQLite y Postgres reproducidos dan idéntico en `datos/`. Pruebas
+  de reloj corrido, reporte atrasado, inventario y deduplicación en `tests/test_escritura_pg.py`.
+- A5: corte simulado (foto de las 07:00 contra la de las 10:31): diferencial en 16 s, verificación
+  OK; volver a correrlo no duplica nada.
+
 
 | # | Qué | Por qué hace falta | Tamaño |
 |---|---|---|---|
@@ -402,18 +415,29 @@ medidos y validados en la PC contra la foto. Base estimada: ~2,5 GB/año.
 
 Para que el diferencial sea chico, **B3 y B4 se hacen con una foto de 1 o 2 días antes del corte**.
 
+Comandos (en `tecnomonitor-server/`, con la foto ya cargada y marcada con `corte.py marcar`):
+
+```bash
+# app detenida
+python3 herramientas/migracion_pg/corte.py diferencial --sqlite monitor_hospitales.db --dsn "$DATABASE_URL_PG"
+# termina con "VERIFICACIÓN OK" (código 0); si se corta, se vuelve a correr: no duplica
+# .env: DATABASE_URL=<dsn de Postgres>  ->  arrancar
+```
+
 1. Detener la app (ingesta, motor de alertas y panel). Desde acá lo que manden los agentes se pierde
    (no reenvían; decisión 6).
 2. Diferencial: reportes, software y KPIs con `id` mayor al de la foto; tablas chicas completas.
-   Con 1 día de diferencia son ~19 mil reportes y ~30 mil lecturas de software: **5–10 min** en el
-   server (en la PC, 132 mil reportes cargan en 3,7 min).
-3. Refresco de agregados y verificación de conteos por hospital y día: **~10 min**.
+   Medido en la PC: 3,5 h de diferencia (2.603 reportes, 5.824 lecturas) en 16 s con la
+   verificación. Con 1 día (~19 mil reportes) son ~1–2 min en la PC; **en el server, calcular
+   ~5 min** (el número firme sale del ensayo B4).
+3. Refresco de agregados (solo desde lo que entró) y verificación por hospital y día: incluidos
+   en el paso anterior.
 4. Cambiar `DATABASE_URL` a Postgres y arrancar **primero la ingesta**; el motor de alertas recién
    cuando todos los hospitales hayan reportado (~10 min), para no disparar OFFLINE en falso.
 5. Controles: panel, detalle de 3–4 hospitales, un PDF, tick del motor sin errores, Asana.
 
-**Ventana estimada: 45–60 min** de monitoreo detenido (con margen); el número firme sale del
-ensayo B4. **Vuelta atrás**: volver `DATABASE_URL` a SQLite y arrancar (SQLite queda intacto); se
+**Ventana estimada: 30–45 min** de monitoreo detenido (con margen: diferencial y verificación
+~5 min, arranque escalonado ~10 min, controles ~10 min); el número firme sale del ensayo B4. **Vuelta atrás**: volver `DATABASE_URL` a SQLite y arrancar (SQLite queda intacto); se
 pierde lo que haya entrado a Postgres después del corte. Conviene elegir el horario de menos
 actividad en los hospitales y avisar a quien mire el panel.
 
