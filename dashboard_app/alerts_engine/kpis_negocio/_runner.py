@@ -8,10 +8,10 @@ Un tercer KPI de este mismo tipo (ej. "cero estudios de TC en 12 horas") es
 un archivo nuevo igual de corto, no una función copiada. Ver
 docs/09-plan-refactor-alertas.md §4.
 """
-import json
 from datetime import datetime, timedelta
 
 import database
+from datos import uso as datos_uso
 
 from .. import modulos
 from ..config import _followers_de, _kpi_habilitado
@@ -57,18 +57,10 @@ def verificar_kpi_inactividad(db, *, tipo_unico, kpi_settings_key,
         if modulos.baja_para(hosp.hospital_id, tipo_unico):
             continue
 
-        reportes = db.query(database.ReporteUso).filter(
-            database.ReporteUso.hospital_id == hosp.hospital_id,
-            database.ReporteUso.timestamp >= fecha_limite
-        ).all()
-
         total = 0
-        for rep in reportes:
-            if not rep.kpi_json_data:
-                continue
+        for rep in datos_uso.reportes_uso(db, hosp.hospital_id, desde=fecha_limite):
             try:
-                metrics = json.loads(rep.kpi_json_data)
-                for item in metrics.get('ris', []):
+                for item in rep.metrics.get('ris', []):
                     mod_reportada = str(item.get('mod', '')).upper()
                     if any(m in mod_reportada for m in modalidades_target):
                         total += item.get('admitidos', 0)

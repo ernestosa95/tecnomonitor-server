@@ -310,129 +310,13 @@ contra la foto de producción:
 |---|---|---|
 | 1. Último reporte | `ultimo_reporte`, `ultimos_reportes`, `ultimo_timestamp`, `valores_recientes`; parser único de fechas (`datos.tiempo`). 8 lugares: motor de alertas, OFFLINE, Mirth, autoenrute, detalle del hospital, resumen de red y mapa, resumen del hospital, mapa de Mirth | **Hecho (2026-10-01)** |
 | 2. Series de infraestructura | `serie_infra` (métricas ya extraídas: CPU/RAM de host y VM, temperaturas, red) y `ultimo_reporte(hasta=)`. Gráfico `/history` y PDF de infraestructura con su gráfico de temperaturas; se borró la copia muerta del PDF en `routers/informes.py`. Salida idéntica a la anterior sobre la foto (15 series y 3 PDF) | **Hecho (2026-10-01)** |
-| 3. KPIs de uso (`reportes_uso`) | Resumen de red y del hospital, `kpi-history`, PDF clínico, KPIs programados | Pendiente |
+| 3. KPIs de uso (`reportes_uso`) | `datos.uso`: `reportes_uso` (por inserción) y `reportes_uso_por_evento` (por `start_time_extraction`, con el margen de 3 días en un solo lugar); `fecha_evento` única (había 4 copias). Resumen de red y del hospital, `kpi-history`, PDF clínico y KPIs programados: salida idéntica sobre la foto, salvo el PDF clínico (ver abajo) | **Hecho (2026-10-01)** |
 | 4. Software (`software_monitoring`) | Detectores (Mirth, autoenrute, CHECKDB, backups, portal), pestaña Software, mapa y topología de Mirth | Pendiente |
 
-### 9.1 Carga histórica: local + diferencial (camino elegido, 2026-09-30)
-
-1. **Foto:** `.backup` de la base de producción (seguro con el server andando). Se anota el último
-   `id` de cada tabla grande.
-2. **Migración en una PC** (la de desarrollo tiene 172 GB libres, 8 núcleos, 31 GB de RAM):
-   Postgres + TimescaleDB local, transformación completa (inventario, métricas, agregados, archivo
-   frío) y verificación contra la foto. Se puede repetir las veces que haga falta sin tocar
-   producción.
-3. **Subida:** `pg_dump` comprimido (pocos GB) + archivo frío, restaurado en el Postgres del server.
-   **Misma versión de Postgres y de TimescaleDB en los dos lados**; TimescaleDB pide su procedimiento
-   de restauración (pre/post restore).
-4. **Diferencial en el server**, con el mismo código de transformación:
-   - Tablas que solo agregan filas (`reportes_historicos`, `reportes_uso`, casi todo
-     `software_monitoring`): las filas con `id` mayor al de la foto.
-   - Filas que se modifican en el lugar (`alertas`, las filas `sql_backup` que renuevan
-     `last_seen`, topología y curación de Mirth, configuración, usuarios, `monitoreo_modulos`,
-     `dicom_regla_baseline`): tablas chicas, se copian enteras en cada pasada.
-5. **Ensayo** (Fase 5): el diferencial en el server contra un esquema de prueba, para medir cuánto
-   tarda.
-6. **Corte** (Fase 6), con la ingesta parada (decisión 6): diferencial una sola vez, verificación,
-   ingesta y lecturas a Postgres. Vuelta atrás: arrancar sobre SQLite, que quedó tal cual al parar.
-   El diferencial crece ~16 mil reportes por día desde la foto: si el corte se demora semanas, sacar
-   una foto nueva y repetir la migración local (ya probada).
-
-Condición: **la pausa de `maintenance.py` (decisión 2) desplegada antes o al momento de la foto.**
-Si el resumen corre después, reescribe en el server filas viejas que en la foto están completas: no
-se pierde nada (la foto es la versión buena y el diferencial solo mira `id` nuevos), pero la
-comparación del corte daría diferencias en esos meses.
-
-En el server nunca se duplica el histórico: SQLite queda como está (~20,5 GB) y Postgres suma pocos
-GB hasta el corte, cuando se borra el `.db`.
-
-#### Alternativa: mes a mes en el server
-
-Solo si no se pudiera migrar fuera del server. Solo para `reportes_historicos` (el 93 % de la base). `reportes_uso` (40 MB; el resumen de red suma
-todo su histórico) y `software_monitoring` (0,5 GB; se lee hasta 7 días) pasan enteras en el corte.
-
-Ciclo por mes, empezando por los `historico_*.db` ya exportados y después por el mes más viejo de
-la base (2026-04):
-
-1. **Archivo frío:** JSON crudo del mes, un archivo zstd por hospital y día, con su hash. Es el nivel
-   frío de §6: queda como segunda copia antes de borrar nada.
-2. **Carga en Postgres:** inventario + métricas + agregados, idempotente (se puede repetir).
-3. **Verificación:** reportes por hospital y día iguales en SQLite, Postgres y archivo; hash de cada
-   JSON contra el archivo; valores de una muestra (CPU, RAM, discos) contra el JSON original.
-4. **Borrado del mes en SQLite**, solo si 3 dio bien: por lotes de un día, en horario de poco uso
-   (un borrado grande bloquea la base y la ingesta espera hasta 15 s).
-
-**Qué gana y qué no:** SQLite no achica el archivo al borrar (solo `VACUUM`, que no es opción). El
-borrado **frena el crecimiento** (cada mes liberado, ~3 GB, absorbe unas tres semanas de reportes
-nuevos) y el pico de disco queda en SQLite (~20,5 GB fijo) + Postgres (pocos GB) + archivo (1–2 GB),
-que entra en los 35 GB libres. El espacio se recupera de una vez al borrar el `.db` en la Fase 8.
-
-**Restricción mientras dura:** solo se migran meses de más de 31 días (el gráfico de
-infraestructura lee hasta 30). El **PDF de infraestructura con rango libre** saldría vacío para un
-mes ya migrado: limitarlo a los meses que siguen en SQLite o hacer que ese PDF lea de Postgres para
-los meses viejos (decisión 10).
-
-## 10. Riesgos
-
-- **Reconstruir el JSON** a partir de inventario + métricas puede no ser exacto si el agente manda
-  campos que el esquema no contempla. Por eso el crudo se conserva (caliente y archivado) y no se
-  descarta en favor de lo normalizado.
-- **Campos nuevos del agente:** cada versión que agregue una métrica requiere una columna. El crudo
-  la conserva igual hasta que se agrega; el contrato de ingesta (docs/10) pasa a ser también
-  contrato de esquema.
-- **Horas sin zona:** los agentes mandan hora local sin zona y hoy se guarda así. En Postgres hay
-  que decidir (decisión 7); mezclar criterios rompe gráficos y alertas.
-- **TimescaleDB** es infraestructura nueva y los Postgres gestionados de algunos proveedores no la
-  permiten (§8).
-- **OFFLINE masivo** si la ingesta se corta más de `offline_minutes` durante el corte.
-- **Sin suite de tests en el server:** la Fase 2 debería traer al menos pruebas de las funciones de
-  lectura contra los dos motores.
-- Lo ya resumido por `maintenance.py` no se recupera.
-
-## 11. Decisiones abiertas
-
-1. ~~**Auditoría:** cuánto tiempo hay que conservar el crudo~~ **Resuelto (2026-10-01): el crudo
-   archivado se conserva por tiempo indefinido** (~0,5 GB/año, §5); el período caliente en la base
-   sigue en 30 días. Queda por definir solo si hace falta **inmutabilidad** (almacenamiento que no
-   permite reescribir) y si el archivo incluye `software_monitoring` y KPIs; no bloquea las Fases
-   2 y 3.
-2. ~~**¿Pausar `maintenance.py` ya?**~~ **Resuelto (2026-09-30): pausado.** El resumen con
-   pérdida solo corre si se prende *Configuración → Almacenamiento* (clave
-   `mantenimiento_resumen_enabled`, apagada por defecto; `maintenance.resumen_habilitado()`). Al
-   desplegarlo deja de correr solo. Costo: la base crece ~3 GB/mes hasta la migración; vigilar el
-   disco del server.
-3. ~~**Crudo: ¿cuánto en la base y cuánto archivado?**~~ **Resuelto (2026-10-01, con la Fase 0):
-   30 días en la base**, comprimido por fila con diccionario (~0,3 GB en total), **y el resto en
-   archivo frío** (zstd-19 por hospital y día, ~0,5 GB/año). Los dos costos son tan bajos que el
-   período caliente se puede alargar si la auditoría (decisión 1) lo pide.
-4. ~~**Dónde vive Postgres**~~ **Resuelto (2026-10-01): en el mismo server.** Con todo el
-   histórico migrado ocupa pocos GB y el archivo frío ~0,2 GB: entra en el disco actual junto a
-   SQLite hasta el corte, siempre que el corte llegue antes de que el libre baje de ~15 GB (~4
-   meses, §2.1). **Server medido (2026-10-01): 4 vCPU, 7,4 GiB de RAM con ~2,6 GiB disponibles y
-   sin swap.** Alcanza para Postgres con poca memoria (`shared_buffers` ~1 GB, `work_mem` chico:
-   las lecturas van a agregados), pero **hay que agregar swap (4 GB) antes de instalarlo**: sin
-   swap, un pico de memoria mata procesos (OOM) en lugar de ponerlos lentos.
-5. ~~**TimescaleDB o Postgres puro**~~ **Resuelto (2026-10-01): PostgreSQL 16 + TimescaleDB**
-   (edición comunitaria, §8).
-6. ~~**Tolerancia a downtime** en el corte~~. **Resuelto (2026-09-30): se puede detener la
-   ingesta** hasta tener el diferencial migrado. Por eso no hay sincronización continua ni doble
-   escritura: el diferencial corre una vez con la ingesta parada. Se acepta el hueco de esa ventana.
-7. ~~**Zona horaria**~~ **Resuelto (2026-10-01): `timestamptz` en UTC + zona por hospital** (hoy
-   todos `America/Argentina/Buenos_Aires`). El histórico, que está en hora local sin zona, se
-   convierte asumiendo −03:00 (Argentina no tiene horario de verano desde 2009). La ingesta
-   interpreta la hora del agente con la zona de su hospital hasta que el agente mande la zona.
-8. ~~**¿Hacer la Fase 2 (capa de acceso) ya, sobre SQLite?**~~ **Resuelto (2026-10-01): sí, se
-   arranca ya.**
-9. ~~**Discos: ¿todas las muestras o solo cambios?**~~ **Resuelto (2026-10-01): todas las
-   muestras** de las métricas que cambian, sin umbral. Ya están dentro del estimado de §5 (~0,8
-   GB/año) y la compresión columnar absorbe los valores repetidos sin perder la serie exacta. El
-   inventario de cada disco (punto de montaje, tamaño total) sí va solo cuando cambia.
-10. *(Solo si se usa la alternativa mes a mes de §9.1.)* **PDF de infraestructura de meses ya migrados**: limitarlo a
-    lo que sigue en SQLite, o que lea de Postgres para esos meses. Depende de cada cuánto se piden
-    PDF de meses viejos.
-
-## 12. Qué se conserva de la v1
-
-La elección de motor (todo a Postgres, alternativa C), las alternativas descartadas (solo SQLite;
-SQLite caliente + Postgres histórico; ClickHouse como tercera tecnología), la distinción entre
-compresión sin pérdida, resumen y borrado, la UI de políticas con piso y doble confirmación, la
-doble escritura y el corte por interruptores. Lo nuevo es el modelo de §3–§7.
+**Corrección de paso en el PDF clínico (bloque 3):** el nombre de equipo de cada AET del PACS se
+armaba mientras se recorrían los reportes, así que el resultado dependía del orden en que SQLite
+devolvía las filas (no estaba fijado). Un mismo equipo salía partido en dos, con su AET y con su
+nombre (H03, septiembre: `CTRIVA01` 270 + `TOMO CANON AQUILION LIGHTNING` 195 → ahora 465), y con
+páginas de "evolución combinada" de más. Ahora el diccionario se arma completo antes de sumar; los
+totales no cambian (H03: 2.180 estudios antes y después) y el orden de las páginas por equipo
+pasa a ser fijo (cronológico).

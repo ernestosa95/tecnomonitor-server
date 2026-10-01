@@ -17,8 +17,8 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-import database
 from datos import infra as datos_infra
+from datos import uso as datos_uso
 
 EXCLUDED_AETS = {"CLIENT", "WADO", "PACS"}
 EXCLUDED_MODS = {"DOC"}
@@ -52,31 +52,6 @@ def uso_disco_j_appv_tb(full_json):
     return None
 
 
-def fecha_evento(uso, metrics):
-    """
-    Fecha real del evento clínico, no de inserción en la fila. Los reportes
-    reconstruidos/backfillados (historial cargado en bloque desde otra
-    fuente) se insertan todos con `timestamp` = fecha en que se corrió el
-    backfill, no la fecha que realmente representan -- esa vive en
-    `start_time_extraction` dentro del JSON. Mismo criterio que ya usa
-    /api/hospital/{id}/kpi-history (hospital_detalle.py), para que el
-    "último año"/go_live no traten un backfill viejo como actividad reciente.
-    """
-    fecha_extraccion_str = metrics.get("start_time_extraction")
-    if fecha_extraccion_str:
-        try:
-            return datetime.fromisoformat(fecha_extraccion_str)
-        except (ValueError, TypeError):
-            pass
-    ts = uso.timestamp
-    if isinstance(ts, str):
-        try:
-            return datetime.strptime(ts[:19], "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            return None
-    return ts
-
-
 def ram_pct(full_json):
     try:
         data = json.loads(full_json) if isinstance(full_json, str) else (full_json or {})
@@ -106,22 +81,16 @@ def pacs_almacenados(item):
 def serie_semanal_pacs(db, hospital_id: str) -> dict:
     """
     {"YYYY-MM-DD" (lunes de la semana): estudios PACS de esa semana}, por
-    fecha del evento (fecha_evento). Mismo criterio que "estudios" en
+    fecha del evento (datos.uso.fecha_evento). Mismo criterio que "estudios" en
     calcular_kpis_hospital, así el acumulado termina en el mismo número que
     la tabla de /prov-analytics. Semanas sin estudios no aparecen.
     """
     semanas = defaultdict(int)
-    usos = db.query(database.ReporteUso).filter(
-        database.ReporteUso.hospital_id == hospital_id
-    ).all()
-    for uso in usos:
-        if not uso.kpi_json_data:
+    for uso in datos_uso.reportes_uso(db, hospital_id):
+        metrics = uso.metrics
+        if not metrics:
             continue
-        try:
-            metrics = json.loads(uso.kpi_json_data) if isinstance(uso.kpi_json_data, str) else uso.kpi_json_data
-        except (json.JSONDecodeError, TypeError):
-            continue
-        fecha = fecha_evento(uso, metrics)
+        fecha = uso.fecha_evento
         if fecha is None:
             continue
         total = 0
@@ -157,19 +126,12 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
     corte_anual = ahora - timedelta(days=DIAS_ANIO)
     estudios_pacs_ultimo_anio = 0
 
-    usos = db.query(database.ReporteUso).filter(
-        database.ReporteUso.hospital_id == hospital_id
-    ).all()
-
-    for uso in usos:
-        if not uso.kpi_json_data:
-            continue
-        try:
-            metrics = json.loads(uso.kpi_json_data) if isinstance(uso.kpi_json_data, str) else uso.kpi_json_data
-        except (json.JSONDecodeError, TypeError):
+    for uso in datos_uso.reportes_uso(db, hospital_id):
+        metrics = uso.metrics
+        if not metrics:
             continue
 
-        fecha = fecha_evento(uso, metrics)
+        fecha = uso.fecha_evento
         hay_actividad = False
 
         for item in metrics.get("ris", []) or []:

@@ -1,5 +1,4 @@
 import io
-import json
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib
@@ -11,7 +10,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
@@ -23,6 +21,7 @@ import matplotlib.ticker as ticker
 
 import database
 from datos import infra as datos_infra
+from datos import uso as datos_uso
 from database import HospitalMetadata, HistorialReportes, AlertaModel
 import asana_conector
 import os
@@ -459,59 +458,60 @@ def generar_pdf_clinico(req, db: Session):
     except Exception as e:
         return {"error": f"Formato de fecha inválido. Recibimos: {req.fecha_desde}"}
 
-    f_desde_sql = f_desde - timedelta(days=3)
-    query = text("SELECT timestamp, kpi_json_data FROM reportes_uso WHERE hospital_id = :hid AND timestamp >= :f1")
-    result = db.execute(query, {"hid": req.hospital_id, "f1": f_desde_sql}).fetchall()
-
     datos_ris, datos_pacs, datos_temporales = {}, {}, {}
     EXCLUDED_AETS = ['CLIENT', 'WADO', 'PACS']
     EXCLUDED_MODS = ['DOC']
     diccionario_aet = {}
     agrupar_por_mes = (f_hasta - f_desde).days > 45
 
-    for row in result:
-        metrics = json.loads(row.kpi_json_data) if row.kpi_json_data else {}
-        fecha_extraccion_str = metrics.get("start_time_extraction")
-        try:
-            if fecha_extraccion_str: fecha_evento = datetime.fromisoformat(fecha_extraccion_str).replace(tzinfo=None)
-            else: fecha_evento = (datetime.strptime(str(row.timestamp)[:19], "%Y-%m-%d %H:%M:%S") if isinstance(row.timestamp, str) else row.timestamp).replace(tzinfo=None)
-        except: continue
+    # Ya filtrados por fecha del evento en [f_desde, f_hasta).
+    reportes = datos_uso.reportes_uso_por_evento(db, req.hospital_id, f_desde, f_hasta)
 
-        if f_desde <= fecha_evento < f_hasta:
-            k_tiempo = fecha_evento.strftime("%Y-%m") if agrupar_por_mes else fecha_evento.strftime("%Y-%m-%d")
+    # AET -> nombre del equipo en el RIS, armado ANTES de sumar el PACS. Antes se
+    # armaba sobre la marcha y el resultado dependía del orden en que la base
+    # devolviera las filas: el mismo equipo salía partido en dos (con su AET y
+    # con su nombre) según qué reporte se procesara primero.
+    for reporte in reportes:
+        for item in reporte.metrics.get("ris", []):
+            if item.get("aet") and item.get("equipo"):
+                diccionario_aet[item["aet"]] = item["equipo"]
+
+    for reporte in reportes:
+        metrics, fecha_evento = reporte.metrics, reporte.fecha_evento
+        k_tiempo = fecha_evento.strftime("%Y-%m") if agrupar_por_mes else fecha_evento.strftime("%Y-%m-%d")
+        
+        for item in metrics.get("ris", []):
+            eq = item.get("equipo"); aet = item.get("aet"); mod = item.get("mod", "")
+            if aet and eq: diccionario_aet[aet] = eq
+            nombre_final_ris = eq or aet or "Desc"
             
-            for item in metrics.get("ris", []):
-                eq = item.get("equipo"); aet = item.get("aet"); mod = item.get("mod", "")
-                if aet and eq: diccionario_aet[aet] = eq
-                nombre_final_ris = eq or aet or "Desc"
+            if nombre_final_ris not in EXCLUDED_AETS and aet not in EXCLUDED_AETS and mod not in EXCLUDED_MODS:
+                if nombre_final_ris not in datos_temporales: datos_temporales[nombre_final_ris] = {}
+                if k_tiempo not in datos_temporales[nombre_final_ris]: datos_temporales[nombre_final_ris][k_tiempo] = {}
                 
-                if nombre_final_ris not in EXCLUDED_AETS and aet not in EXCLUDED_AETS and mod not in EXCLUDED_MODS:
-                    if nombre_final_ris not in datos_temporales: datos_temporales[nombre_final_ris] = {}
-                    if k_tiempo not in datos_temporales[nombre_final_ris]: datos_temporales[nombre_final_ris][k_tiempo] = {}
+                val = item.get("totales", 0)
+                if val == 0: val = sum([item.get(k, 0) for k in ["citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos"]])
+                
+                if val > 0: datos_ris[nombre_final_ris] = datos_ris.get(nombre_final_ris, 0) + val
                     
-                    val = item.get("totales", 0)
-                    if val == 0: val = sum([item.get(k, 0) for k in ["citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos"]])
-                    
-                    if val > 0: datos_ris[nombre_final_ris] = datos_ris.get(nombre_final_ris, 0) + val
-                        
-                    for st in ["citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos"]:
-                        val_st = item.get(st, 0)
-                        if val_st > 0:
-                            key_st = 'asociados' if st == 'con_imagen' else st
-                            datos_temporales[nombre_final_ris][k_tiempo][key_st] = datos_temporales[nombre_final_ris][k_tiempo].get(key_st, 0) + val_st
+                for st in ["citados", "admitidos", "ejecutados", "con_imagen", "borradores", "definitivos", "suspendidos"]:
+                    val_st = item.get(st, 0)
+                    if val_st > 0:
+                        key_st = 'asociados' if st == 'con_imagen' else st
+                        datos_temporales[nombre_final_ris][k_tiempo][key_st] = datos_temporales[nombre_final_ris][k_tiempo].get(key_st, 0) + val_st
+        
+        for item in metrics.get("pacs", []):
+            aet = item.get("aet") or "Desc"; mod = item.get("mod", "")
+            nombre_final_pacs = diccionario_aet.get(aet, aet)
             
-            for item in metrics.get("pacs", []):
-                aet = item.get("aet") or "Desc"; mod = item.get("mod", "")
-                nombre_final_pacs = diccionario_aet.get(aet, aet)
+            if aet not in EXCLUDED_AETS and nombre_final_pacs not in EXCLUDED_AETS and mod not in EXCLUDED_MODS:
+                if nombre_final_pacs not in datos_temporales: datos_temporales[nombre_final_pacs] = {}
+                if k_tiempo not in datos_temporales[nombre_final_pacs]: datos_temporales[nombre_final_pacs][k_tiempo] = {}
                 
-                if aet not in EXCLUDED_AETS and nombre_final_pacs not in EXCLUDED_AETS and mod not in EXCLUDED_MODS:
-                    if nombre_final_pacs not in datos_temporales: datos_temporales[nombre_final_pacs] = {}
-                    if k_tiempo not in datos_temporales[nombre_final_pacs]: datos_temporales[nombre_final_pacs][k_tiempo] = {}
-                    
-                    val = item.get("almacenados", 0)
-                    if val > 0:
-                        datos_pacs[nombre_final_pacs] = datos_pacs.get(nombre_final_pacs, 0) + val
-                        datos_temporales[nombre_final_pacs][k_tiempo]['almacenados'] = datos_temporales[nombre_final_pacs][k_tiempo].get('almacenados', 0) + val
+                val = item.get("almacenados", 0)
+                if val > 0:
+                    datos_pacs[nombre_final_pacs] = datos_pacs.get(nombre_final_pacs, 0) + val
+                    datos_temporales[nombre_final_pacs][k_tiempo]['almacenados'] = datos_temporales[nombre_final_pacs][k_tiempo].get('almacenados', 0) + val
 
     datos_ris = dict(sorted(datos_ris.items(), key=lambda x: x[1], reverse=True))
     datos_pacs = dict(sorted(datos_pacs.items(), key=lambda x: x[1], reverse=True))

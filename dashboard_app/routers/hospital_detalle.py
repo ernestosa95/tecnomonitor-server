@@ -24,6 +24,7 @@ from alerts_engine.software import sql_backups as sql_backups_detector
 import auth
 import database
 from datos import infra as datos_infra
+from datos import uso as datos_uso
 from core import get_db
 from database import HospitalMetadata
 from routers.mirth_mapa import _parsear_ts
@@ -70,46 +71,12 @@ def obtener_historial_kpi(hospital_id: str, horas: int = 24,
                           current_user: dict = Depends(auth.require_hospital_access("kpis"))):
     
     fecha_limite_real = datetime.now() - timedelta(hours=horas)
-    fecha_limite_sql = fecha_limite_real - timedelta(days=3)
-    
-    # 🛡️ FIX: Agregamos LIMIT 15000 como cap absoluto
-    query = text("""
-        SELECT timestamp, kpi_json_data 
-        FROM reportes_uso 
-        WHERE hospital_id = :hid AND timestamp >= :flimit 
-        ORDER BY timestamp ASC
-        LIMIT 15000
-    """)
-    result = db.execute(query, {"hid": hospital_id, "flimit": fecha_limite_sql}).fetchall()
-    
-    if not result: return []
 
-    historial_kpi = []
-    
-    for row in result:
-        try:
-            metrics = json.loads(row.kpi_json_data) if row.kpi_json_data else {}
-            fecha_extraccion_str = metrics.get("start_time_extraction")
-            
-            if fecha_extraccion_str:
-                try:
-                    fecha_evento = datetime.fromisoformat(fecha_extraccion_str)
-                except ValueError:
-                    fecha_evento = datetime.strptime(str(row.timestamp)[:19], "%Y-%m-%d %H:%M:%S") if isinstance(row.timestamp, str) else row.timestamp
-            else:
-                fecha_evento = datetime.strptime(str(row.timestamp)[:19], "%Y-%m-%d %H:%M:%S") if isinstance(row.timestamp, str) else row.timestamp
-                
-            if fecha_evento >= fecha_limite_real:
-                historial_kpi.append({
-                    "timestamp": fecha_evento.strftime("%Y-%m-%d %H:%M:%S"),
-                    "application_metrics": metrics
-                })
-        except Exception as e:
-            continue
-            
-    historial_kpi.sort(key=lambda x: x["timestamp"])
-    
-    return historial_kpi
+    # Por fecha del evento (no de inserción), con tope de 15.000 reportes leídos.
+    reportes = datos_uso.reportes_uso_por_evento(db, hospital_id, fecha_limite_real, limite=15000)
+    reportes.sort(key=lambda r: r.fecha_evento)
+    return [{"timestamp": r.fecha_evento.strftime("%Y-%m-%d %H:%M:%S"), "application_metrics": r.metrics}
+            for r in reportes]
 
 
 # ============================================================

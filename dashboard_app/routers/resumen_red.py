@@ -11,7 +11,6 @@ endpoint devuelve 500 para cualquier usuario autenticado). Se mueve tal cual
 estaba porque este refactor es solo reorganización, no corrección de bugs.
 Ver docs/08-plan-refactor-dashboard.md.
 """
-import json
 import re
 import time
 import csv
@@ -26,6 +25,7 @@ from sqlalchemy.orm import Session
 import auth
 import database
 from datos import infra as datos_infra
+from datos import uso as datos_uso
 import resumen_hospital
 from core import get_db
 from database import HospitalMetadata
@@ -137,18 +137,16 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
                 pass
 
         # --- SECCIÓN B: MÉTRICAS HISTÓRICAS (PACS KPIs) ---
-        todos_los_usos = db.query(database.ReporteUso).filter(
-            database.ReporteUso.hospital_id == hosp.hospital_id
-        ).all()
+        todos_los_usos = datos_uso.reportes_uso(db, hosp.hospital_id)
 
         estudios_pacs = 0
         estudios_ia = 0
         equipos_pacs = set()
 
         for uso in todos_los_usos:
-            if uso.kpi_json_data:
+            if uso.metrics:
                 try:
-                    kpis = json.loads(uso.kpi_json_data) if isinstance(uso.kpi_json_data, str) else uso.kpi_json_data
+                    kpis = uso.metrics
                     for item in kpis.get("pacs", []):
                         aet = item.get("aet", "").upper().strip()
                         mod = item.get("mod", "") or ""
