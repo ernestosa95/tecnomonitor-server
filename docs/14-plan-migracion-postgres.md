@@ -33,6 +33,14 @@ bajar el almacenamiento. Las mediciones de producción son las del 2026-09-18 (�
 (salvo `software_monitoring` y `application_metrics`, que se separan) guardado tal cual cada 5
 minutos por hospital (~57 hospitales × 288 reportes/día).
 
+**Medición del 2026-09-30:** la base pesa **20,5 GB** (+1,8 GB en 12 días: ~150 MB/día, ~4,5
+GB/mes, con el resumen de `maintenance.py` todavía andando). Disco del server: 85,3 GB, **35,1 GB
+libres**. Con el resumen pausado (decisión 2) el archivo crece más rápido, porque SQLite no achica
+el archivo al borrar y el resumen liberaba páginas que se reusaban: estimado **~7–8 GB/mes, unos 4
+meses de margen**. Umbral propuesto: si el libre baja de ~15 GB, volver a prender el resumen
+mientras tanto. Un `VACUUM` para recuperar espacio no es opción (server detenido y el doble de
+disco).
+
 ### 2.2 Qué cambió desde la v1
 
 - **Fuentes nuevas en `software_monitoring`** (agentes 4.5.2 a 4.5.4): `sql_integrity` (una fila
@@ -254,7 +262,10 @@ Orden: 0 → (1 y 2 en paralelo) → 3 → 4 → 5 → 6 → 7 → 8. La 2 aport
    disco del server.
 3. **Crudo: ¿cuánto en la base y cuánto archivado?** Propuesta: 30 días en la base, el resto en
    archivo frío.
-4. **Dónde vive Postgres** (mismo servidor o aparte) y quién lo opera.
+4. **Dónde vive Postgres** (mismo servidor o aparte) y quién lo opera. Con 35 GB libres (§2.1),
+   durante la carga histórica y la doble escritura conviven SQLite (20+ GB y creciendo), Postgres y
+   el archivo del crudo: en este disco queda justo. **Recomendado: ampliar el disco o poner Postgres
+   en otra VM.**
 5. **TimescaleDB o Postgres puro** (depende de la 4).
 6. **Tolerancia a downtime** en el corte.
 7. **Zona horaria:** guardar en UTC con la zona de cada hospital, o seguir en hora local sin zona.
