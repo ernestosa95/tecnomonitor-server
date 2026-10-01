@@ -1,6 +1,7 @@
 # Plan — migración a PostgreSQL y rediseño del almacenamiento
 
-**Estado — 2026-10-01: plan v2, NO ejecutado. Fase 0 hecha** (resultados en §9.2). La v1
+**Estado — 2026-10-01: plan v2. Fase 0 hecha** (resultados en §9.2); **Fase 2 en curso**.
+Decisiones abiertas que quedan: solo el detalle de inmutabilidad del archivo (decisión 1). La v1
 (2026-09-18) decidió *a qué motor* ir; esta versión agrega *cómo guardar los datos* una vez allá, con
 foco en performance y en bajar el almacenamiento. Las hipótesis de §2.3 y §5 quedaron medidas sobre
 una foto de producción del 2026-10-01: el diseño se confirma y el almacenamiento resulta menor que
@@ -376,8 +377,11 @@ los meses viejos (decisión 10).
 
 ## 11. Decisiones abiertas
 
-1. **Auditoría:** cuánto tiempo hay que conservar el crudo, si exige **inmutabilidad** y si incluye
-   `software_monitoring` y KPIs. Define el nivel frío.
+1. ~~**Auditoría:** cuánto tiempo hay que conservar el crudo~~ **Resuelto (2026-10-01): el crudo
+   archivado se conserva por tiempo indefinido** (~0,5 GB/año, §5); el período caliente en la base
+   sigue en 30 días. Queda por definir solo si hace falta **inmutabilidad** (almacenamiento que no
+   permite reescribir) y si el archivo incluye `software_monitoring` y KPIs; no bloquea las Fases
+   2 y 3.
 2. ~~**¿Pausar `maintenance.py` ya?**~~ **Resuelto (2026-09-30): pausado.** El resumen con
    pérdida solo corre si se prende *Configuración → Almacenamiento* (clave
    `mantenimiento_resumen_enabled`, apagada por defecto; `maintenance.resumen_habilitado()`). Al
@@ -387,18 +391,21 @@ los meses viejos (decisión 10).
    30 días en la base**, comprimido por fila con diccionario (~0,3 GB en total), **y el resto en
    archivo frío** (zstd-19 por hospital y día, ~0,5 GB/año). Los dos costos son tan bajos que el
    período caliente se puede alargar si la auditoría (decisión 1) lo pide.
-4. **Dónde vive Postgres** (mismo servidor o aparte) y quién lo opera. Con la Fase 0, Postgres
-   con todo el histórico migrado ocupa pocos GB y el archivo frío ~0,2 GB: **entra en el disco
-   actual** junto a SQLite hasta el corte, siempre que el corte llegue antes de que el libre baje
-   de ~15 GB (~4 meses, §2.1). Otra VM o ampliar el disco sigue siendo lo más cómodo, pero ya no
-   es condición.
-5. **TimescaleDB o Postgres puro** (depende de la 4).
+4. ~~**Dónde vive Postgres**~~ **Resuelto (2026-10-01): en el mismo server.** Con todo el
+   histórico migrado ocupa pocos GB y el archivo frío ~0,2 GB: entra en el disco actual junto a
+   SQLite hasta el corte, siempre que el corte llegue antes de que el libre baje de ~15 GB (~4
+   meses, §2.1). Falta medir CPU y RAM del server (Fase 0, ítem 7) para dimensionar Postgres.
+5. ~~**TimescaleDB o Postgres puro**~~ **Resuelto (2026-10-01): PostgreSQL 16 + TimescaleDB**
+   (edición comunitaria, §8).
 6. ~~**Tolerancia a downtime** en el corte~~. **Resuelto (2026-09-30): se puede detener la
    ingesta** hasta tener el diferencial migrado. Por eso no hay sincronización continua ni doble
    escritura: el diferencial corre una vez con la ingesta parada. Se acepta el hueco de esa ventana.
-7. **Zona horaria:** guardar en UTC con la zona de cada hospital, o seguir en hora local sin zona.
-8. **¿Hacer la Fase 2 (capa de acceso) ya, sobre SQLite?** Recomendado: es útil sola y baja el
-   riesgo de todo lo demás.
+7. ~~**Zona horaria**~~ **Resuelto (2026-10-01): `timestamptz` en UTC + zona por hospital** (hoy
+   todos `America/Argentina/Buenos_Aires`). El histórico, que está en hora local sin zona, se
+   convierte asumiendo −03:00 (Argentina no tiene horario de verano desde 2009). La ingesta
+   interpreta la hora del agente con la zona de su hospital hasta que el agente mande la zona.
+8. ~~**¿Hacer la Fase 2 (capa de acceso) ya, sobre SQLite?**~~ **Resuelto (2026-10-01): sí, se
+   arranca ya.**
 9. ~~**Discos: ¿todas las muestras o solo cambios?**~~ **Resuelto (2026-10-01): todas las
    muestras** de las métricas que cambian, sin umbral. Ya están dentro del estimado de §5 (~0,8
    GB/año) y la compresión columnar absorbe los valores repetidos sin perder la serie exacta. El
