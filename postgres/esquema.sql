@@ -308,3 +308,107 @@ ALTER TABLE software_eventos       SET (timescaledb.compress, timescaledb.compre
 SELECT add_compression_policy(t, INTERVAL '7 days')
 FROM unnest(ARRAY['mirth_canal_metricas', 'cola_dicom_metricas', 'portal_estado_metricas',
                   'software_eventos']::regclass[]) AS t;
+
+-- =============================================================================
+-- Bloque 3: agregados continuos (docs/14 §4.4). Los gráficos de 7 y 30 días y
+-- los PDF leen de acá en vez de recorrer cada reporte. Se recalculan solos
+-- (política de refresco) y se pueden regenerar desde las métricas.
+-- Regla de lectura: hasta 24 h, métricas de 5 min; 7 días, horario; 30 días o
+-- más, diario.
+-- KPIs de uso: sin agregado continuo (tablas comunes chicas, se suman directo).
+-- =============================================================================
+
+CREATE MATERIALIZED VIEW host_1h WITH (timescaledb.continuous) AS
+SELECT hospital_id, time_bucket('1 hour', ts) AS hora,
+       avg(cpu_pct) AS cpu_prom, max(cpu_pct) AS cpu_max,
+       avg(ram_pct) AS ram_prom, max(ram_pct) AS ram_max,
+       avg(potencia_w) AS potencia_prom, max(potencia_w) AS potencia_max,
+       avg(latencia_ms) AS latencia_prom, max(latencia_ms) AS latencia_max,
+       avg(subida_mbps) AS subida_prom, avg(bajada_mbps) AS bajada_prom,
+       -- cuántos valores tuvo cada métrica (un reporte puede no traer alguna):
+       -- el diario pondera cada hora por estos, no por la cantidad de reportes.
+       count(cpu_pct) AS cpu_n, count(ram_pct) AS ram_n, count(potencia_w) AS potencia_n,
+       count(latencia_ms) AS latencia_n, count(*) AS reportes
+FROM metricas_host GROUP BY 1, 2 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW host_1d WITH (timescaledb.continuous) AS
+SELECT hospital_id, time_bucket('1 day', hora, 'America/Argentina/Buenos_Aires') AS dia,
+       sum(cpu_prom * cpu_n) / nullif(sum(cpu_n), 0) AS cpu_prom, max(cpu_max) AS cpu_max,
+       sum(ram_prom * ram_n) / nullif(sum(ram_n), 0) AS ram_prom, max(ram_max) AS ram_max,
+       sum(potencia_prom * potencia_n) / nullif(sum(potencia_n), 0) AS potencia_prom, max(potencia_max) AS potencia_max,
+       sum(latencia_prom * latencia_n) / nullif(sum(latencia_n), 0) AS latencia_prom, max(latencia_max) AS latencia_max,
+       sum(reportes) AS reportes
+FROM host_1h GROUP BY 1, 2 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW vm_1h WITH (timescaledb.continuous) AS
+SELECT hospital_id, vm, time_bucket('1 hour', ts) AS hora,
+       avg(cpu_pct) AS cpu_prom, max(cpu_pct) AS cpu_max,
+       avg(ram_pct) AS ram_prom, max(ram_pct) AS ram_max,
+       count(cpu_pct) AS cpu_n, count(ram_pct) AS ram_n, count(*) AS reportes
+FROM metricas_vm GROUP BY 1, 2, 3 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW vm_1d WITH (timescaledb.continuous) AS
+SELECT hospital_id, vm, time_bucket('1 day', hora, 'America/Argentina/Buenos_Aires') AS dia,
+       sum(cpu_prom * cpu_n) / nullif(sum(cpu_n), 0) AS cpu_prom, max(cpu_max) AS cpu_max,
+       sum(ram_prom * ram_n) / nullif(sum(ram_n), 0) AS ram_prom, max(ram_max) AS ram_max,
+       sum(reportes) AS reportes
+FROM vm_1h GROUP BY 1, 2, 3 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW sensor_1h WITH (timescaledb.continuous) AS
+SELECT hospital_id, tipo, nombre, time_bucket('1 hour', ts) AS hora,
+       avg(valor) AS prom, max(valor) AS max, min(valor) AS min, count(valor) AS lecturas
+FROM metricas_sensor GROUP BY 1, 2, 3, 4 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW sensor_1d WITH (timescaledb.continuous) AS
+SELECT hospital_id, tipo, nombre, time_bucket('1 day', hora, 'America/Argentina/Buenos_Aires') AS dia,
+       sum(prom * lecturas) / nullif(sum(lecturas), 0) AS prom, max(max) AS max, min(min) AS min,
+       sum(lecturas) AS lecturas
+FROM sensor_1h GROUP BY 1, 2, 3, 4 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW cola_dicom_1h WITH (timescaledb.continuous) AS
+SELECT hospital_id, regla, time_bucket('1 hour', ts) AS hora,
+       max(pendientes) AS max, min(pendientes) AS min, last(pendientes, ts) AS ultimo, count(*) AS lecturas
+FROM cola_dicom_metricas GROUP BY 1, 2, 3 WITH NO DATA;
+
+-- Mirth: los contadores (recibidos/enviados/errores) son acumulados del canal y
+-- vuelven a cero cuando se reinicia Mirth; acá van primero/último de la hora y el
+-- tráfico sale de la diferencia (si bajó, hubo reinicio: se toma el último).
+CREATE MATERIALIZED VIEW mirth_1h WITH (timescaledb.continuous) AS
+SELECT hospital_id, componente, time_bucket('1 hour', ts) AS hora,
+       max(encolados) AS encolados_max, last(encolados, ts) AS encolados_ultimo, last(estado, ts) AS estado,
+       first(recibidos, ts) AS recibidos_ini, last(recibidos, ts) AS recibidos_fin,
+       first(enviados, ts) AS enviados_ini, last(enviados, ts) AS enviados_fin,
+       first(errores, ts) AS errores_ini, last(errores, ts) AS errores_fin,
+       count(*) AS lecturas
+FROM mirth_canal_metricas GROUP BY 1, 2, 3 WITH NO DATA;
+
+CREATE MATERIALIZED VIEW portal_1h WITH (timescaledb.continuous) AS
+SELECT hospital_id, componente, time_bucket('1 hour', ts) AS hora,
+       max(total) AS total_max, last(total, ts) AS total_ultimo, count(*) AS lecturas
+FROM portal_estado_metricas GROUP BY 1, 2, 3 WITH NO DATA;
+
+-- Refresco: lo reciente cada 15 min (horarios) o cada hora (diarios), sin tocar
+-- la última media hora (todavía entran reportes) ni recalcular el pasado lejano.
+SELECT add_continuous_aggregate_policy(v, start_offset => INTERVAL '3 days', end_offset => INTERVAL '30 minutes',
+                                       schedule_interval => INTERVAL '15 minutes')
+FROM unnest(ARRAY['host_1h', 'vm_1h', 'sensor_1h', 'cola_dicom_1h', 'mirth_1h', 'portal_1h']::regclass[]) AS v;
+SELECT add_continuous_aggregate_policy(v, start_offset => INTERVAL '7 days', end_offset => INTERVAL '1 hour',
+                                       schedule_interval => INTERVAL '1 hour')
+FROM unnest(ARRAY['host_1d', 'vm_1d', 'sensor_1d']::regclass[]) AS v;
+
+-- Los agregados también se comprimen (sin esto, los horarios suman ~1 GB/año).
+ALTER MATERIALIZED VIEW host_1h       SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW host_1d       SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW vm_1h         SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW vm_1d         SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW sensor_1h     SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW sensor_1d     SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW cola_dicom_1h SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW mirth_1h      SET (timescaledb.compress = true);
+ALTER MATERIALIZED VIEW portal_1h     SET (timescaledb.compress = true);
+-- compress_after tiene que superar el start_offset del refresco: 7 días los horarios (refrescan
+-- 3 días hacia atrás) y 30 los diarios (refrescan 7).
+SELECT add_compression_policy(v, compress_after => INTERVAL '7 days')
+FROM unnest(ARRAY['host_1h', 'vm_1h', 'sensor_1h', 'cola_dicom_1h', 'mirth_1h', 'portal_1h']::regclass[]) AS v;
+SELECT add_compression_policy(v, compress_after => INTERVAL '30 days')
+FROM unnest(ARRAY['host_1d', 'vm_1d', 'sensor_1d']::regclass[]) AS v;

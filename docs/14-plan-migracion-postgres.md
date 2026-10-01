@@ -220,6 +220,17 @@ hay más filas de discos, sensores y servicios de lo supuesto. Margen de mejora,
 Software + KPIs: **~0,2 GB/año** (hoy `software_monitoring` crece ~1,2 GB/año). Total con
 infraestructura: **~2,2 GB/año en la base**.
 
+**Agregados continuos (bloque 3 del esquema):** 9 agregados (host, VM y sensores por hora y por
+día; cola DICOM, Mirth y portal por hora), comprimidos: 6,5 MB en 9,4 días, **~0,25 GB/año**.
+Validados contra la foto: 105.385 promedios horarios y diarios de host y VM en 76 hospitales,
+idénticos a calcularlos desde SQLite. Lecturas (en la PC): gráfico de 9 días de un hospital 9–54
+ms (SQLite hoy 80–106 ms; 30 días ~1 s); último reporte de todos los hospitales para el motor de
+alertas 17 ms (SQLite 330 ms). **Total en la base con agregados: ~2,5 GB/año.**
+
+Diferencia de criterio a decidir: hoy el gráfico cuenta como 0 el CPU/RAM de una VM que no lo
+informa (apagada, sin WMI); en Postgres queda vacío y el promedio no se arrastra a 0. En el
+gráfico se vería un hueco en vez de una caída a 0.
+
 ## 6. Auditoría y retención por niveles
 
 | Nivel | Qué | Dónde | Por defecto |
