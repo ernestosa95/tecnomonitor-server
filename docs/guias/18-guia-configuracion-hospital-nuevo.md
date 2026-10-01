@@ -29,8 +29,8 @@ cajones de cadencia distinta:
 
 | Cajón (`.bat`) | Cadencia | `.conf` que agrupa |
 |---|---|---|
-| `ext_tiempo_real-all-sito.bat` | cada 5 min | `ext_dicom_queues.conf` (autoenrute DICOM) |
-| `ext_kpis_negocio-all-sito.bat` | cada 1 hora | `ext_ris_metrics.conf`, `ext_pacs_metrics.conf`, `ext_users_metrics.conf` |
+| `ext_tiempo_real-all-sito.bat` | cada 5 min | `ext_dicom_queues.conf` (autoenrute DICOM), `ext_portal_paciente.conf` (portal paciente, agente 4.5.4, solo donde hay portal; ver [guía 19](19-guia-despliegue-portal-paciente.md)) |
+| `ext_kpis_negocio-all-sito.bat` | cada 1 hora | `ext_ris_metrics.conf`, `ext_pacs_metrics.conf`, `ext_users_metrics.conf`, `ext_sql_backups.conf` (último backup, agente 4.5.3) |
 | `ext_checkdb-all-sito.bat` | cada 30 min | `ext_checkdb.conf` (integridad de bases, solo chequea si SQL Server se reinició) |
 
 1. **Copiar los `.conf` y `.bat`** a la carpeta de configuración de Logstash del hospital
@@ -44,6 +44,11 @@ cajones de cadencia distinta:
      ya estaba instalado) antes de asumir el valor de la plantilla.
    - `<PASSWORD>` → la contraseña real de `sql.user`.
    - `<ELASTIC_HOST>` (bloque `output`) → la IP/host del clúster de Elastic de ese hospital.
+   - **Un `.conf` puede tener más de un bloque `jdbc`** (por ejemplo `ext_portal_paciente.conf`,
+     uno para el RIS y otro para el MPS): completar host y credenciales en todos. Si uno queda con
+     el placeholder, Logstash no termina nunca y cuelga la tarea de todo el cajón (pasó en H05).
+   - Antes de dar por terminado un `.conf`, buscar que no quede ningún `<` fuera de los comentarios
+     (líneas con `#`).
 3. **Probar cada `.conf` aislado, antes de programar ninguna tarea:**
    ```
    logstash.bat -f ext_ris_metrics.conf --config.test_and_exit
@@ -65,6 +70,11 @@ cajones de cadencia distinta:
        y confirmar que **"If the task is already running, then the following rule applies"**
        esté en **"Do not start a new instance"** — necesario para el cajón de `checkdb`
        (un CHECKDB real puede tardar horas) y no hace daño en los demás.
+     - En los cajones de 5 minutos y de 1 hora (no en `checkdb`), tildar **"Stop the task if it
+       runs longer than"** con un tope menor que la cadencia (4 minutos en el de 5 min). Con
+       "Do not start a new instance", un pipeline colgado deja la tarea en "Running" para
+       siempre y cada disparo nuevo se descarta (`322 Launch request ignored, instance already
+       running` en el History), con todos los pipelines del cajón parados.
    - Confirmar en el **History** de la tarea que aparecen corridas nuevas sin tocar "Run" a mano.
 
 ## Paso 2 — Dar permiso al usuario de lectura (`selogger`) sobre los índices nuevos
@@ -78,7 +88,7 @@ esté escribiendo bien (nos pasó exactamente esto en P03 con `ext_checkdb`).
 
 Índices a agregar al rol de `selogger` (los que correspondan según qué se instaló):
 `ext_dicom_queues`, `ext_ris_metrics_hourly`, `ext_pacs_metrics_hourly`,
-`ext_users_metrics_hourly`, `ext_checkdb`, más el índice de logs de Suitestensa si aplica
+`ext_users_metrics_hourly`, `ext_checkdb`, `ext_sql_backups`, `ext_portal_paciente` (si hay portal), más el índice de logs de Suitestensa si aplica
 (`elastic.index_pattern`, patrón `se-es-logging-*` por default).
 
 ## Paso 3 — Dar de alta el hospital y generar el token

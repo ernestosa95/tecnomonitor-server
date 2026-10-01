@@ -51,6 +51,15 @@ desactualizada y hay que revisarla.
     requerimientos y fases de despliegue (P03 → pocos hospitales → masivo) de server + agente
     v4.5.1 (🚧 en construcción: se están juntando los requerimientos).
 
+Guías operativas (`guias/`):
+
+- [Arquitectura y flujo de datos](guias/17-arquitectura-flujo-datos.md) — qué es cada pieza y cómo se
+  conectan.
+- [Configurar un hospital nuevo](guias/18-guia-configuracion-hospital-nuevo.md) — pipelines,
+  permisos, alta, agente y verificación (agente 4.5.2).
+- [Desplegar el monitoreo del portal paciente](guias/19-guia-despliegue-portal-paciente.md) — REQ-07,
+  agente 4.5.4; probada en H05.
+
 ## Estado general — 2026-09-11
 
 - **Fase 2, ítem 2.1 (auth de ingesta por token, escalonada a partir de

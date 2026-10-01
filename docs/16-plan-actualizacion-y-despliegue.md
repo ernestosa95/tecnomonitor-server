@@ -41,7 +41,7 @@ reproducirlo.
 | REQ-05 | Chequeo de integridad de bases SQL Server tras un reinicio (`DBCC CHECKDB`) | agente 4.5.2 + server (ingesta, visualización, alerta) | **validado en P03 (2026-09-22)**: ingesta, tarjeta en la pestaña Software y alerta por `ERROR` funcionando de punta a punta | alta: entra en el release 4.5.2 del agente |
 | REQ-04 | Mapa de integraciones Mirth: vista de flujo acumulado (ej. últimos 30 min) | server (frontend; API sin cambios en la opción base) | implementado (2026-09-21); criterio del asterisco corregido y **validado en producción (2026-09-29)** | por definir |
 | REQ-06 | Último backup de las bases SQL Server (SQL directo y Elastic) | agente 4.5.3 + Logstash + server (ingesta, visualización, alerta) | **implementado (2026-09-28)** en agente y server; **validado en un hospital real (2026-09-29)** | release 4.5.3 del agente (no entra en 4.5.2) |
-| REQ-07 | Portal paciente: cola de publicación RIS → MPS (ISO) con línea de tiempo por estado | agente 4.5.4 + Logstash + server (ingesta, tarjeta con gráfico, alertas) | **implementado (2026-09-30)** en agente y server; probado con datos simulados; **falta validar contra un SQL/Logstash reales** | release 4.5.4 del agente |
+| REQ-07 | Portal paciente: cola de publicación RIS → MPS (ISO) con línea de tiempo por estado | agente 4.5.4 + Logstash + server (ingesta, tarjeta con gráfico, alertas) | **desplegado y validado en H05 (2026-09-30)**: server en producción, agente 4.5.4 y pipeline de 5 min funcionando; alertas todavía apagadas | release 4.5.4 del agente |
 
 ### REQ-01 — Estado de las VMs: reinicios sin alerta y estado engañoso con el hospital offline
 
@@ -724,8 +724,8 @@ caso por cada fila de arriba, más una prueba manual con un hospital real que ap
   baja", con las horas de gracia y el botón **Ver vista previa** (`GET
   /api/monitoreo-modulos/preview`). Apagado, las bajas del agente solo se registran. Prendido, en
   el siguiente tick se cierran sus alertas (una sola vez por baja) y el módulo deja de mostrarse.
-- **Baja manual** desde la pestaña Software del hospital (sección "Monitoreo desactivado",
-  Admin/Ingeniería): pasa directo a `desactivado`, se aplica aunque el switch esté apagado, cierra
+- **Baja manual** desde la pestaña Software del hospital (sección "Monitoreo desactivado", que
+  desde 2026-09-30 se abre con el engranaje de la tarjeta del hospital; Admin/Ingeniería): pasa directo a `desactivado`, se aplica aunque el switch esté apagado, cierra
   ya las alertas y se puede revertir. Las bajas del agente no se revierten a mano (409). Visor y
   Comercial ven la lista sin acciones.
 - **Motor de alertas:** `procesar_offline()` refresca el cache de bajas y ejecuta las pendientes
@@ -1140,13 +1140,15 @@ decir: una cola que no avanza hace días, sin que nada lo avisara.
   catálogos de H05 (2026-09-30): RIS `1` Published, `2` Not published y `3` Revoked final, `4` To be
   published y `5` To be withdrawn pendiente, `NULL` no listo; MPS `1` IDLE, `2` PENDING y `3` CREATING
   pendiente, `4` DONE y `9` BURNER final, `5` FAILED, `6` BLOCKED y `7` ABORTED error (el resumen y la
-  alerta los cuentan como "con error"). `8` WAITING cae en pendiente por palabra. Un código que no
+  alerta los cuentan como "con error"). WAITING cae en pendiente por palabra y UNKNOWN queda sin
+  clasificar (sus códigos no se vieron en la captura). Un código que no
   está en la tabla se clasifica por palabras de su descripción y, si tampoco, queda "sin clasificar"
   (se grafica, no alerta).
 - **Tarjeta en la pestaña Software:** resumen de la última lectura (pendientes en el MPS y sin ISO,
-  más antiguo en la cola, bloqueados, por publicar en el RIS), **línea de tiempo por estado**
-  pendiente o de error con el selector 30 min / 1 h / 24 h / 7 días (BLOCKED en rojo, RIS punteado,
-  huecos sin rellenar con 0) y el detalle de cada estado de RIS y MPS.
+  más antiguo en la cola, con error, por publicar en el RIS), **línea de tiempo por estado**
+  pendiente o de error con el rango común de la pestaña (30 min / 1 h / 24 h / 7 días; errores en
+  rojo, RIS punteado, huecos sin rellenar con 0; solo los estados que tuvieron estudios en el rango)
+  y una ficha por estado de RIS y MPS en grilla (los estados en 0, atenuados).
 - **Alertas** (apagadas por default, `portal_alert_enabled` en Configuración → Alertas, umbral
   `portal_max_hours` = 6 h):
   - `PORTAL_DEMORA` (WARNING): el pendiente más antiguo del MPS lleva más del umbral en la cola. Solo
@@ -1185,8 +1187,67 @@ Estas quedaron abiertas en el plan y se implementaron con un valor por defecto:
   umbral en Configuración → Alertas, módulo `patient_portal` en `modulos.py`.
 - Probado con reportes simulados sobre una copia de la base (`TestClient`): ingesta, descarte de
   lecturas repetidas y de payloads mal formados, resumen, serie, apertura y cierre de las dos
-  alertas; y la tarjeta con Playwright. **No probado contra un SQL Server ni un Logstash reales**:
-  las consultas no se corrieron nunca (T-SQL sin validar), es lo primero a revisar en el piloto.
+  alertas; y la tarjeta con Playwright. Validado después contra SQL y Logstash reales en H05 (ver
+  abajo).
+
+#### Despliegue y validación en H05 (2026-09-30)
+
+Primer hospital con portal paciente. Orden: server (`git pull` + reinicio), agente 4.5.4 compilado e
+instalado, `ext_portal_paciente.conf` copiado a `C:\Estensa\ELK\Configfile\` y sumado al `.bat` de
+5 minutos, sub-tarjeta "Portal paciente" activada en la tarjeta Elastic del agente.
+
+**Funcionó:** las dos consultas corren contra el SQL real (el T-SQL no necesitó cambios), el índice
+`ext_portal_paciente` se actualiza cada 5 minutos desde la tarea programada, el usuario de lectura
+del agente lo leyó sin agregarle permisos, y la tarjeta del server muestra el resumen y arma la línea
+de tiempo. Estado al cierre: cola del MPS vacía, 2 bloqueados viejos (sin bloqueos nuevos en 24 h),
+2 "To be withdrawn" en el RIS → estado OK.
+
+**Tropiezos (todos del `.conf` desplegado, no del código):**
+
+1. Quedó `<ELASTIC_HOST>` sin reemplazar: Logstash falla al arrancar (`Illegal character in
+   authority at index 7: http://<ELASTIC_HOST>:29200`) y el índice nunca se crea (el Test del agente
+   dice "accesible, todavía sin datos"). En H05 el host correcto es `127.0.0.1:29200`, el mismo de
+   `ext_dicom_queues.conf`.
+2. **El `.conf` tiene dos bloques `jdbc` (RIS y MPS) y el segundo quedó sin credenciales.** El RIS
+   llegaba, el MPS no, y Logstash no terminaba nunca: la tarea de 5 minutos quedó en "Running" y
+   cada disparo siguiente se descartó (`322 Launch request ignored, instance already running`).
+   **Efecto colateral: frenó también el autoenrute DICOM**, que vive en el mismo `.bat`. Se
+   destrabó terminando la tarea y completando las credenciales.
+
+Lecciones para los próximos hospitales (llevadas a la
+[guía de despliegue](guias/19-guia-despliegue-portal-paciente.md)): completar las credenciales en
+**los dos** bloques `jdbc`; probar el `.conf` a mano y confirmar que termina antes de sumarlo al
+`.bat`; y configurar la tarea con *"Stop the task if it runs longer than"* 4 minutos para que un
+pipeline colgado no bloquee a los demás.
+
+**Ajustes hechos con los datos reales** (solo server, desplegados el mismo día):
+
+- `340bd4b` — códigos del RIS 2 (Not published) y 3 (Revoked) finales, 5 (To be withdrawn)
+  pendiente; puntos visibles mientras hay menos de 3 lecturas (con una sola, la línea no se veía).
+- `a7d2f9d` — códigos del MPS 4 (DONE) final, 5 (FAILED) y 7 (ABORTED) error: el resumen y la alerta
+  pasan a decir "con error" (bloqueados, fallidos o abortados). Fichas de estado en grilla y gráfico
+  sin líneas planas en 0 (con 16 estados, la leyenda era ilegible).
+
+Pendientes: medir cuánto tarda la consulta del MPS cuando la cola tenga volumen; prender las alertas
+después de observar la tarjeta al menos un día; los puntos 2 a 5 de las decisiones por defecto.
+
+#### Ajustes de la pestaña Software (pedidos durante el piloto, 2026-09-30)
+
+No son de REQ-07, pero salieron mirando la pestaña con todos los módulos de H05:
+
+- `1845b25` — **"Monitoreo desactivado" (REQ-03) se abre desde un engranaje** en la tarjeta verde del
+  hospital (barra superior del detalle), con la cantidad de módulos dados de baja. Antes ocupaba el
+  principio de la pestaña Software siempre. Si se toca desde otra pestaña, lleva a Software; arranca
+  cerrada en cada hospital y solo aparece para los roles que pueden ver la sección.
+- `9c7e3fe` — **tarjetas en dos columnas**, con la misma altura por fila; la que se abre (gráfico o
+  tabla) ocupa todo el ancho y las cerradas que siguen rellenan el hueco. Una columna por debajo de
+  1100 px. Ojo al editar ese CSS en `index_beta.html`: la plantilla pasa por Jinja y `{#` abre un
+  comentario (rompe la página entera).
+- `b05f60c` — **un solo selector de rango** ("Rango de los gráficos", arriba a la derecha) en lugar
+  de uno por tarjeta: todos cambiaban el mismo rango de la pestaña. El "Tráfico / Encolados" de
+  Mirth sigue en cada tarjeta porque es propio de la instancia.
+
+Los tres desplegados en producción el 2026-09-30.
 
 #### Criterios de aceptación (borrador)
 
