@@ -21,6 +21,12 @@ try:
 except ImportError:
     from dashboard_app.alerts_engine import modulos as monitoreo_modulos
 
+# Escritura en el motor que corresponda (SQLite como siempre, o el esquema de Postgres).
+try:
+    from datos import escritura
+except ImportError:
+    from dashboard_app.datos import escritura
+
 app = FastAPI(title="TecnoXaas Monitor V4")
 
 # Configurar Logger básico
@@ -144,9 +150,7 @@ def _ingerir_sql_integrity(db: Session, hospital_id: str, payload, ts: datetime)
         if (nombre, fecha) in vistos:
             continue
         vistos.add((nombre, fecha))
-        if db.query(database.SoftwareMonitoring.id).filter_by(
-            hospital_id=hospital_id, app_name="sql_integrity", component_id=nombre, timestamp=fecha
-        ).first():
+        if escritura.existe_lectura(db, hospital_id, "sql_integrity", fecha, componente=nombre):
             continue
 
         estado = str(item.get("status") or "").upper()
@@ -159,7 +163,7 @@ def _ingerir_sql_integrity(db: Session, hospital_id: str, payload, ts: datetime)
         except (TypeError, ValueError):
             duracion = 0
 
-        db.add(database.SoftwareMonitoring(
+        escritura.guardar_fila_software(db, database.SoftwareMonitoring(
             hospital_id=hospital_id,
             app_name="sql_integrity",
             component_id=nombre,
@@ -209,21 +213,14 @@ def _ingerir_sql_backups(db: Session, hospital_id: str, payload, ts: datetime) -
         ultimo_full = _fecha(item.get("last_full"))
         clave = ultimo_full.isoformat(timespec="seconds") if ultimo_full else None
 
-        fila = db.query(database.SoftwareMonitoring).filter_by(
-            hospital_id=hospital_id, app_name="sql_backup", component_id=nombre
-        ).order_by(database.SoftwareMonitoring.id.desc()).first()
-        extra = fila.extra_data if fila is not None else None
-        if isinstance(extra, str):
-            try:
-                extra = json.loads(extra)
-            except ValueError:
-                extra = None
+        fila, extra = escritura.ultima_lectura_sql(db, hospital_id, "sql_backup", nombre)
         if fila is not None and isinstance(extra, dict) and extra.get("last_full") == clave:
             # Mismo backup que la última lectura: solo se renueva la marca de lectura.
-            fila.extra_data = {**extra, "last_seen": leido.isoformat(timespec="seconds"), "source": origen}
+            escritura.actualizar_extra_sql(
+                db, fila, {**extra, "last_seen": leido.isoformat(timespec="seconds"), "source": origen})
             continue
 
-        db.add(database.SoftwareMonitoring(
+        escritura.guardar_fila_software(db, database.SoftwareMonitoring(
             hospital_id=hospital_id,
             app_name="sql_backup",
             component_id=nombre,
@@ -267,10 +264,7 @@ def _ingerir_patient_portal(db: Session, hospital_id: str, payload, ts: datetime
             leido = None
     leido = (leido or ts).replace(microsecond=0)
 
-    ya_guardada = db.query(database.SoftwareMonitoring.id).filter_by(
-        hospital_id=hospital_id, app_name="patient_portal", timestamp=leido
-    ).first()
-    if ya_guardada is not None:
+    if escritura.existe_lectura(db, hospital_id, "patient_portal", leido):
         return
 
     origen_lectura = str(payload.get("source") or "")[:20]
@@ -287,7 +281,7 @@ def _ingerir_patient_portal(db: Session, hospital_id: str, payload, ts: datetime
             continue
         vistos.add(clave)
         descripcion = str(item.get("state") or "UNKNOWN")[:100]
-        db.add(database.SoftwareMonitoring(
+        escritura.guardar_fila_software(db, database.SoftwareMonitoring(
             hospital_id=hospital_id,
             app_name="patient_portal",
             component_id=clave,
@@ -504,11 +498,13 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         phy = data_dict.get('physical_layer') or {}
         
         # Manejo seguro de timestamp
+        recibido = datetime.now()
         ts_str = env.get('timestamp')
         try:
-            ts = datetime.fromisoformat(ts_str) if ts_str else datetime.now()
+            ts = datetime.fromisoformat(ts_str) if ts_str else recibido
         except:
-            ts = datetime.now()
+            ts = recibido
+        ts = escritura.hora_del_reporte(db, env.get('hospital_id'), ts, recibido)
 
         # --- EXTRACCIÓN BLINDADA ---
         sensors = phy.get('sensors') or {}  
@@ -533,12 +529,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
         app_metrics = data_dict.get('application_metrics')
         
         if app_metrics:
-            nuevo_reporte_uso = database.ReporteUso(
-                hospital_id = env.get('hospital_id', 'UNKNOWN'),
-                timestamp = ts,
-                kpi_json_data = json.dumps(app_metrics)
-            )
-            db.add(nuevo_reporte_uso)
+            escritura.guardar_uso(db, env.get('hospital_id', 'UNKNOWN'), ts, app_metrics)
             del data_dict['application_metrics']
         
         # =========================================================
@@ -567,7 +558,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     nombre_canal = item.get("channel", "unknown")
                     id_comp = f"[{instance_name}] {nombre_canal}" if instance_name != "Default" else nombre_canal
 
-                    db.add(database.SoftwareMonitoring(
+                    escritura.guardar_fila_software(db, database.SoftwareMonitoring(
                         hospital_id=h_id,
                         app_name="mirth",
                         component_id=id_comp,
@@ -615,7 +606,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                     accion = dict_info.action if dict_info else "Avisar a soporte N2"
 
                     # 3. Guardar en SoftwareMonitoring
-                    db.add(database.SoftwareMonitoring(
+                    escritura.guardar_fila_software(db, database.SoftwareMonitoring(
                         hospital_id=h_id,
                         app_name="elasticsearch", # Lo mantenemos como elasticsearch según la lógica original
                         component_id=rule_id,
@@ -633,7 +624,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
             # --- 3. NUEVO: PROCESAR CERTIFICADOS SSL ---
             ssl_data = soft_monitoring.get("ssl_certificates", [])
             for cert in ssl_data:
-                db.add(database.SoftwareMonitoring(
+                escritura.guardar_fila_software(db, database.SoftwareMonitoring(
                     hospital_id=h_id,
                     app_name="ssl_certificate",
                     component_id=cert.get("url", "unknown_url"),
@@ -660,7 +651,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
                 nick_o = origen.get("nickname")  or origen.get("hostname")  or ("TODOS" if origen.get("key") is None else "?")
                 nick_d = destino.get("nickname") or destino.get("hostname") or "?"
 
-                db.add(database.SoftwareMonitoring(
+                escritura.guardar_fila_software(db, database.SoftwareMonitoring(
                     hospital_id=h_id,
                     app_name="dicom_routing",
                     component_id=str(id_rule),
@@ -692,18 +683,12 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
 
 
         # 4. CREAR REGISTRO DB (Infraestructura)
-        nuevo_registro = database.ReporteModel(
-            hospital_id = env.get('hospital_id', 'UNKNOWN'),
-            timestamp = ts,
-            host_status = host_status,
-            host_cpu_usage = host_cpu,
-            host_ram_usage = host_ram,
-            power_watts = p_watts,
-            full_json_data = data_dict
+        id_registro = escritura.guardar_reporte(
+            db, env.get('hospital_id', 'UNKNOWN'), ts, host_status, host_cpu, host_ram, p_watts, data_dict,
+            recibido=recibido,
         )
-        
-        # 5. COMMIT (Guarda ambas tablas al mismo tiempo)
-        db.add(nuevo_registro)
+
+        # 5. COMMIT (Guarda todas las tablas al mismo tiempo)
         db.commit()
 
         # 6. MÓDULOS DADOS DE BAJA (REQ-03): registra lo que declara collection_meta. Best-effort y
@@ -716,7 +701,7 @@ async def recibir_reporte(request: Request, db: Session = Depends(get_db)):
             logger.warning(f"⚠️ [Módulos] No se pudo registrar collection_meta de {env.get('hospital_id')}: {e}")
         
         logger.info(f"✅ Reporte guardado: {env.get('hospital_id')} (Versión: {schema_version} | Legacy: {is_legacy})")
-        return {"status": "ok", "id": nuevo_registro.id, "v3_conversion": is_legacy, "version": schema_version}
+        return {"status": "ok", "id": id_registro, "v3_conversion": is_legacy, "version": schema_version}
 
     # 401 de _validar_token_ingesta: no es un error de formato, no pasa por
     # el bloque de rechazo genérico de abajo (que devuelve 500).

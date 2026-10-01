@@ -44,7 +44,8 @@ CREATE TABLE metricas_host (
     subida_mbps    double precision,
     bajada_mbps    double precision,
     arranque       timestamptz,                -- ts - uptime: cambia solo al reiniciar
-    host_status    text                        -- el que hoy calcula la ingesta (OK/WARNING/...)
+    host_status    text,                       -- el que hoy calcula la ingesta (OK/WARNING/...)
+    recibido       timestamptz                 -- hora del server al recibirlo (NULL en el histórico migrado)
 );
 SELECT create_hypertable('metricas_host', by_range('ts', INTERVAL '7 days'));
 CREATE INDEX ON metricas_host (hospital_id, ts DESC);
