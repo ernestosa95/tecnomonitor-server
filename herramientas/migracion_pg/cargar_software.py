@@ -46,9 +46,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sqlite")
     ap.add_argument("--dsn", required=True)
-    ap.add_argument("--desde", required=True)
-    ap.add_argument("--hasta", required=True)
+    ap.add_argument("--desde", default="0000-01-01")
+    ap.add_argument("--hasta", default="9999-12-31")
+    ap.add_argument("--id-mayor", type=int, default=0, help="software: solo filas con id mayor")
+    ap.add_argument("--uso-id-mayor", type=int, default=0, help="KPIs (reportes_uso): solo filas con id mayor")
+    ap.add_argument("--id-hasta", type=int, default=2**62, help="software: solo filas con id hasta este (pruebas)")
+    ap.add_argument("--uso-id-hasta", type=int, default=2**62, help="KPIs: solo filas con id hasta este (pruebas)")
+    ap.add_argument("--apps", default="", help="solo estas apps, separadas por coma (vacío: todas)")
+    ap.add_argument("--sin-apps", default="", help="todas menos estas, separadas por coma")
+    ap.add_argument("--sin-kpi", action="store_true", help="no cargar reportes_uso")
     args = ap.parse_args()
+    solo = {a for a in args.apps.split(",") if a}
+    excluir = {a for a in args.sin_apps.split(",") if a}
 
     src = sqlite3.connect(f"file:{args.sqlite}?mode=ro", uri=True)
     pg = psycopg2.connect(args.dsn)
@@ -61,7 +70,10 @@ def main():
     n = 0
     for hid, app, comp, estado, valor, extra, ts_txt in src.execute(
             "SELECT hospital_id, app_name, component_id, status_value, metric_value, extra_data, timestamp "
-            "FROM software_monitoring WHERE timestamp >= ? AND timestamp < ? ORDER BY id", (args.desde, args.hasta)):
+            "FROM software_monitoring WHERE timestamp >= ? AND timestamp < ? AND id > ? AND id <= ? ORDER BY id",
+            (args.desde, args.hasta, args.id_mayor, args.id_hasta)):
+        if (solo and app not in solo) or app in excluir:
+            continue
         try:
             extra = json.loads(extra) if isinstance(extra, str) else extra
         except ValueError:
@@ -91,8 +103,10 @@ def main():
     print(f"Software: {n} lecturas, {len(reglas)} reglas de autoenrute, {time.time() - t0:.0f} s")
 
     # --- KPIs de uso ---
-    filas = src.execute("SELECT hospital_id, timestamp, kpi_json_data FROM reportes_uso "
-                        "WHERE timestamp >= ? AND timestamp < ? ORDER BY id", (args.desde, args.hasta)).fetchall()
+    filas = [] if args.sin_kpi else src.execute(
+        "SELECT hospital_id, timestamp, kpi_json_data FROM reportes_uso "
+        "WHERE timestamp >= ? AND timestamp < ? AND id > ? AND id <= ? ORDER BY id",
+        (args.desde, args.hasta, args.uso_id_mayor, args.uso_id_hasta)).fetchall()
     cur.execute("SELECT nextval('kpi_reporte_id_seq') FROM generate_series(1, %s)", (len(filas),))
     ids = [r[0] for r in cur.fetchall()]
     for rid, (hid, ts_txt, js) in zip(ids, filas):

@@ -84,8 +84,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sqlite")
     ap.add_argument("--dsn", required=True)
-    ap.add_argument("--desde", required=True)
-    ap.add_argument("--hasta", required=True)
+    ap.add_argument("--desde", default="0000-01-01")
+    ap.add_argument("--hasta", default="9999-12-31")
+    ap.add_argument("--id-mayor", type=int, default=0,
+                    help="solo filas con id mayor (diferencial del corte desde la marca de la foto)")
+    ap.add_argument("--id-hasta", type=int, default=2**62, help="solo filas con id hasta este (pruebas)")
     args = ap.parse_args()
 
     src = sqlite3.connect(f"file:{args.sqlite}?mode=ro", uri=True)
@@ -102,8 +105,8 @@ def main():
     ultimo = {}          # hospital -> (ts, host_status, datos)
     filas = src.execute(
         "SELECT hospital_id, timestamp, host_status, full_json_data FROM reportes_historicos "
-        "WHERE timestamp >= ? AND timestamp < ? ORDER BY hospital_id, timestamp",
-        (args.desde, args.hasta))
+        "WHERE timestamp >= ? AND timestamp < ? AND id > ? AND id <= ? ORDER BY hospital_id, timestamp",
+        (args.desde, args.hasta, args.id_mayor, args.id_hasta))
 
     for hid, ts_txt, host_status, js in filas:
         try:
