@@ -26,6 +26,7 @@ from datetime import timedelta
 from sqlalchemy import text
 
 import database
+from datos import infra as datos_infra
 
 from .. import modulos
 from ..config import _followers_de
@@ -62,14 +63,6 @@ def _crit_por_hospital(db, hid):
         mapa_component_a_channel[fila.component_id] = fila.channel_id
 
     return mapa_crit, mapa_hum, mapa_component_a_channel
-
-
-def _ultimo_reporte(db, hid):
-    fila = db.execute(
-        text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1"),
-        {"hid": hid},
-    ).fetchone()
-    return _parsear_timestamp(fila.timestamp) if fila else None
 
 
 CANAL_SYSTEM_ERROR = "SYSTEM_ERROR"
@@ -125,7 +118,7 @@ def verificar_mirth(db, config, hospitales_activos):
         if modulos.baja_para(hosp.hospital_id, modulo="mirth"):
             continue  # módulo dado de baja (REQ-03): sus alertas ya se cerraron en aplicar_bajas()
         mapa_crit, mapa_hum, mapa_component_a_channel = _crit_por_hospital(db, hosp.hospital_id)
-        ultimo_reporte = _ultimo_reporte(db, hosp.hospital_id)
+        ultimo_reporte = datos_infra.ultimo_timestamp(db, hosp.hospital_id)
         vigentes = set()
         motivos = {}
 

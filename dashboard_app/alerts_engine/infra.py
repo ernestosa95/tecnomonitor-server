@@ -9,15 +9,13 @@ archivo nuevo. Ver docs/09-plan-refactor-alertas.md §2 (caso A vs B).
 
 Ver docs/09-plan-refactor-alertas.md para el resto de la reorganización.
 """
-import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import text
-
 import database
+from datos import infra as datos_infra
 
 from .config import _followers_de, cargar_config
-from .estado import _parsear_timestamp, actualizar_estado_alerta
+from .estado import actualizar_estado_alerta
 
 # NOTA: constante histórica sin uso actual. Los umbrales de latencia reales
 # están hardcodeados en _evaluar_reglas_v3 (200 ms NOTICE / 500 ms CRITICAL).
@@ -69,27 +67,21 @@ def verificar_infra_hospitales(db, config, global_asana_followers):
     toda_la_metadata = db.query(database.HospitalMetadata).all()
     meta_dict = {meta.hospital_id: meta for meta in toda_la_metadata}
 
-    query = text("""
-        SELECT h.hospital_id, h.full_json_data
-        FROM reportes_historicos h
-        INNER JOIN (SELECT hospital_id, MAX(timestamp) as max_t FROM reportes_historicos GROUP BY hospital_id) max_h
-        ON h.hospital_id = max_h.hospital_id AND h.timestamp = max_h.max_t
-    """)
-    reportes = db.execute(query).fetchall()
+    reportes = datos_infra.ultimos_reportes(db)
     total = len(reportes)
 
     for row in reportes:
         meta = meta_dict.get(row.hospital_id)
 
-        if not (meta and meta.alerts_enabled and meta.is_visible is not False and row.full_json_data):
+        # Sin JSON o JSON ilegible: no hay nada que evaluar.
+        if not (meta and meta.alerts_enabled and meta.is_visible is not False and row.data):
             omitidos += 1
             continue
 
         # 🛡️ AISLAMIENTO POR HOSPITAL: un payload roto ya no tumba a los demás
         try:
-            data = json.loads(row.full_json_data) if isinstance(row.full_json_data, str) else row.full_json_data
             resultado = _evaluar_reglas_v3(
-                row.hospital_id, data, db, config,
+                row.hospital_id, row.data, db, config,
                 meta.asana_project_id, global_asana_followers
             )
             if isinstance(resultado, int):
@@ -316,22 +308,10 @@ def _verificar_conectividad(db, config, asana_followers):
                        if m.is_visible is not False]
 
     for meta in hospitales_meta:
-        last_report = db.execute(
-            text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1"),
-            {"hid": meta.hospital_id}
-        ).fetchone()
-
-        # CASO 1: nunca reportó -> nodo nuevo legítimo, lo ignoramos (anti falso-positivo)
-        if not last_report:
-            continue
-
-        last_seen = _parsear_timestamp(last_report.timestamp)
-
-        # CASO 2: HAY reporte pero el timestamp no parsea.
-        # Antes esto caía en el mismo bucket que "nunca conectó" y se salteaba EN SILENCIO.
-        # Ese era exactamente el agujero: un hospital que SÍ reportaba quedaba sin alerta OFFLINE.
+        # None: nunca reportó (nodo nuevo legítimo, anti falso-positivo) o el
+        # timestamp no parsea (datos_infra lo avisa en el log). Se omite este ciclo.
+        last_seen = datos_infra.ultimo_timestamp(db, meta.hospital_id)
         if last_seen is None:
-            print(f"⚠️ [OFFLINE] '{meta.hospital_id}' tiene reporte pero timestamp ilegible: {last_report.timestamp!r}. Se omite este ciclo.")
             continue
 
         minutos = int((ahora - last_seen).total_seconds() / 60)

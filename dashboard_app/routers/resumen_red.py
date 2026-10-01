@@ -21,11 +21,11 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import auth
 import database
+from datos import infra as datos_infra
 import resumen_hospital
 from core import get_db
 from database import HospitalMetadata
@@ -108,9 +108,7 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
 
     for hosp in hospitales_meta:
         # --- SECCIÓN A: INFRAESTRUCTURA (Último reporte de estado) ---
-        ultimo_reporte = db.query(database.ReporteModel).filter(
-            database.ReporteModel.hospital_id == hosp.hospital_id
-        ).order_by(database.ReporteModel.timestamp.desc()).first()
+        ultimo_reporte = datos_infra.ultimo_reporte(db, hosp.hospital_id)
 
         fecha_reporte = "Sin datos"
         estado_texto = "Offline"
@@ -122,10 +120,7 @@ def obtener_resumen(db: Session = Depends(get_db), current_user: dict = Depends(
 
             # 🛠️ FIX 1: Restaurada la lógica original para extraer los Nodos (VMs)
             try:
-                if isinstance(ultimo_reporte.full_json_data, str):
-                    data_json = json.loads(ultimo_reporte.full_json_data)
-                else:
-                    data_json = ultimo_reporte.full_json_data or {}
+                data_json = ultimo_reporte.data
 
                 virtual_layer = data_json.get("virtual_layer", [])
 
@@ -388,19 +383,8 @@ def obtener_datos_mapa(db: Session = Depends(get_db),
     mapa_data = []
 
     for h in hospitales:
-        last_report = db.execute(
-            text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1"),
-            {"hid": h.hospital_id}
-        ).fetchone()
-
-        status = "Offline"
-        if last_report:
-            last_seen = last_report.timestamp
-            if isinstance(last_seen, str):
-                try: last_seen = datetime.strptime(last_seen, "%Y-%m-%d %H:%M:%S.%f")
-                except: pass
-            if (ahora - last_seen) <= limit_delta:
-                status = "Online"
+        last_seen = datos_infra.ultimo_timestamp(db, h.hospital_id)
+        status = "Online" if last_seen and (ahora - last_seen) <= limit_delta else "Offline"
 
         try:
             mapa_data.append({

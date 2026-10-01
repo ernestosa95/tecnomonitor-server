@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 import auth
 import database
+from datos import infra as datos_infra
+from datos.tiempo import parsear_ts
 from alerts_engine import modulos
 from alerts_engine.config import cargar_config
 from alerts_engine.software.mirth import _umbrales
@@ -29,18 +31,8 @@ _PASOS_MAX = 288  # tope defensivo (24h a paso=5min) contra un query param abusi
 _ACUM_MINUTOS_MAX = 7 * 24 * 60  # ventana más larga del acumulado (7 días)
 
 
-def _parsear_ts(v):
-    if isinstance(v, datetime):
-        return v
-    if not v:
-        return None
-    s = str(v)[:26].replace("T", " ")
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    return None
+# Parser único en datos.tiempo; el nombre se mantiene porque lo importa hospital_detalle.
+_parsear_ts = parsear_ts
 
 
 def _extra(row):
@@ -114,13 +106,7 @@ def _hospital_offline(db, config, hospital_id):
     """Mismo criterio que alerts_engine.infra._verificar_conectividad (reportes_historicos
     vs offline_minutes, contra la hora del servidor) -- para que el mapa no contradiga la
     señal OFFLINE que ya usa el resto del dashboard."""
-    last = db.execute(
-        text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1"),
-        {"hid": hospital_id},
-    ).fetchone()
-    if not last:
-        return False
-    ts = _parsear_ts(last.timestamp)
+    ts = datos_infra.ultimo_timestamp(db, hospital_id)
     if ts is None:
         return False
     return (datetime.now() - ts) > timedelta(minutes=config.get("offline_minutes", 15))

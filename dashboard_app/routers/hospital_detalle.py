@@ -23,6 +23,7 @@ from alerts_engine.software import portal_paciente as portal_detector
 from alerts_engine.software import sql_backups as sql_backups_detector
 import auth
 import database
+from datos import infra as datos_infra
 from core import get_db
 from database import HospitalMetadata
 from routers.mirth_mapa import _parsear_ts
@@ -33,14 +34,11 @@ router = APIRouter()
 def obtener_detalle_hospital(hospital_id: str,
                              db: Session = Depends(get_db),
                              current_user: dict = Depends(auth.require_hospital_access("infra"))):
-    query = text("SELECT * FROM reportes_historicos WHERE hospital_id = :hid ORDER BY timestamp DESC LIMIT 1")
-    result = db.execute(query, {"hid": hospital_id}).fetchone()
-    if not result: return {"error": "Hospital no encontrado"}
-    try:
-        full_data = json.loads(result.full_json_data) if result.full_json_data else {}
-        full_data['db_timestamp'] = str(result.timestamp)[:19].replace("T", " ")
-        return full_data
-    except Exception: return {"error": "Error procesando datos"}
+    reporte = datos_infra.ultimo_reporte(db, hospital_id)
+    if not reporte: return {"error": "Hospital no encontrado"}
+    full_data = dict(reporte.data)
+    full_data['db_timestamp'] = str(reporte.timestamp)[:19].replace("T", " ") if reporte.timestamp else ""
+    return full_data
 
 # --- EN DASHBOARD.PY ---
 # 1. Devuelve esta función a su estado original simplificado

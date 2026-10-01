@@ -18,6 +18,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 import database
+from datos import infra as datos_infra
 
 EXCLUDED_AETS = {"CLIENT", "WADO", "PACS"}
 EXCLUDED_MODS = {"DOC"}
@@ -205,14 +206,12 @@ def calcular_kpis_hospital(db, hospital_id: str) -> dict:
 
     acc["equipos"] = len(aets)
 
-    ultimo_reporte = db.query(database.ReporteModel).filter(
-        database.ReporteModel.hospital_id == hospital_id
-    ).order_by(database.ReporteModel.timestamp.desc()).first()
+    ultimo_reporte = datos_infra.ultimo_reporte(db, hospital_id)
 
     tb_alm = ram = None
     if ultimo_reporte:
-        tb_alm = uso_disco_j_appv_tb(ultimo_reporte.full_json_data)
-        ram = ram_pct(ultimo_reporte.full_json_data)
+        tb_alm = uso_disco_j_appv_tb(ultimo_reporte.data)
+        ram = ram_pct(ultimo_reporte.data)
     tb_disp = round(CAPACIDAD_TB_TOTAL - tb_alm, 2) if tb_alm is not None else None
 
     estudios_pacs_anual = None

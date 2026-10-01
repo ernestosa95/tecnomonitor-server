@@ -300,6 +300,19 @@ hospital para el motor de alertas 264 ms; **gráfico de 30 días de un hospital 
 `VACUUM INTO` (5,5 min, no bloquea la ingesta) y verificar con `PRAGMA quick_check` antes de
 comprimir. Pico de disco durante la foto: ~20 GB.
 
+### 9.0 Fase 2 en curso: capa de acceso `dashboard_app/datos/`
+
+Paquete único para leer el histórico (reglas en `datos/__init__.py`). Pruebas en `tests/`
+(`python3 -m pytest tests`, base SQLite en memoria). Se migra por bloques, cada uno verificado
+contra la foto de producción:
+
+| Bloque | Qué | Estado |
+|---|---|---|
+| 1. Último reporte | `ultimo_reporte`, `ultimos_reportes`, `ultimo_timestamp`, `valores_recientes`; parser único de fechas (`datos.tiempo`). 8 lugares: motor de alertas, OFFLINE, Mirth, autoenrute, detalle del hospital, resumen de red y mapa, resumen del hospital, mapa de Mirth | **Hecho (2026-10-01)** |
+| 2. Series de infraestructura | Gráfico `/history`, PDF de infraestructura (duplicado en `informes.py` y `generator_report.py`), gráfico de temperaturas | Pendiente |
+| 3. KPIs de uso (`reportes_uso`) | Resumen de red y del hospital, `kpi-history`, PDF clínico, KPIs programados | Pendiente |
+| 4. Software (`software_monitoring`) | Detectores (Mirth, autoenrute, CHECKDB, backups, portal), pestaña Software, mapa y topología de Mirth | Pendiente |
+
 ### 9.1 Carga histórica: local + diferencial (camino elegido, 2026-09-30)
 
 1. **Foto:** `.backup` de la base de producción (seguro con el server andando). Se anota el último

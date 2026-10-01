@@ -47,6 +47,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 
 import database
+from datos import infra as datos_infra
 
 from .. import modulos
 from ..config import _followers_de
@@ -231,27 +232,11 @@ def evaluar_cola(valores, timestamps, ahora, win_warn, win_crit, min_inst, drain
 def _metas_recientes(db, hid, desde):
     """
     (último reporte del hospital, [collection_meta.dicom_routing de los reportes
-    desde `desde`], cronológico). Solo lee la clave que hace falta del JSON.
+    desde `desde`], cronológico; None donde el reporte no lo trae).
     """
-    ultimo = db.execute(
-        text("SELECT timestamp FROM reportes_historicos WHERE hospital_id = :hid "
-             "ORDER BY timestamp DESC LIMIT 1"),
-        {"hid": hid},
-    ).fetchone()
-    filas = db.execute(
-        text("SELECT json_extract(full_json_data, '$.collection_meta.dicom_routing') AS meta "
-             "FROM reportes_historicos WHERE hospital_id = :hid AND timestamp >= :desde "
-             "ORDER BY timestamp ASC"),
-        {"hid": hid, "desde": desde},
-    ).fetchall()
-    metas = []
-    for f in filas:
-        try:
-            m = json.loads(f.meta) if isinstance(f.meta, str) else f.meta
-        except (TypeError, ValueError):
-            m = None
-        metas.append(m if isinstance(m, dict) else None)
-    return (_parsear_timestamp(ultimo.timestamp) if ultimo else None), metas
+    metas = datos_infra.valores_recientes(db, hid, "$.collection_meta.dicom_routing", desde)
+    return (datos_infra.ultimo_timestamp(db, hid),
+            [m if isinstance(m, dict) else None for m in metas])
 
 
 def _indice_vencido(meta):
