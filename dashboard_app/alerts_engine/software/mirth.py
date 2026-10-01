@@ -12,6 +12,12 @@ desactivado en Mirth). La antigüedad se mide contra el último reporte *del
 hospital*, no contra el reloj: un hospital offline no cierra nada (eso lo
 cubre la alerta OFFLINE). Ver docs/16 (REQ-03).
 
+`SYSTEM_ERROR` no es un canal: el agente lo manda en lugar de los canales
+cuando no pudo hablar con la API de esa instancia de Mirth (caída, reinicio,
+login). Al recuperarse no vuelve con OK, simplemente deja de llegar; por eso
+se da por resuelto apenas llegan canales reales MÁS NUEVOS de la misma
+instancia, sin esperar la gracia de 6 h.
+
 Ver docs/09-plan-refactor-alertas.md y docs/13-contrato-topologia-mirth.md.
 """
 import json
@@ -64,6 +70,20 @@ def _ultimo_reporte(db, hid):
         {"hid": hid},
     ).fetchone()
     return _parsear_timestamp(fila.timestamp) if fila else None
+
+
+CANAL_SYSTEM_ERROR = "SYSTEM_ERROR"
+
+
+def _instancia_de(cid):
+    """'[MIRTH_SE] IN' -> 'MIRTH_SE'; sin prefijo (instancia 'Default' en main.py) -> ''."""
+    if cid.startswith("[") and "] " in cid:
+        return cid[1:cid.index("] ")]
+    return ""
+
+
+def _es_system_error(cid):
+    return cid == CANAL_SYSTEM_ERROR or cid.endswith(f"] {CANAL_SYSTEM_ERROR}")
 
 
 def _cerrar_fantasmas(db, hosp, vigentes, motivos):
@@ -131,6 +151,18 @@ def verificar_mirth(db, config, hospitales_activos):
                 historial_canales[cid] = []
             historial_canales[cid].append(reg)
 
+        # Última lectura de un canal REAL por instancia: si es más nueva que el
+        # SYSTEM_ERROR de esa instancia, el agente ya se pudo conectar.
+        ultimo_real = {}
+        for cid, historia in historial_canales.items():
+            if _es_system_error(cid):
+                continue
+            ts = max((t for t in (_parsear_timestamp(r.timestamp) for r in historia) if t),
+                     default=None)
+            inst = _instancia_de(cid)
+            if ts and (inst not in ultimo_real or ts > ultimo_real[inst]):
+                ultimo_real[inst] = ts
+
         for cid, historia in historial_canales.items():
             # CORRECCIÓN 3: Re-aseguramos en Python que [0] es siempre el último reporte (rn=1)
             historia.sort(key=lambda x: x.rn)
@@ -149,6 +181,15 @@ def verificar_mirth(db, config, hospitales_activos):
                     f"{ts_canal:%Y-%m-%d %H:%M}): monitoreo desactivado o canal quitado"
                 )
                 continue
+            if _es_system_error(cid):
+                real = ultimo_real.get(_instancia_de(cid))
+                if real and ts_canal and real > ts_canal:
+                    instancia = _instancia_de(cid) or "Mirth"
+                    motivos[tipo_alerta] = (
+                        f"{instancia} volvió a responder: canales reales desde "
+                        f"{real:%Y-%m-%d %H:%M} (último error de conexión: {ts_canal:%H:%M})"
+                    )
+                    continue
             vigentes.add(tipo_alerta)
 
             estado_canal = (actual.status_value or '').upper()
