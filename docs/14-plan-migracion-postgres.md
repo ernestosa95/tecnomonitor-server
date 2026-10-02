@@ -407,7 +407,7 @@ Estado: A1 (`85ce911`), A2 (`e163bf0`), A3 y la parte de configuración de A4 (`
 
 | # | Qué | Quién | Tiempo |
 |---|---|---|---|
-| B1 | **Desplegar la Fase 2** (sigue en SQLite) y dejarla andar **al menos una semana**: valida `datos/` en producción antes de cambiar de motor. **Programado: 2026-10-02 a la tarde.** Va todo el código hasta acá; sin `DATABASE_URL` sigue en SQLite | Usuario (`git pull` + reinicio) | 15 min + 1 semana |
+| B1 | **Desplegar la Fase 2** (sigue en SQLite) y dejarla andar **al menos una semana**: valida `datos/` en producción antes de cambiar de motor. **Programado: 2026-10-02 a la tarde; plazo acortado (ver «Orden y plazo»): un par de horas de observación en vez de una semana.** Va todo el código hasta acá; sin `DATABASE_URL` sigue en SQLite | Usuario (`git pull` + reinicio) | 15 min + 1 semana |
 | B2 | **Fase 1 en el server**: swap de 4 GB; PostgreSQL 16 + **TimescaleDB 2.17.2** (la misma versión que la PC, si no el dump no restaura); `timescaledb-tune` con poca memoria (~1,5 GB); roles (app, solo lectura, migración); backup diario (`pg_dump` comprimido) con una restauración de prueba | Usuario con comandos preparados | 1–2 h |
 | B3 | **Carga histórica en la PC** desde una foto nueva (`VACUUM INTO`, como el 01/10): 6 meses de infraestructura ~1,5 h + software y KPIs minutos + archivo frío del crudo; verificación; `pg_dump` | PC | ~3 h |
 | B4 | **Subir y restaurar** el dump en el server (procedimiento de TimescaleDB: `timescaledb_pre_restore` / `post_restore`) y **ensayo del diferencial** (Fase 5) contra esa copia: mide cuánto dura el corte de verdad | Usuario + guion | 1 h |
@@ -455,6 +455,13 @@ A1–A5 (código, ~3–5 sesiones de trabajo) en paralelo con B1 (despliegue de 
 semana andando) y B2 (instalar Postgres) → B3 + B4 con una foto fresca → corte (C). **El corte se
 puede hacer, como pronto, en 2 a 3 semanas.** Límite de disco (§2.1): el libre llega a ~15 GB en
 ~4 meses, así que hay margen para no apurarlo.
+
+**Cambio de plazo (2026-10-02):** se comprime todo a un día. B1 a la tarde y ~2 h de observación;
+en paralelo B2 en el server; foto nueva apenas B1 esté arriba (resumen apagado) → B3 en la PC
+(~3 h) → B4 (subir, restaurar, ensayo) → corte esa noche o al día siguiente sobre la misma foto
+(el diferencial de un día es ~5 min en el server). Lo que se resigna es la semana de `datos/` en
+producción antes de cambiar de motor; queda cubierto por la paridad verificada (A1, A2) y por la
+vuelta atrás a SQLite.
 
 Pendientes operativos fuera de la migración: reloj del agente de H03 (+4 h), encabezados
 `X-Forwarded-For` en `location /ws/` de Nginx, revisar si el 8100 (`/hl7/`) escucha en `0.0.0.0`.
