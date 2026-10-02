@@ -133,7 +133,7 @@ class PuntoInfra:
     temp_amb: Optional[float] = None       # °C
     temperaturas: dict = field(default_factory=dict)   # sensor -> valor
     red: dict = field(default_factory=dict)            # {"lat", "up", "dw"}
-    vms: dict = field(default_factory=dict)            # id -> {"cpu", "ram"} (%)
+    vms: dict = field(default_factory=dict)            # id -> {"cpu", "ram" (%, None sin dato), "estado", "motivo"}
 
 
 def _num(v):
@@ -169,18 +169,22 @@ def metricas_de(timestamp, data):
 
     net = phy.get("network_health") or {}
 
+    # Sin dato (VM apagada o sin lectura), None y no 0: el gráfico deja el hueco y lo marca con el
+    # estado y el motivo que informó el agente (decisión del 2026-10-01, docs/14 §5.1).
     vms = {}
     if isinstance(data.get("virtual_layer"), list):
         for vm in data["virtual_layer"]:
             vid = vm.get("id")
             if vid:
                 vt = vm.get("telemetry") or {}
-                vms[vid] = {"cpu": (vt.get("cpu") or {}).get("usage_percent", 0),
-                            "ram": (vt.get("ram") or {}).get("usage_percent", 0)}
+                vms[vid] = {"cpu": (vt.get("cpu") or {}).get("usage_percent"),
+                            "ram": (vt.get("ram") or {}).get("usage_percent"),
+                            "estado": vm.get("state"), "motivo": vm.get("state_reason")}
     elif isinstance(data.get("vms"), dict):
         for k, v in data["vms"].items():
             m = v.get("metrics") or {}
-            vms[k] = {"cpu": m.get("cpu_load_percent", 0), "ram": (m.get("ram") or {}).get("percent", 0)}
+            vms[k] = {"cpu": m.get("cpu_load_percent"), "ram": (m.get("ram") or {}).get("percent"),
+                      "estado": None, "motivo": None}
 
     return PuntoInfra(
         timestamp=timestamp,

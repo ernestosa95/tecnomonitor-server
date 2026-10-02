@@ -227,9 +227,11 @@ idénticos a calcularlos desde SQLite. Lecturas (en la PC): gráfico de 9 días 
 ms (SQLite hoy 80–106 ms; 30 días ~1 s); último reporte de todos los hospitales para el motor de
 alertas 17 ms (SQLite 330 ms). **Total en la base con agregados: ~2,5 GB/año.**
 
-Diferencia de criterio a decidir: hoy el gráfico cuenta como 0 el CPU/RAM de una VM que no lo
-informa (apagada, sin WMI); en Postgres queda vacío y el promedio no se arrastra a 0. En el
-gráfico se vería un hueco en vez de una caída a 0.
+**Decidido (2026-10-01): VM sin dato = hueco, marcado con el motivo.** La serie lleva CPU/RAM en
+`None` (no 0) más el estado y el motivo que informa el agente, en los dos motores. El gráfico
+colorea el tramo: rojo "DESCONECTADA" (`Offline` por `port_closed`, `wmi_timeout` o sin motivo:
+la VM no responde), ámbar "SIN LECTURA (WMI)" (`wmi_error`: responde pero falló la lectura) y
+gris "SIN DATOS" (no vino en el reporte), con el total de cada uno debajo del título.
 
 ## 6. Auditoría y retención por niveles
 
@@ -377,7 +379,7 @@ pasa a ser fijo (cronológico).
 el esquema (infraestructura, software, KPIs, agregados), la transformación y los cargadores,
 medidos y validados en la PC contra la foto. Base estimada: ~2,5 GB/año.
 
-#### A. Código, en la PC (no toca producción) — **hecho el 2026-10-01 salvo A6**
+#### A. Código, en la PC (no toca producción) — **hecho el 2026-10-01**
 
 Estado: A1 (`85ce911`), A2 (`e163bf0`), A3 y la parte de configuración de A4 (`85ce911`), A5
 (`93d6511`). **Alembic (resto de A4) queda para después del corte**: para instalar alcanza
@@ -399,17 +401,17 @@ Estado: A1 (`85ce911`), A2 (`e163bf0`), A3 y la parte de configuración de A4 (`
 | A3 | **Tablas chicas** (alertas, configuración, usuarios, hospitales, Mirth, módulos, exclusiones, baselines…): se crean con los modelos de hoy (`create_all` funciona igual); copia completa en el corte. Siguen con hora local sin zona, como hoy: el código las compara con `datetime.now()` y cambiarlas no aporta. Revisado: fuera de `datos/` el código usa solo el ORM, sin SQL propio de SQLite | Son la configuración y el estado de las alertas | S |
 | A4 | **Esquema con Alembic** (`postgres/esquema.sql` + tablas chicas) y motor por configuración (`DATABASE_URL`) | Instalación repetible en el server y vuelta atrás por configuración | S |
 | A5 | **Cargador del corte**: diferencial por `id` desde la foto (ya reanudable) + tablas chicas completas + refresco de agregados + **verificación** (reportes por hospital y día iguales en los dos motores) | Es el guion del día del corte | S |
-| A6 | **Decidir** el criterio de VMs sin dato (0 como hoy, o hueco; §5.1) | Cambia lo que se ve en el gráfico | — |
+| A6 | ~~Decidir el criterio de VMs sin dato~~ **Resuelto (2026-10-01): hueco marcado con el motivo** (§5.1) | Cambia lo que se ve en el gráfico | Hecho |
 
 #### B. En producción, antes del corte (sin detener el monitoreo)
 
 | # | Qué | Quién | Tiempo |
 |---|---|---|---|
-| B1 | **Desplegar la Fase 2** (sigue en SQLite) y dejarla andar **al menos una semana**: valida `datos/` en producción antes de cambiar de motor | Usuario (`git pull` + reinicio) | 15 min + 1 semana |
+| B1 | **Desplegar la Fase 2** (sigue en SQLite) y dejarla andar **al menos una semana**: valida `datos/` en producción antes de cambiar de motor. **Programado: 2026-10-02 a la tarde.** Va todo el código hasta acá; sin `DATABASE_URL` sigue en SQLite | Usuario (`git pull` + reinicio) | 15 min + 1 semana |
 | B2 | **Fase 1 en el server**: swap de 4 GB; PostgreSQL 16 + **TimescaleDB 2.17.2** (la misma versión que la PC, si no el dump no restaura); `timescaledb-tune` con poca memoria (~1,5 GB); roles (app, solo lectura, migración); backup diario (`pg_dump` comprimido) con una restauración de prueba | Usuario con comandos preparados | 1–2 h |
 | B3 | **Carga histórica en la PC** desde una foto nueva (`VACUUM INTO`, como el 01/10): 6 meses de infraestructura ~1,5 h + software y KPIs minutos + archivo frío del crudo; verificación; `pg_dump` | PC | ~3 h |
 | B4 | **Subir y restaurar** el dump en el server (procedimiento de TimescaleDB: `timescaledb_pre_restore` / `post_restore`) y **ensayo del diferencial** (Fase 5) contra esa copia: mide cuánto dura el corte de verdad | Usuario + guion | 1 h |
-| B5 | Saber dónde están los `historico_*.db` (meses anteriores a abril): si existen, entran en B3 | Usuario | — |
+| B5 | ~~`historico_*.db`~~ **Resuelto (2026-10-01): se descartan.** El histórico en Postgres arranca el 2026-04-01, igual que hoy en SQLite | — | — |
 
 #### C. El día del corte (monitoreo detenido)
 

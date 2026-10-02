@@ -94,11 +94,9 @@ def serie_infra(db, hospital_id, desde, hasta=None, max_puntos=None, limite=None
                              "AND ts BETWEEN :t0 AND :t1 ORDER BY ts, orden"), rango):
         if s.valor is not None:
             temps.setdefault(s.ts, {})[s.nombre] = s.valor
-    for v in db.execute(text("SELECT ts, vm, cpu_pct, ram_pct FROM metricas_vm WHERE hospital_id = :h "
+    for v in db.execute(text("SELECT ts, vm, cpu_pct, ram_pct, estado, motivo FROM metricas_vm WHERE hospital_id = :h "
                              "AND origen = 'virtual_layer' AND ts BETWEEN :t0 AND :t1 ORDER BY ts, orden"), rango):
-        # Sin dato, 0: es lo que mostraba el gráfico leyendo el JSON (docs/14 §5.1, decisión pendiente).
-        vms.setdefault(v.ts, {})[v.vm] = {"cpu": v.cpu_pct if v.cpu_pct is not None else 0,
-                                          "ram": v.ram_pct if v.ram_pct is not None else 0}
+        vms.setdefault(v.ts, {})[v.vm] = {"cpu": v.cpu_pct, "ram": v.ram_pct, "estado": v.estado, "motivo": v.motivo}
 
     puntos = []
     for f in filas:

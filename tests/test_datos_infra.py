@@ -76,7 +76,7 @@ def test_metricas_de_formato_actual_y_viejo(ahora):
     p = infra.metricas_de(ahora, _json_agente(12.5, 60, [("Inlet Ambient", 22), ("CPU1", "41")], [("APPV", 5, 70)]))
     assert (p.cpu_host, p.ram_host, p.temp_amb) == (12.5, 60.0, 22.0)
     assert p.temperaturas == {"Inlet Ambient": 22.0, "CPU1": 41.0}
-    assert p.vms == {"APPV": {"cpu": 5, "ram": 70}}
+    assert p.vms == {"APPV": {"cpu": 5, "ram": 70, "estado": None, "motivo": None}}
     assert p.red == {"lat": 40, "up": 1, "dw": 2}
 
     viejo = {"physical_host": {"telemetry": {}}, "environment": {"thermal": {
@@ -85,7 +85,7 @@ def test_metricas_de_formato_actual_y_viejo(ahora):
     p = infra.metricas_de(ahora, viejo)
     assert p.cpu_host is None and p.temp_amb == 24.0
     assert p.temperaturas == {"CPU": 50.0}
-    assert p.vms == {"VM1": {"cpu": 9, "ram": 33}}
+    assert p.vms == {"VM1": {"cpu": 9, "ram": 33, "estado": None, "motivo": None}}
 
 
 def test_serie_infra_rango_limite_y_submuestreo(db, ahora):
@@ -104,3 +104,11 @@ def test_ultimo_reporte_hasta(db, ahora):
     _reporte(db, "H01", ahora, {"v": "nuevo"})
     db.commit()
     assert infra.ultimo_reporte(db, "H01", hasta=ahora - timedelta(days=1)).data == {"v": "viejo"}
+
+
+def test_vm_sin_dato_queda_vacia_con_su_estado(ahora):
+    p = infra.metricas_de(ahora, {"virtual_layer": [
+        {"id": "APPV", "state": "Offline", "state_reason": "port_closed"},
+        {"id": "PRTV", "state": "Online", "telemetry": {"cpu": {"usage_percent": 0}, "ram": {"usage_percent": 40}}}]})
+    assert p.vms["APPV"] == {"cpu": None, "ram": None, "estado": "Offline", "motivo": "port_closed"}
+    assert p.vms["PRTV"]["cpu"] == 0 and p.vms["PRTV"]["estado"] == "Online"     # un 0 real sigue siendo 0

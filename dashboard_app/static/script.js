@@ -1259,19 +1259,35 @@ function actualizarGrafico() {
         return currentRangeHours > 24 ? `${dateObj.toLocaleDateString([], {day:'2-digit', month:'2-digit'})} ${timeStr}` : timeStr;
     });
 
+    // Motivo de un tramo sin datos de una VM, a partir de lo que informó el agente:
+    // 'desconectada' (no responde: apagada o sin red), 'wmi' (responde pero falló la lectura)
+    // o 'sin_datos' (no vino en el reporte).
+    function motivoSinDatos(vm) {
+        if (!vm) return 'sin_datos';
+        const estado = (vm.estado ?? vm.state ?? '').toLowerCase();
+        const motivo = (vm.motivo ?? vm.state_reason ?? '').toLowerCase();
+        if (estado === 'offline') return motivo === 'wmi_error' ? 'wmi' : 'desconectada';
+        return 'sin_datos';
+    }
+
     function getSafeVMData(d, sourceId) {
         let vm = (d.vms && d.vms[sourceId]) || (d.virtual_layer && d.virtual_layer.find(v => v.id === sourceId));
-        if (!vm) return { valid: false, cpu: null, ram: null };
-        let cpu = vm.telemetry?.cpu?.usage_percent ?? vm.cpu;
-        let ram = vm.telemetry?.ram?.usage_percent ?? vm.ram;
-        if ((vm.state || '').toLowerCase() === 'offline' || (cpu === 0 && ram === 0)) return { valid: false, cpu: null, ram: null };
+        if (!vm) return { valid: false, cpu: null, ram: null, motivo: 'sin_datos' };
+        let cpu = vm.telemetry?.cpu?.usage_percent ?? vm.cpu ?? null;
+        let ram = vm.telemetry?.ram?.usage_percent ?? vm.ram ?? null;
+        const estado = (vm.estado ?? vm.state ?? '').toLowerCase();
+        // Sin dato llega null (no 0); el "0 y 0" queda por compatibilidad con historiales viejos.
+        if (estado === 'offline' || (cpu === null && ram === null) || (cpu === 0 && ram === 0)) {
+            return { valid: false, cpu: null, ram: null, motivo: motivoSinDatos(vm) };
+        }
         return { valid: true, cpu, ram };
     }
 
-    // 1. DETECTAR HUECOS
-    let gapRanges = [], inGap = false, gapStart = 0;
+    // 1. DETECTAR HUECOS (cada uno con su motivo: el peor de sus puntos)
+    let gapRanges = [], inGap = false, gapStart = 0, gapMotivo = 'sin_datos';
+    const PRIORIDAD_MOTIVO = { desconectada: 3, wmi: 2, sin_datos: 1 };
     currentHistoryData.forEach((d, i) => {
-        let hasData = false;
+        let hasData = false, motivo = 'sin_datos';
 
         // RESTAURADO: Lógica correcta para validar si hay datos de temperatura
         if (source === 'global') {
@@ -1281,13 +1297,18 @@ function actualizarGrafico() {
                 hasData = d.global && d.global[metric] != null;
             }
         } else {
-            hasData = getSafeVMData(d, source).valid;
+            const vmData = getSafeVMData(d, source);
+            hasData = vmData.valid;
+            motivo = vmData.motivo || 'sin_datos';
         }
 
-        if (!hasData) { if (!inGap) { inGap = true; gapStart = i; } } 
-        else { if (inGap) { inGap = false; gapRanges.push({ start: gapStart, end: i }); } }
+        if (!hasData) {
+            if (!inGap) { inGap = true; gapStart = i; gapMotivo = motivo; }
+            else if (PRIORIDAD_MOTIVO[motivo] > PRIORIDAD_MOTIVO[gapMotivo]) gapMotivo = motivo;
+        }
+        else { if (inGap) { inGap = false; gapRanges.push({ start: gapStart, end: i, motivo: gapMotivo }); } }
     });
-    if (inGap) gapRanges.push({ start: gapStart, end: currentHistoryData.length - 1 });
+    if (inGap) gapRanges.push({ start: gapStart, end: currentHistoryData.length - 1, motivo: gapMotivo });
 
     // 2. CONFIGURAR DATASETS
     let datasets = [];
@@ -1343,7 +1364,26 @@ function actualizarGrafico() {
         datasets.push({ ...common, label: 'Uso CPU Host (%)', data: currentHistoryData.map(d => (d.global && d.global[metric] != null) ? d.global[metric] : null), borderColor: '#3498db', fill: true, backgroundColor: 'rgba(52,152,219,0.05)' });
     }
 
-    // 3. PLUGIN DE SOMBREADO (ACTUALIZADO: GRIS, BORDE Y AJUSTE DE LÍMITES)
+    // Resumen de los tramos sin datos por motivo, debajo del título ("Desconectada 2 h 10 min · ...").
+    const COLORES_MOTIVO = {
+        desconectada: { fondo: 'rgba(231, 76, 60, 0.13)', fondoOscuro: 'rgba(231, 76, 60, 0.18)', borde: 'rgba(231, 76, 60, 0.55)', texto: 'rgba(192, 57, 43, 0.95)' },
+        wmi:          { fondo: 'rgba(243, 156, 18, 0.15)', fondoOscuro: 'rgba(243, 156, 18, 0.18)', borde: 'rgba(230, 126, 34, 0.6)', texto: 'rgba(211, 84, 0, 0.95)' },
+        sin_datos:    { fondo: 'rgba(189, 195, 199, 0.25)', fondoOscuro: 'rgba(149, 165, 166, 0.12)', borde: 'rgba(149, 165, 166, 0.8)', texto: 'rgba(127, 140, 141, 0.9)' },
+    };
+    const NOMBRE_MOTIVO = { desconectada: 'Desconectada', wmi: 'Sin lectura WMI', sin_datos: 'Sin datos' };
+    const minutosPorMotivo = {};
+    gapRanges.forEach(g => {
+        const t0 = new Date(currentHistoryData[g.start].timestamp);
+        // El tramo dura hasta el primer punto con datos (o hasta el último punto si llega al final).
+        const t1 = new Date(currentHistoryData[g.end].timestamp);
+        minutosPorMotivo[g.motivo] = (minutosPorMotivo[g.motivo] || 0) + Math.max(0, (t1 - t0) / 60000);
+    });
+    const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${Math.max(1, Math.round(m))} min`;
+    const resumenHuecos = source === 'global' ? '' : Object.keys(NOMBRE_MOTIVO)
+        .filter(k => minutosPorMotivo[k] !== undefined)
+        .map(k => `${NOMBRE_MOTIVO[k]}: ${fmtMin(minutosPorMotivo[k])}`).join('   ·   ');
+
+    // 3. PLUGIN DE SOMBREADO (color por motivo, borde y ajuste de límites)
     const gapShadingPlugin = {
         id: 'gapShadingPlugin',
         beforeDraw: chart => {
@@ -1354,12 +1394,14 @@ function actualizarGrafico() {
             ctx.save();
             const isDark = document.body.classList.contains('dark-theme');
             
-            // Colores Gris neutro para el fondo, el borde y el texto
-            const bgColor = isDark ? 'rgba(149, 165, 166, 0.12)' : 'rgba(189, 195, 199, 0.25)';
-            const borderColor = isDark ? 'rgba(149, 165, 166, 0.4)' : 'rgba(149, 165, 166, 0.8)';
-            const textColor = isDark ? 'rgba(189, 195, 199, 0.8)' : 'rgba(127, 140, 141, 0.9)';
-            
             gapRanges.forEach(gap => {
+                // Color por motivo (se distingue aunque el tramo sea angosto para el texto):
+                // rojo = desconectada, ámbar = sin lectura WMI, gris = sin datos.
+                const c = COLORES_MOTIVO[gap.motivo] || COLORES_MOTIVO.sin_datos;
+                const bgColor = isDark ? c.fondoOscuro : c.fondo;
+                const borderColor = c.borde;
+                const textColor = c.texto;
+
                 // Ajuste de límites: inicia y termina exactamente en los puntos vacíos (evita solapar la línea azul)
                 let sX = gap.start === 0 ? chartArea.left : x.getPixelForValue(gap.start);
                 let eX = gap.end === currentHistoryData.length - 1 ? chartArea.right : x.getPixelForValue(gap.end);
@@ -1392,8 +1434,10 @@ function actualizarGrafico() {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     
-                    if (width > 80) ctx.fillText('SIN DATOS', sX + width/2, chartArea.top + 25);
-                    else if (width > 30) ctx.fillText('🔌', sX + width/2, chartArea.top + 25);
+                    const TEXTO_MOTIVO = { desconectada: 'DESCONECTADA', wmi: 'SIN LECTURA (WMI)', sin_datos: 'SIN DATOS' };
+                    const texto = TEXTO_MOTIVO[gap.motivo] || 'SIN DATOS';
+                    if (width > ctx.measureText(texto).width + 16) ctx.fillText(texto, sX + width/2, chartArea.top + 25);
+                    else if (width > 30) ctx.fillText({ desconectada: '🔌', wmi: '⚠️' }[gap.motivo] || '·', sX + width/2, chartArea.top + 25);
                 }
             });
             ctx.restore();
@@ -1409,6 +1453,7 @@ function actualizarGrafico() {
             maintainAspectRatio: false, 
             interaction: { intersect: false, mode: 'index' }, 
             scales: { y: { beginAtZero: true } },
+            plugins: { subtitle: { display: !!resumenHuecos, text: resumenHuecos, color: '#7f8c8d', font: { size: 11 }, padding: { bottom: 6 } } },
             animation: { duration: 0 } 
         }, 
         plugins: [gapShadingPlugin] 
