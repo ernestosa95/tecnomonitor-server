@@ -458,12 +458,11 @@ semana andando) y B2 (instalar Postgres) → B3 + B4 con una foto fresca → cor
 puede hacer, como pronto, en 2 a 3 semanas.** Límite de disco (§2.1): el libre llega a ~15 GB en
 ~4 meses, así que hay margen para no apurarlo.
 
-**Cambio de plazo (2026-10-02):** se comprime todo a un día. B1 a la tarde y ~2 h de observación;
-en paralelo B2 en el server; foto nueva apenas B1 esté arriba (resumen apagado) → B3 en la PC
-(~3 h) → B4 (subir, restaurar, ensayo) → corte esa noche o al día siguiente sobre la misma foto
-(el diferencial de un día es ~5 min en el server). Lo que se resigna es la semana de `datos/` en
-producción antes de cambiar de motor; queda cubierto por la paridad verificada (A1, A2) y por la
-vuelta atrás a SQLite.
+**Cambio de plazo (2026-10-02, revisado el mismo día):** B1 el viernes 02/10 a la tarde y
+observación todo el fin de semana (cubre los ciclos diarios: CHECKDB, backups, resúmenes). Lunes
+05/10: B2 en el server, foto nueva (resumen apagado) → B3 en la PC (~3 h) → B4 (subir, restaurar,
+ensayo) → corte el lunes a la noche o el martes, sobre esa misma foto. B2 no se adelanta al viernes
+para que el fin de semana la única novedad en producción sea la Fase 2.
 
 Pendientes operativos fuera de la migración: reloj del agente de H03 (+4 h), encabezados
 `X-Forwarded-For` en `location /ws/` de Nginx, revisar si el 8100 (`/hl7/`) escucha en `0.0.0.0`.
