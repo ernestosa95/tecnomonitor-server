@@ -447,6 +447,8 @@ actividad en los hospitales y avisar a quien mire el panel.
 
 - Fase 7: retención por niveles desde la UI (crudo 30 días → archivo frío) y quitar el resumen de
   `maintenance.py`. No apura: el crudo comprimido son ~0,2 GB al mes.
+- Acceso directo a la base: cliente en la PC (DBeaver o pgAdmin) por túnel SSH con el rol de solo
+  lectura; Postgres sigue escuchando solo en `127.0.0.1`, sin puertos nuevos ni interfaz web pública.
 - Fase 8: backup final de solo lectura del `.db` de SQLite y borrarlo (libera ~21 GB).
 
 #### Orden y plazo
